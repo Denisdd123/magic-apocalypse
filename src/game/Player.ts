@@ -25,11 +25,11 @@ export class Player {
   private hpBar: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene) {
-    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(34, 34).setBlendMode(Phaser.BlendModes.ADD);
-    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(20, 7);
-    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(18, 29);
-    this.hpBg = scene.add.rectangle(0, 0, 18, 2.6, 0x1a1a1a).setDepth(DEPTH.player);
-    this.hpBar = scene.add.rectangle(0, 0, 18, 2.6, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
+    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(34, 34).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
+    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(15, 5);
+    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(14, 23);
+    this.hpBg = scene.add.rectangle(0, 0, 16, 2.4, 0x1a1a1a).setDepth(DEPTH.player);
+    this.hpBar = scene.add.rectangle(0, 0, 16, 2.4, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
   }
 
   get xpNeed() { return xpForLevel(this.level); }
@@ -57,13 +57,13 @@ export class Player {
     const fr = Math.floor(this.animT) % 4;
     if (fr !== this.frame) { this.frame = fr; this.img.setTexture('player_' + fr); }
     const bob = Math.sin(this.animT * 0.8) * 0.8;
-    this.img.setPosition(this.x, this.y - 6 + bob);
-    this.shadow.setPosition(this.x, this.y + 8);
+    this.img.setPosition(this.x, this.y - 5 + bob);
+    this.shadow.setPosition(this.x, this.y + 6.5);
     this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
     this.img.setAlpha(this.invulnT > 0 ? 0.45 + 0.25 * Math.sin(W.time * 30) : 1);
     if (this.hurtT > PLAYER.hurtCooldown - 0.12) this.img.setTint(0xff5050); else this.img.clearTint();
-    this.hpBg.setPosition(this.x, this.y + 12);
-    this.hpBar.setPosition(this.x - 9, this.y + 12).setSize(18 * Math.max(0, this.hp / s.maxHp), 2.6);
+    this.hpBg.setPosition(this.x, this.y + 10);
+    this.hpBar.setPosition(this.x - 8, this.y + 10).setSize(16 * Math.max(0, this.hp / s.maxHp), 2.4);
   }
 
   hurt(amount: number) {
