@@ -63,6 +63,6 @@ export class Orbs {
     this.free.push(o);
     this.count--;
     if (o.kind === 'life') W.player.heal(W.stats.maxHp * 0.2 * (1 + W.stats.lifeOrbHeal));
-    else W.player.gainXp(o.value);
+    else { W.mana += o.value; W.player.gainXp(o.value); }
   }
 }

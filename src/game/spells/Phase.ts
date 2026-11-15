@@ -50,7 +50,7 @@ class Phase extends Spell {
         P.speedBuff = 0;
         if (this.has('warp')) {
           const r = 120 * W.stats.sizeMul;
-          areaDamage(P.x, P.y, r, W.stats.spellDamage(5000), 200);
+          areaDamage(P.x, P.y, r, W.stats.spellDamage(5000), 200, 'phase');
           W.fx.burst(P.x, P.y, r, 0xb48cff, 0.6);
           W.fx.sparks(P.x, P.y, 16, 0xd8c0ff, 160);
         }

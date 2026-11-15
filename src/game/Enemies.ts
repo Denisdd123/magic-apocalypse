@@ -167,10 +167,11 @@ export class Enemies {
   }
 
   /** Нанести урон врагу. Возвращает true, если враг погиб. */
-  damage(e: Enemy, amount: number, kx = 0, ky = 0): boolean {
+  damage(e: Enemy, amount: number, kx = 0, ky = 0, src = ''): boolean {
     if (!e.alive) return false;
     const s = W.stats;
     if (Math.random() < s.crit) amount *= s.critMult;
+    if (src) W.dmgBy.set(src, (W.dmgBy.get(src) ?? 0) + Math.min(amount, e.hp));
     e.hp -= amount;
     if (e.flashT <= 0) e.img.setTintFill(0xffffff);
     e.flashT = 0.06;

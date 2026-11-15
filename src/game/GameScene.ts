@@ -10,7 +10,8 @@ import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
 import { STAR_NEEDLE } from './spells/StarNeedle';
 import { W } from './World';
-import { Hud, Joystick, clearModals, initUi, showAttrPick, showDeath, showLevelUp, showMenu, showPause } from '../ui/ui';
+import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
+import { showDeath, showPause } from '../ui/screens';
 
 export class GameScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.TileSprite;
@@ -41,7 +42,7 @@ export class GameScene extends Phaser.Scene {
   private startRun() {
     this.cleanupRun();
     W.scene = this;
-    W.time = 0; W.kills = 0;
+    W.time = 0; W.kills = 0; W.mana = 0; W.dmgBy = new Map();
     W.stats = new Stats();
     W.fx = new Effects(this);
     W.orbs = new Orbs(this);
@@ -77,7 +78,7 @@ export class GameScene extends Phaser.Scene {
   private openPause() {
     if (this.inModal || !this.running) return;
     this.inModal = true; this.paused = true; this.joy?.release();
-    showPause(W.book.spells, W.book.passives, () => { this.inModal = false; this.paused = false; }, () => this.die());
+    showPause(() => { this.inModal = false; this.paused = false; }, () => this.die());
   }
 
   private openLevelUp() {
@@ -101,9 +102,7 @@ export class GameScene extends Phaser.Scene {
   private die() {
     this.paused = true; this.inModal = true;
     this.joy?.release();
-    const { time, kills } = W;
-    const lvl = W.player.level;
-    showDeath(time, kills, lvl, () => this.startRun(), () => { this.cleanupRun(); this.cameras.main.centerOn(0, 0); showMenu(() => this.startRun()); });
+    showDeath(() => this.startRun(), () => { this.cleanupRun(); this.cameras.main.centerOn(0, 0); showMenu(() => this.startRun()); });
   }
 
   update(_t: number, deltaMs: number) {
@@ -131,7 +130,7 @@ export class GameScene extends Phaser.Scene {
     if (this.hudT <= 0) {
       this.hudT = 0.1;
       const P = W.player;
-      this.hud!.set(P.level, P.xp / P.xpNeed, W.time, W.kills);
+      this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
       const ph = W.book.spells.get('phase') as any;
       if (ph) this.hud!.cd('phase', 'ico_phase', ph.active > 0 ? 1 : ph.cdLeft / 45);
     }

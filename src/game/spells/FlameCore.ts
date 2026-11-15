@@ -34,7 +34,7 @@ class FlameCore extends Spell {
       while (g.hits < Math.min(3, need)) {
         g.hits++;
         const r = g.r * (1 + 0.25 * g.hits);
-        areaDamage(g.x, g.y, r, g.dmg);
+        areaDamage(g.x, g.y, r, g.dmg, 0, 'flame');
         W.fx.burst(g.x, g.y, r, 0x7dff4a, 0.45, 'ring');
       }
       if (g.hits >= 3) this.gas.splice(i, 1);
@@ -53,7 +53,7 @@ class FlameCore extends Spell {
       // ядро улетает в случайную точку рядом, висит и следует за магом
       const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 90;
       const ox = Math.cos(a) * d, oy = Math.sin(a) * d;
-      W.projectiles.fire({
+      W.projectiles.fire({ src: 'flame',
         x: P.x, y: P.y, vx: 0, vy: 0, dmg: 0, r: 9 * s.sizeMul, life: 3.5 * s.durMul,
         tex: 'fireball', size: 22 * big * s.sizeMul, tint, pierce: 1, rotateToVel: false, spin: 3,
         data: { ox, oy, k: 0 },
@@ -69,7 +69,7 @@ class FlameCore extends Spell {
     const e = W.enemies.nearest(P.x, P.y, 300);
     if (!e) return;
     const ang = Math.atan2(e.y - P.y, e.x - P.x) + (Math.random() - 0.5) * 0.15;
-    W.projectiles.fire({
+    W.projectiles.fire({ src: 'flame',
       x: P.x, y: P.y, vx: Math.cos(ang) * 200, vy: Math.sin(ang) * 200, dmg: 0,
       r: 7 * s.sizeMul, life: 1.4, tex: 'fireball', size: 20 * big * s.sizeMul, tint, rotateToVel: false,
       onEnd: (p: Projectile) => this.explode(p.x, p.y, r, dmg, tint),
@@ -81,7 +81,7 @@ class FlameCore extends Spell {
       this.gas.push({ x, y, t: 0, hits: 0, r, dmg });
       return;
     }
-    areaDamage(x, y, r, dmg, 50);
+    areaDamage(x, y, r, dmg, 50, 'flame');
     W.fx.burst(x, y, r, tint === 0xffffff ? 0xffa64d : tint, 0.35);
     W.fx.sparks(x, y, 4, 0xffc070, 80);
   }

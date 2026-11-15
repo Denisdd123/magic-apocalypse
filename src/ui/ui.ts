@@ -1,6 +1,5 @@
 import type Phaser from 'phaser';
 import type { Choice } from '../game/SpellBook';
-import { PASSIVES, SPELLS } from '../game/SpellBook';
 import type { AttrDef, Spell } from '../game/spells/Spell';
 
 // Интерфейс поверх игры — обычный HTML: чёткий текст на любом экране и простая вёрстка.
@@ -58,9 +57,8 @@ export function showMenu(onPlay: () => void) {
 export class Hud {
   private wrap = el('div', 'hud');
   private xp = el('div');
-  private lvl = el('div', 'lvl');
+  private mana = el('div', 'mana');
   private timer = el('div', 'timer');
-  private kills = el('div', 'kills');
   private cds = el('div', 'cdicons');
   private cdMap = new Map<string, HTMLElement>();
 
@@ -70,18 +68,17 @@ export class Hud {
     const right = el('div', 'right');
     const pb = el('button', 'pausebtn', '❚❚');
     pb.addEventListener('click', onPause);
-    right.append(this.kills, pb);
-    top.append(this.lvl, this.timer, right);
+    right.append(pb);
+    top.append(this.mana, this.timer, right);
     this.wrap.append(bar, top, this.cds);
     root().appendChild(this.wrap);
   }
 
-  set(level: number, xpFrac: number, time: number, kills: number) {
+  /** Сверху: полоса опыта, кристаллы (собранная мана) слева, таймер по центру */
+  set(xpFrac: number, time: number, mana: number) {
     this.xp.style.width = Math.min(100, xpFrac * 100).toFixed(1) + '%';
-    this.lvl.textContent = 'Ур. ' + level;
-    const m = Math.floor(time / 60), s = Math.floor(time % 60);
-    this.timer.textContent = `${m.toString().padStart(2, '0')} : ${s.toString().padStart(2, '0')}`;
-    this.kills.textContent = '☠ ' + kills;
+    this.mana.innerHTML = `<i></i>${Math.floor(mana)}`;
+    this.timer.textContent = fmtTime(time);
   }
 
   /** Иконка перезарядки (Фаза и др.): frac 0 = готово, 1 = только что использовано */
@@ -224,51 +221,8 @@ export function showAttrPick(sp: Spell, options: AttrDef[], onPick: (a: AttrDef)
   root().appendChild(m);
 }
 
-// ---------------- Пауза ----------------
-export function showPause(spells: Map<string, Spell>, passives: Map<string, number>, onResume: () => void, onQuit: () => void) {
-  clearModals();
-  const m = el('div', 'modal');
-  m.appendChild(el('h1', '', 'Пауза'));
-  const p = el('div', 'panel');
-  let html = '<h3>Заклинания</h3>';
-  for (const def of SPELLS) {
-    const sp = spells.get(def.id);
-    if (!sp) continue;
-    const attrs = [...sp.attrs].map((id) => Object.values(def.attrs).flat().find((a) => a.id === id)?.name).filter(Boolean).join(', ');
-    html += `<div class="row"><img src="${icon(def.icon, sp.tint)}"><div>${esc(def.name)}${attrs ? `<div class="attrname" style="color:#${sp.tint.toString(16).padStart(6, '0')}">${esc(attrs)}</div>` : ''}</div><span class="lvl">Lv ${sp.level}</span></div>`;
-  }
-  if (passives.size) {
-    html += '<h3>Пассивные</h3>';
-    for (const def of PASSIVES) {
-      const lv = passives.get(def.id);
-      if (lv) html += `<div class="row"><img src="${icon(def.icon)}"><div>${esc(def.name)}</div><span class="lvl">Lv ${lv}</span></div>`;
-    }
-  }
-  p.innerHTML = html;
-  m.appendChild(p);
-  const b = el('div', 'btns');
-  const r = el('button', '', 'Продолжить'); r.addEventListener('click', () => { m.remove(); onResume(); });
-  const q = el('button', '', 'Сдаться'); q.addEventListener('click', () => { m.remove(); onQuit(); });
-  b.append(r, q);
-  m.appendChild(b);
-  root().appendChild(m);
-}
 
-// ---------------- Смерть ----------------
-export function showDeath(time: number, kills: number, level: number, onRetry: () => void, onMenu: () => void) {
-  clearModals();
-  const m = el('div', 'modal dead');
-  const mm = Math.floor(time / 60), ss = Math.floor(time % 60);
-  m.innerHTML = `
-    <h1>Хранитель пал</h1>
-    <div class="sub">Разлом · первая зона</div>
-    <div class="stat time">⏱ ${mm.toString().padStart(2, '0')} : ${ss.toString().padStart(2, '0')}</div>
-    <div class="stat kills">☠ ${kills}</div>
-    <div class="stat">Уровень ${level}</div>`;
-  const b = el('div', 'btns');
-  const r = el('button', '', 'Ещё раз'); r.addEventListener('click', () => { m.remove(); onRetry(); });
-  const q = el('button', '', 'В меню'); q.addEventListener('click', () => { m.remove(); onMenu(); });
-  b.append(r, q);
-  m.appendChild(b);
-  root().appendChild(m);
+export function fmtTime(t: number) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m.toString().padStart(2, '0')} : ${s.toString().padStart(2, '0')}`;
 }

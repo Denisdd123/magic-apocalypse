@@ -82,7 +82,7 @@ class Guardians extends Spell {
     const s = W.stats;
     const blade = this.has('blades');
     const sp = blade ? 900 : 380;
-    W.projectiles.fire({
+    W.projectiles.fire({ src: 'guardians',
       x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
       dmg: s.spellDamage(150, this.dmgMul), r: (blade ? 6 : 4) * s.sizeMul,
       life: blade ? 0.3 : 0.65, tex: blade ? 'blade' : 'dot', size: (blade ? 30 : 8) * s.sizeMul,

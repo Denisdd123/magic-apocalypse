@@ -91,7 +91,7 @@ class StarNeedle extends Spell {
     const lance = this.has('lance');
     const speed = 320 * (lance ? 2.2 : 1);
     for (const a of dirs) {
-      W.projectiles.fire({
+      W.projectiles.fire({ src: 'needle',
         x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
         dmg, r: (lance ? 7 : 4) * s.sizeMul, life: lance ? 0.6 : 1.0,
         tex: 'bolt', size: (lance ? 34 : 16) * s.sizeMul, tint,
@@ -104,12 +104,12 @@ class StarNeedle extends Spell {
   private firecracker(x: number, y: number, dmg: number) {
     for (let i = 0; i < 3; i++) {
       const a = Math.random() * Math.PI * 2;
-      W.projectiles.fire({
+      W.projectiles.fire({ src: 'needle',
         x, y, vx: Math.cos(a) * 140, vy: Math.sin(a) * 140, dmg: 0, r: 1, life: 0.22,
         tex: 'dot', size: 7, tint: 0xff7ad9, pierce: Infinity,
         onEnd: (p) => {
           const r = 20 * W.stats.sizeMul;
-          areaDamage(p.x, p.y, r, dmg);
+          areaDamage(p.x, p.y, r, dmg, 0, 'needle');
           W.fx.burst(p.x, p.y, r, 0xff7ad9, 0.25);
         },
       });

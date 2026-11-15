@@ -112,3 +112,44 @@ button:active { transform: scale(0.97); }
 .stat { font-size: 20px; margin: 6px 0; }
 .stat.time { color: var(--green); }
 .stat.kills { color: #ffb27a; }
+
+/* ---------- Кристаллы в HUD ---------- */
+.topline .mana { font-size: 15px; color: #8fe6ff; min-width: 70px; display: flex; align-items: center; gap: 6px; }
+.topline .mana i, .manastat i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #9ff0ff; box-shadow: 0 0 6px 2px #2fc8ff; }
+.manastat { color: #8fe6ff; display: flex; align-items: center; gap: 10px; justify-content: center; }
+
+/* ---------- Пауза ---------- */
+.modal.pause { background: rgba(0, 0, 0, 0.86); justify-content: flex-start; padding-top: calc(var(--safe-top) + 34px); }
+.ptitle { font-size: 34px !important; color: #fff !important; margin: 4px 0 18px !important; }
+.histbtn { position: absolute; right: 18px; top: calc(var(--safe-top) + 44px); background: none; border: none; padding: 6px; display: flex; gap: 3px; align-items: flex-end; height: 34px; }
+.histbtn span { display: block; width: 6px; background: #fff; border-radius: 1px; }
+.histbtn span:nth-child(1) { height: 10px; } .histbtn span:nth-child(2) { height: 16px; } .histbtn span:nth-child(3) { height: 22px; }
+.pinfo { text-align: center; font-size: 15px; line-height: 1.9; margin-bottom: 18px; }
+.pinfo .g { color: #ffe14d; } .pinfo .o { color: #ff9a3d; }
+.stgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; width: 100%; max-width: 440px; font-size: 11.5px; }
+.stgrid > div { min-width: 0; }
+.st { display: flex; align-items: center; gap: 6px; padding: 5px 0; }
+.st i { font-style: normal; width: 16px; text-align: center; font-size: 13px; }
+.st span { flex: 1; color: #e4e6ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st b { font-weight: normal; color: #fff; flex: none; }
+.st b.dim { color: #6c7280; }
+.resume { margin-top: auto; background: none; border: none; font-size: 28px; padding: 14px 20px; }
+.roundbtns { display: flex; gap: 18px; margin: 10px 0 8px; }
+.rb { width: 66px; height: 66px; border-radius: 50%; padding: 10px; background: #12223a; border: 2px solid #1e3554; display: flex; align-items: center; justify-content: center; }
+.rb img { width: 100%; height: 100%; }
+.rb.quit { background: #5a1c1c; border-color: #7a2a2a; font-size: 28px; }
+
+/* под-окна паузы */
+.modal.subpanel, .modal.confirm { background: #050608; }
+.subpanel .close { position: absolute; right: 14px; top: calc(var(--safe-top) + 14px); background: none; border: none; font-size: 26px; }
+.subpanel h1 { color: #fff; }
+.subpanel .panel { max-height: 70vh; }
+.empty { color: var(--muted); text-align: center; padding: 26px 8px; line-height: 1.6; }
+.hist { display: flex; align-items: center; gap: 12px; padding: 12px 4px; }
+.hist img { width: 40px; height: 40px; }
+.hb { flex: 1; }
+.hn { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px; }
+.hn b { font-weight: normal; } .hn b.top { color: #ffe14d; }
+.bar { height: 6px; background: #22252c; }
+.bar > div { height: 100%; background: #1fae3c; }
+.histopen { margin-top: 12px; }

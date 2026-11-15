@@ -56,6 +56,7 @@ export class Player {
   hurt(amount: number) {
     if (this.dead || this.hurtT > 0 || this.invulnT > 0) return;
     if (this.onBeforeHurt && this.onBeforeHurt()) return;
+    if (Math.random() < W.stats.evasion) { this.hurtT = PLAYER.hurtCooldown; return; }
     this.hp -= amount * (1 - W.stats.dmgTaken);
     this.hurtT = PLAYER.hurtCooldown;
     if (this.hp <= 0) { this.hp = 0; this.dead = true; }

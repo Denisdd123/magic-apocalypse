@@ -15,7 +15,8 @@ export interface ProjOpts {
   onHit?: (p: Projectile, e: Enemy) => void;
   onEnd?: (p: Projectile) => void; // по окончании жизни/пробивания
   update?: (p: Projectile, dt: number) => void;
-  hitInterval?: number;            // для «тикающих» снарядов: повторный урон по тому же врагу через N сек
+  hitInterval?: number;
+  src?: string;                    // id заклинания (для истории боя)
   data?: any;
 }
 
@@ -79,7 +80,7 @@ export class Projectiles {
         p.hit.set(e.id, p.t);
         let kx = 0, ky = 0;
         if (p.knock) { const sp = Math.hypot(p.vx, p.vy) || 1; kx = (p.vx / sp) * p.knock; ky = (p.vy / sp) * p.knock; }
-        en.damage(e, p.dmg, kx, ky);
+        en.damage(e, p.dmg, kx, ky, p.o.src);
         p.o.onHit?.(p, e);
         if (!p.o.hitInterval) {
           if (p.pierce <= 0) { this.end(p); return true; }
@@ -92,12 +93,12 @@ export class Projectiles {
 }
 
 /** Урон по площади (взрывы). Возвращает число задетых врагов. */
-export function areaDamage(x: number, y: number, r: number, dmg: number, knock = 0): number {
+export function areaDamage(x: number, y: number, r: number, dmg: number, knock = 0, src = ''): number {
   let n = 0;
   W.enemies.grid.query(x, y, r, (e) => {
     let kx = 0, ky = 0;
     if (knock) { const dx = e.x - x, dy = e.y - y, d = Math.hypot(dx, dy) || 1; kx = (dx / d) * knock; ky = (dy / d) * knock; }
-    W.enemies.damage(e, dmg, kx, ky);
+    W.enemies.damage(e, dmg, kx, ky, src);
     n++;
   });
   return n;

@@ -10,10 +10,11 @@ export class Stats {
   size = 0;
   duration = 0;
   crit = 0;
-  critMult = 1.5;
+  critMult = 2;
   hpPct = 0;
   regen = 0;         // доля макс. HP в секунду
   dmgTaken = 0;      // снижение получаемого урона
+  evasion = 0;       // шанс уклониться от удара
   speed = 0;
   pickup = 0;
   xpGain = 0;

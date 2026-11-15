@@ -57,7 +57,7 @@ class OrbRing extends Spell {
         if (last !== undefined && this.t - last < interval) return;
         s.hits.set(e.id, this.t);
         const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
-        W.enemies.damage(e, dmg, (dx / d) * 70, (dy / d) * 70);
+        W.enemies.damage(e, dmg, (dx / d) * 70, (dy / d) * 70, 'orbring');
       });
       if (s.hits.size > 300) s.hits.clear();
     }

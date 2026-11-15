@@ -19,6 +19,8 @@ export interface World {
   book: SpellBook;
   time: number;      // секунд с начала забега
   kills: number;
+  mana: number;      // собрано кристаллов (эссенции) за забег
+  dmgBy: Map<string, number>; // урон по заклинаниям (история боя)
 }
 
 export const W = {} as World;

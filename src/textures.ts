@@ -233,6 +233,22 @@ function makeIcons(scene: Phaser.Scene) {
   make(scene, 'ico_pickup', 96, 96, (g) => {
     g.lineStyle(5, W, 1); g.strokeCircle(40, 40, 24); g.lineBetween(57, 57, 82, 82);
   });
+  make(scene, 'ico_grail', 96, 96, (g) => {
+    g.fillStyle(W, 1);
+    g.fillRect(16, 18, 64, 6);
+    g.fillTriangle(18, 24, 78, 24, 48, 56);
+    g.fillRect(44, 54, 8, 22); g.fillRect(30, 76, 36, 6);
+  });
+  make(scene, 'ico_synergy', 96, 96, (g) => {
+    g.lineStyle(5, W, 1);
+    g.strokeCircle(48, 34, 20); g.strokeCircle(34, 58, 20); g.strokeCircle(62, 58, 20);
+  });
+  make(scene, 'ico_magic', 96, 96, (g) => {
+    g.fillStyle(W, 1);
+    g.fillTriangle(48, 6, 58, 40, 38, 40);
+    g.fillTriangle(38, 40, 58, 40, 48, 90);
+    g.lineStyle(4, W, 1); g.strokeCircle(48, 48, 34);
+  });
   make(scene, 'ico_critmult', 96, 96, (g) => {
     g.fillStyle(W, 1); g.fillCircle(48, 44, 26); g.fillRect(34, 62, 28, 18);
     g.fillStyle(0x000000, 1); g.fillCircle(38, 42, 7); g.fillCircle(58, 42, 7);
