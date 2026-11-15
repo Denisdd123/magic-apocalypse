@@ -8,6 +8,7 @@ import type { Effects } from './Effects';
 import type { SpellBook } from './SpellBook';
 import type { ArtifactSet } from './Artifacts';
 import type { Pickups } from './Pickups';
+import type { Zone } from './Zone';
 
 /** Общий контейнер состояния забега — чтобы системы видели друг друга без лишней передачи ссылок. */
 export interface World {
@@ -21,9 +22,10 @@ export interface World {
   book: SpellBook;
   artifacts: ArtifactSet;
   pickups: Pickups;
+  zone: Zone;
   time: number;      // секунд с начала забега
   kills: number;
-  mana: number;      // собрано кристаллов (эссенции) за забег
+  mana: number;      // кошелёк маны (собранные кристаллы минус покупки у торговца)
   dmgBy: Map<string, number>; // урон по заклинаниям (история боя)
 }
 

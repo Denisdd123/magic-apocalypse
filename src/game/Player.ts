@@ -60,8 +60,12 @@ export class Player {
     this.img.setPosition(this.x, this.y - 5 + bob);
     this.shadow.setPosition(this.x, this.y + 6.5);
     this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
-    this.img.setAlpha(this.invulnT > 0 ? 0.45 + 0.25 * Math.sin(W.time * 30) : 1);
-    if (this.hurtT > PLAYER.hurtCooldown - 0.12) this.img.setTint(0xff5050); else this.img.clearTint();
+    // руна неуязвимости: маг становится белым (как в оригинале); иначе мигание при неуязвимости
+    const white = W.pickups?.active.has('invuln');
+    this.img.setAlpha(this.invulnT > 0 && !white ? 0.45 + 0.25 * Math.sin(this.animT * 8) : 1);
+    if (this.hurtT > PLAYER.hurtCooldown - 0.12) this.img.setTint(0xff5050);
+    else if (white) this.img.setTintFill(0xffffff);
+    else this.img.clearTint();
     this.hpBg.setPosition(this.x, this.y + 10);
     this.hpBar.setPosition(this.x - 8, this.y + 10).setSize(16 * Math.max(0, this.hp / s.maxHp), 2.4);
   }

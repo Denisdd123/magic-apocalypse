@@ -19,6 +19,11 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
   small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 1, drop: 0.12 },
   white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 4, drop: 0.4 },
   big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 20, drop: 1 },
+  // боссы зоны (HP задаётся в Zone.ts)
+  boss0: { id: 'boss', tex: 'boss_0', r: 30, size: 84, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },
+  boss1: { id: 'boss', tex: 'boss_1', r: 32, size: 90, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },
+  boss2: { id: 'boss', tex: 'boss_2', r: 34, size: 96, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 },
+  boss3: { id: 'boss', tex: 'boss_3', r: 36, size: 104, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 },
 };
 
 export class Enemy {
@@ -51,8 +56,9 @@ export class Enemies {
   /** Множитель HP врагов от времени (мягкий старт на первой карте) */
   hpMul() { const t = W.time; return 1 + t / 100 + (t / 320) ** 2; }
 
-  spawn(type: EnemyType, x: number, y: number, elite = false) {
-    if (this.aliveCount >= MAX_ENEMIES && !elite) return null;
+  spawn(type: EnemyType, x: number, y: number, elite = false, fixedHp = 0) {
+    const boss = type.id === 'boss';
+    if (this.aliveCount >= MAX_ENEMIES && !elite && !boss) return null;
     let e = this.free.pop();
     if (!e) {
       e = new Enemy();
@@ -66,12 +72,13 @@ export class Enemies {
     e.r = type.r * scale;
     const s = W.stats;
     e.maxHp = e.hp = type.hp * this.hpMul() * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
-    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow);
+    if (fixedHp) e.maxHp = e.hp = fixedHp * (1 - s.enemyHpRed);
+    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow) * (boss ? 1 : W.zone.speedMul);
     e.dmg = type.dmg * (1 + W.time / 400) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
     e.frame = (Math.random() * 3) | 0;
-    e.img.setTexture(type.tex + '_' + e.frame).setVisible(true).setPosition(x, y).clearTint().setRotation(Math.random() * 6.28);
+    e.img.setTexture(type.tex + '_' + e.frame).setVisible(true).setPosition(x, y).clearTint().setRotation(boss ? 0 : Math.random() * 6.28);
     e.img.setDisplaySize(type.size * scale, type.size * scale);
     if (elite) {
       if (!e.ring) e.ring = this.scene.add.image(0, 0, 'elite_ring').setDepth(DEPTH.enemy);
@@ -89,7 +96,11 @@ export class Enemies {
   }
 
   private pickType(): EnemyType {
-    const t = W.time, r = Math.random();
+    const t = W.time, r = Math.random(), st = W.zone.stage;
+    // после боссов состав волн меняется (видео полной зоны)
+    if (st >= 3) return r < 0.06 ? ENEMY_TYPES.big : r < 0.5 ? ENEMY_TYPES.white : r < 0.85 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
+    if (st >= 2) return r < 0.05 ? ENEMY_TYPES.big : r < 0.45 ? ENEMY_TYPES.white : r < 0.75 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
+    if (st >= 1) return t > 300 && r < 0.04 ? ENEMY_TYPES.big : r < 0.15 ? ENEMY_TYPES.white : r < 0.7 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
     if (t > 300 && r < 0.04) return ENEMY_TYPES.big;
     if (t > 240 && r < 0.25) return ENEMY_TYPES.white;
     if (t > 75 && r < 0.45) return ENEMY_TYPES.red;
@@ -98,7 +109,7 @@ export class Enemies {
 
   updateSpawner(dt: number) {
     const t = W.time;
-    const rate = Math.min(1.2 + t * 0.04 + (t / 60) ** 2 * 0.6, 32);
+    const rate = Math.min(1.2 + t * 0.04 + (t / 60) ** 2 * 0.6, 32) * W.zone.rateMul;
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -172,7 +183,7 @@ export class Enemies {
 
       if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) e.img.clearTint(); }
       // «дрожащая линия»: кадры сменяются ~8 раз в секунду, у каждого моба со своим сдвигом
-      const fr = Math.floor(W.time * 4 + e.id * 0.37) % 3; // ~4 смены в секунду
+      const fr = Math.floor(W.scene.time.now / 250 + e.id * 0.37) % 3; // ~4 смены в секунду
       if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
       e.img.setPosition(e.x, e.y);
       if (e.ring) e.ring.setPosition(e.x, e.y);
@@ -189,7 +200,7 @@ export class Enemies {
     e.hp -= amount;
     if (e.flashT <= 0) e.img.setTintFill(0xffffff);
     e.flashT = 0.06;
-    if (kx || ky) { const k = e.elite || e.type.id === 'big' ? 0.25 : 1; e.kx += kx * k; e.ky += ky * k; }
+    if (kx || ky) { const k = e.type.id === 'boss' ? 0 : e.elite || e.type.id === 'big' ? 0.25 : 1; e.kx += kx * k; e.ky += ky * k; }
     if (e.hp <= 0) { this.kill(e); return true; }
     return false;
   }
@@ -202,6 +213,7 @@ export class Enemies {
     this.free.push(e);
     this.aliveCount--;
     W.kills++;
+    if (e.type.id === 'boss') { W.zone.bossDied(e); return; }
     if (e.cursed) W.pickups.cursedKilled(e.x, e.y);
     if (e.elite) {
       W.orbs.drop(e.x, e.y, 'l', 25);

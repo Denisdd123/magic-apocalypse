@@ -65,6 +65,29 @@ function witch(g: G, s: number, color: number, f = 0, accent = -1) {
   }
 }
 
+const v = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
+
+/** Череп: купол, челюсть, тёмные глазницы */
+function skull(g: G, cx: number, cy: number, r: number, color: number) {
+  g.fillStyle(color, 1);
+  g.fillCircle(cx, cy, r);
+  g.fillRect(cx - r * 0.55, cy + r * 0.5, r * 1.1, r * 0.7);
+  g.fillStyle(0x0e0e10, 1);
+  g.fillEllipse(cx - r * 0.4, cy + r * 0.05, r * 0.55, r * 0.65);
+  g.fillEllipse(cx + r * 0.4, cy + r * 0.05, r * 0.55, r * 0.65);
+  g.fillTriangle(cx, cy + r * 0.35, cx - r * 0.12, cy + r * 0.6, cx + r * 0.12, cy + r * 0.6);
+  for (let i = -2; i <= 2; i++) g.fillRect(cx + i * r * 0.22 - r * 0.03, cy + r * 0.82, r * 0.06, r * 0.38);
+}
+
+/** Колючая горизонтальная «ветка» сквозь босса */
+function thornBranch(g: G, cx: number, cy: number, half: number) {
+  g.lineStyle(5, 0x0e0e10, 1); g.lineBetween(cx - half, cy, cx + half, cy);
+  for (let x = cx - half; x < cx + half; x += 9) {
+    const up = Math.random() < 0.5 ? -1 : 1, l = rnd(6, 14);
+    g.lineStyle(2, 0x0e0e10, 1); g.lineBetween(x, cy, x + rnd(-4, 4), cy + up * l);
+  }
+}
+
 function star4(g: G, cx: number, cy: number, r: number, w: number) {
   g.fillTriangle(cx - w, cy, cx + w, cy, cx, cy - r);
   g.fillTriangle(cx - w, cy, cx + w, cy, cx, cy + r);
@@ -119,6 +142,47 @@ export function makeTextures(scene: Phaser.Scene) {
     glow(g, 64, 64, 18, 0xb04cff, 8, 0.9);
   });
   }
+  // --- Боссы зоны (3:00 / 6:00 / 9:00 / 12:00): большие чернильные клубки со своим знаком ---
+  for (let f = 0; f < 3; f++) {
+    make(scene, 'boss_0_' + f, 192, 192, (g) => { thornBranch(g, 96, 96, 92); inkBlob(g, 96, 96, 62); skull(g, 96, 92, 22, 0xff2a3a); });
+    make(scene, 'boss_1_' + f, 192, 192, (g) => {
+      inkBlob(g, 96, 96, 70);
+      glow(g, 96, 104, 30, 0xff1a2a, 8, 0.8);
+      g.fillStyle(0xff2a3a, 1); g.fillEllipse(96, 106, 46, 22);
+      g.fillStyle(0x0e0e10, 1);
+      for (let i = 0; i < 6; i++) { const x = 76 + i * 8; g.fillTriangle(x, 95, x + 6, 95, x + 3, 104); g.fillTriangle(x, 117, x + 6, 117, x + 3, 108); }
+      g.fillStyle(0xff3040, 1); g.fillCircle(84, 78, 4); g.fillCircle(108, 78, 4);
+    });
+    make(scene, 'boss_2_' + f, 192, 192, (g) => {
+      for (let i = 0; i < 18; i++) { const a = rnd(0, Math.PI * 2); g.lineStyle(rnd(2, 4), 0x0e0e10, 1); g.lineBetween(96, 96, 96 + Math.cos(a) * 94, 96 + Math.sin(a) * 94); }
+      inkBlob(g, 96, 96, 64);
+      glow(g, 96, 96, 26, 0xb04cff, 8, 1);
+      g.fillStyle(0xf2dcff, 1); g.fillCircle(96, 96, 6);
+    });
+    make(scene, 'boss_3_' + f, 192, 192, (g) => { thornBranch(g, 96, 96, 94); glow(g, 96, 96, 80, 0xff1a2a, 8, 0.5); inkBlob(g, 96, 96, 70); skull(g, 96, 92, 28, 0xff2a3a); });
+  }
+  // череп — полоска здоровья босса в HUD
+  make(scene, 'skull_red', 64, 64, (g) => skull(g, 32, 30, 26, 0xff2a3a));
+  make(scene, 'skull_dark', 64, 64, (g) => skull(g, 32, 30, 26, 0x3a3a40));
+
+  // --- Обелиск (после босса) и Торговец ---
+  make(scene, 'obelisk', 60, 92, (g) => {
+    g.fillStyle(0x000000, 0.3); g.fillEllipse(30, 86, 46, 10);
+    g.fillStyle(0x6d6f73, 1); g.fillPoints([v(30, 2), v(42, 26), v(46, 84), v(14, 84), v(18, 26)], true);
+    g.fillStyle(0x8a8c90, 1); g.fillPoints([v(30, 2), v(42, 26), v(46, 84), v(30, 84)], true);
+    glow(g, 30, 50, 16, 0xff2a3a, 6, 0.8);
+    g.lineStyle(2.5, 0xff3a3a, 1);
+    g.strokePoints([v(28, 18), v(33, 30), v(27, 42), v(34, 55), v(29, 70)], false);
+  });
+  make(scene, 'merchant', 68, 92, (g) => {
+    g.fillStyle(0x000000, 0.3); g.fillEllipse(34, 86, 50, 10);
+    g.fillStyle(0x7a0d16, 1);
+    g.fillPoints([v(34, 4), v(48, 16), v(52, 34), v(62, 84), v(6, 84), v(16, 34), v(20, 16)], true);
+    g.fillStyle(0xb3141f, 1); g.fillPoints([v(34, 4), v(48, 16), v(52, 34), v(62, 84), v(40, 84), v(38, 34)], true);
+    g.fillStyle(0x0a0a0c, 1); g.fillEllipse(34, 26, 18, 20);
+    g.fillStyle(0xff4a4a, 1); g.fillCircle(30, 26, 1.8); g.fillCircle(38, 26, 1.8);
+  });
+
   make(scene, 'elite_ring', 128, 128, (g) => {
     g.lineStyle(5, 0xff2d8a, 0.9); g.strokeCircle(64, 64, 58);
     g.lineStyle(10, 0xff2d8a, 0.25); g.strokeCircle(64, 64, 56);

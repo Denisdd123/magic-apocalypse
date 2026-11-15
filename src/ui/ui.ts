@@ -61,6 +61,7 @@ export class Hud {
   private timer = el('div', 'timer');
   private cds = el('div', 'cdicons');
   private cdMap = new Map<string, HTMLElement>();
+  private bossEl: HTMLElement | null = null;
 
   constructor(onPause: () => void) {
     const bar = el('div', 'xpbar'); bar.appendChild(this.xp);
@@ -79,6 +80,17 @@ export class Hud {
     this.xp.style.width = Math.min(100, xpFrac * 100).toFixed(1) + '%';
     this.mana.innerHTML = `<i></i>${Math.floor(mana)}`;
     this.timer.textContent = fmtTime(time);
+  }
+
+  /** Здоровье босса — череп сверху по центру: красное «сливается» сверху вниз по мере урона. null — убрать. */
+  boss(frac: number | null) {
+    if (frac === null) { this.bossEl?.remove(); this.bossEl = null; this.timer.classList.remove('red'); return; }
+    if (!this.bossEl) {
+      this.bossEl = el('div', 'bossbar', `<img class="bg" src="${icon('skull_dark')}"><img class="fg" src="${icon('skull_red')}">`);
+      this.wrap.appendChild(this.bossEl);
+      this.timer.classList.add('red');
+    }
+    (this.bossEl.querySelector('.fg') as HTMLElement).style.clipPath = `inset(${((1 - Math.max(0, frac)) * 100).toFixed(1)}% 0 0 0)`;
   }
 
   /** Иконка перезарядки (Фаза и др.): frac 0 = готово, 1 = только что использовано */

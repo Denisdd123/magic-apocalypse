@@ -229,3 +229,42 @@ html, body { background: #7a8c55; }
   margin-top: 3vh; padding: 13px 34px; font-size: 15px; background: #000; color: var(--text);
   clip-path: polygon(0% 8%, 6% 0%, 50% 4%, 94% 0%, 100% 10%, 98% 50%, 100% 92%, 92% 100%, 50% 96%, 6% 100%, 0% 90%, 2% 50%);
 }
+
+/* ---------- Ход зоны: босс, обелиск, торговец, усиление ---------- */
+.bossbar { position: absolute; left: 50%; top: calc(var(--safe-top) + 46px); transform: translateX(-50%); width: 54px; height: 54px; pointer-events: none; filter: drop-shadow(0 0 8px rgba(255, 30, 40, 0.6)); }
+.bossbar img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bossbar .fg { transition: clip-path 0.15s linear; }
+.topline .timer.red { color: #ff3a3a; text-shadow: 0 0 8px rgba(255, 40, 40, 0.6); }
+
+.modal.chest.obelisk { background: radial-gradient(ellipse at 50% 40%, rgba(40, 32, 26, 0.94), rgba(10, 9, 8, 0.97) 80%); }
+.modal.chest.obelisk .ctitle { color: #f0e6d6 !important; }
+.modal.chest.obelisk .ccard { box-shadow: 0 0 10px rgba(255, 154, 46, 0.35); }
+.modal.chest.obelisk .ccard.sel { border-color: #fff !important; }
+.take.reroll { margin-top: 10px; font-size: 16px; opacity: 0.85; }
+
+.modal.shop { background: radial-gradient(ellipse at 50% 0%, rgba(110, 10, 18, 0.9), rgba(8, 6, 7, 0.97) 70%); justify-content: center; }
+.modal.shop > * { width: 100%; max-width: 400px; }
+.shop .close { position: absolute; right: 14px; top: calc(var(--safe-top) + 14px); width: auto; background: none; border: none; font-size: 26px; }
+.shop .wallet { position: absolute; left: 16px; top: calc(var(--safe-top) + 18px); width: auto; display: flex; gap: 8px; align-items: center; color: #8fe6ff; font-size: 16px; }
+.shop .wallet i, .scard .price i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #9ff0ff; box-shadow: 0 0 6px 2px #2fc8ff; }
+.shop .hood { height: 70px; background: radial-gradient(ellipse at 50% 100%, #b3141f 0 30%, transparent 31%), radial-gradient(ellipse at 50% 80%, #0a0a0c 0 18%, transparent 19%); opacity: 0.9; }
+.sgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0 6px; }
+.scard { position: relative; aspect-ratio: 0.8; border: 2px solid #ccc; background: #0d0e12; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.scard span { font-size: 34px; }
+.scard.sel { box-shadow: 0 0 14px rgba(255, 80, 80, 0.6); transform: translateY(-3px); }
+.scard.sold { opacity: 0.3; }
+.scard .price { font-size: 12px; color: #8fe6ff; display: flex; gap: 5px; align-items: center; }
+.scard .price.no { color: #ff6a6a; }
+.scard .disc { position: absolute; left: -6px; top: -8px; background: #c4101c; color: #fff; font-size: 10px; padding: 2px 4px; border-radius: 3px; }
+.sinfo { min-height: 130px; text-align: center; padding: 18px 10px 6px; }
+.sinfo .hint { color: #e8c8b8; margin-top: 20px; }
+
+.modal.enhance { background: rgba(14, 15, 18, 0.96); justify-content: center; }
+.modal.enhance > * { width: 100%; max-width: 400px; text-align: center; }
+.egrid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 10px 0; }
+.ecard { position: relative; width: 70px; height: 70px; background: #050608; border: 1px solid #2a2e38; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.ecard img { width: 56px; height: 56px; }
+.ecard.sel { border-color: #fff; box-shadow: 0 0 12px rgba(255, 255, 255, 0.4); }
+.ecard b { position: absolute; right: 3px; bottom: 1px; font-size: 11px; color: #ffd36b; }
+.einfo { min-height: 90px; padding-top: 8px; }
+.modal.zoneclear h1 { color: #ffd36b; }

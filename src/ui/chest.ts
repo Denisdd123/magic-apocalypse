@@ -37,14 +37,16 @@ export function artifactText(a: ArtifactDef) {
 }
 
 // ---------------- Сундук ----------------
-export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => void) {
+export interface ChestOpts { title?: string; cls?: string; onReroll?: () => void }
+
+export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => void, opts: ChestOpts = {}) {
   clearModals();
-  const m = div('modal chest', `
-    <h1 class="ctitle">Сундук с сокровищами</h1>
+  const m = div('modal chest ' + (opts.cls ?? ''), `
+    <h1 class="ctitle">${opts.title ?? 'Сундук с сокровищами'}</h1>
     <div class="cline"></div>
     <div class="ccards"></div>
     <div class="cinfo"><div class="hint">Выберите желаемый артефакт</div></div>
-    <button class="take" disabled>Получить</button>`);
+    <button class="take" disabled>Получить</button>${opts.onReroll ? '<button class="take reroll">Обновить</button>' : ''}`);
   const cards = m.querySelector('.ccards')!;
   const info = m.querySelector('.cinfo')!;
   const take = m.querySelector('.take') as HTMLButtonElement;
@@ -72,6 +74,7 @@ export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => vo
     cards.appendChild(c);
   });
   take.addEventListener('click', () => { if (!sel) return; clearModals(); onPick(sel); });
+  m.querySelector('.reroll')?.addEventListener('click', () => { if (!locked) opts.onReroll!(); });
   root().appendChild(m);
 }
 

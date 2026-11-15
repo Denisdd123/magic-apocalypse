@@ -2,12 +2,13 @@ import type { Stats } from './Stats';
 import { areaDamage } from './Projectiles';
 import { W } from './World';
 
-export type Rarity = 'common' | 'rare' | 'epic';
+export type Rarity = 'common' | 'rare' | 'epic' | 'legend';
 
 export const RARITY: Record<Rarity, { name: string; color: string; weight: number }> = {
   common: { name: 'Обычный артефакт', color: '#d9dde6', weight: 60 },
   rare: { name: 'Редкий артефакт', color: '#4aa8ff', weight: 30 },
   epic: { name: 'Героический артефакт', color: '#c06bff', weight: 10 },
+  legend: { name: 'Легендарный артефакт', color: '#ff9a2e', weight: 0 }, // только с обелиска после босса
 };
 
 export interface ArtifactDef {
@@ -73,6 +74,18 @@ export const ARTIFACTS: ArtifactDef[] = [
   A({ id: 'magnet', name: 'Электромагнит', emoji: '🧲', rarity: 'epic', text: ['Урон Кольца сфер +50%'], apply: (s) => s.addSpellDmg('orbring', 0.5) }),
   A({ id: 'wand', name: 'Волшебная палочка', emoji: '🪄', rarity: 'epic', text: ['Число духов-стражей +2', 'Урон духов +30%'], apply: (s) => { s.addSpellCount('guardians', 2); s.addSpellDmg('guardians', 0.3); } }),
   A({ id: 'blackcat', name: 'Чёрная кошка', emoji: '🐈‍⬛', rarity: 'epic', text: ['Перезарядка всех заклинаний -9%'], apply: (s) => s.addCdr(0.09) }),
+  // ---- легендарные (обелиск после босса) ----
+  A({ id: 'abysscrown', name: 'Корона бездны', emoji: '👑', rarity: 'legend', text: ['Сила атаки +40%', 'Приумножение атаки +10%'], apply: (s) => { s.atkPct += 0.4; s.amp += 0.1; } }),
+  A({ id: 'sandheart', name: 'Песочное сердце', emoji: '⌛', rarity: 'legend', text: ['Перезарядка всех заклинаний -15%', 'Длительность всех заклинаний +20%'], apply: (s) => { s.addCdr(0.15); s.duration += 0.2; } }),
+  A({ id: 'stormeye', name: 'Око бури', emoji: '🌩️', rarity: 'legend', text: ['Каждые 5 сек. молнии бьют 6 случайных врагов (300% силы)'], period: 5, onTick: () => {
+    for (let i = 0; i < 6; i++) { const e = W.enemies.randomVisible(); if (!e) break; areaDamage(e.x, e.y, 26, W.stats.spellDamage(300), 0, 'Око бури'); W.fx.burst(e.x, e.y, 26, 0xbfe8ff, 0.25); }
+  } }),
+  A({ id: 'phoenix', name: 'Перо феникса', emoji: '🪶', rarity: 'legend', text: ['Воскрешение +1', 'Макс. здоровье +50%'], apply: (s) => { s.revives += 1; s.hpPct += 0.5; } }),
+  A({ id: 'prism', name: 'Призма', emoji: '🔺', rarity: 'legend', text: ['Размер всех заклинаний +25%', 'Шанс крит. удара +10%'], apply: (s) => { s.size += 0.25; s.crit += 0.1; } }),
+  A({ id: 'stardust', name: 'Звёздная пыль', emoji: '🌌', rarity: 'legend', text: ['Получение маны +30%', 'Радиус сбора предметов +60%'], apply: (s) => { s.xpGain += 0.3; s.pickup += 0.6; } }),
+  A({ id: 'blacksun', name: 'Чёрное солнце', emoji: '🌑', rarity: 'legend', text: ['Каждые 8 сек. волна вокруг мага (400% силы)'], period: 8, onTick: () => { const P = W.player; areaDamage(P.x, P.y, 150, W.stats.spellDamage(400), 300, 'Чёрное солнце'); W.fx.burst(P.x, P.y, 150, 0xff9a2e, 0.5, 'ring'); } }),
+  A({ id: 'perpetuum', name: 'Вечный двигатель', emoji: '♾️', rarity: 'legend', text: ['Скорость движения +20%', 'Уклонение +12%', 'Исцеление в сек +0.5%'], apply: (s) => { s.speed += 0.2; s.evasion += 0.12; s.regen += 0.005; } }),
+  A({ id: 'chaosdice', name: 'Кости хаоса', emoji: '🎲', rarity: 'legend', text: ['Шанс крит. удара +12%', 'Усиление крит. удара +60%'], apply: (s) => { s.crit += 0.12; s.critMult += 0.6; } }),
   A({ id: 'freeshot', name: 'Вольный стрелок', emoji: '🌠', rarity: 'epic', text: ['Урон Звёздной иглы +100%'], apply: (s) => s.addSpellDmg('needle', 1) }),
 ];
 
@@ -130,7 +143,7 @@ export class ArtifactSet {
 
   /** 3 случайных разных артефакта, которых ещё нет; редкость по весам */
   roll(n = 3): ArtifactDef[] {
-    const pool = ARTIFACTS.filter((a) => !this.has(a.id));
+    const pool = ARTIFACTS.filter((a) => !this.has(a.id) && a.rarity !== 'legend');
     const out: ArtifactDef[] = [];
     while (out.length < n && pool.length) {
       // с небольшим шансом подсовываем недостающую часть начатой синергии
@@ -148,6 +161,14 @@ export class ArtifactSet {
       out.push(pick);
       pool.splice(pool.indexOf(pick), 1);
     }
+    return out;
+  }
+
+  /** n случайных легендарных артефактов (обелиск) */
+  rollLegend(n = 3): ArtifactDef[] {
+    const pool = ARTIFACTS.filter((a) => a.rarity === 'legend' && !this.has(a.id));
+    const out: ArtifactDef[] = [];
+    while (out.length < n && pool.length) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
     return out;
   }
 

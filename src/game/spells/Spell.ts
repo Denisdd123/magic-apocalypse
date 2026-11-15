@@ -37,7 +37,7 @@ export abstract class Spell {
   /** Тикает перезарядку; возвращает true, когда пора кастовать, и ставит новую перезарядку */
   protected ready(dt: number, baseCd: number) {
     this.cd -= dt;
-    if (this.cd <= 0) { this.cd += Math.max(0.05, baseCd * W.stats.cdMul); return true; }
+    if (this.cd <= 0) { this.cd += Math.max(0.05, baseCd * W.stats.cdMul * (1 - (W.stats.spellCdr[this.def.id] ?? 0))); return true; }
     return false;
   }
 

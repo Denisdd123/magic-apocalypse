@@ -6,18 +6,21 @@ import { W } from './World';
 export type RuneType = 'invuln' | 'fury' | 'greed' | 'cleanse' | 'timestop' | 'curse';
 
 export const RUNES: Record<RuneType, { name: string; tint: number; dur: number; weight: number; text: string }> = {
-  invuln:   { name: 'Руна неуязвимости', tint: 0xffe066, dur: 8, weight: 2, text: 'Неуязвимость на 8 сек.' },
+  invuln:   { name: 'Руна неуязвимости', tint: 0xffffff, dur: 8, weight: 2, text: 'Неуязвимость на 8 сек.' },
   fury:     { name: 'Руна ярости',       tint: 0xff4a4a, dur: 8, weight: 2, text: 'Атака +50%, скорость +25% на 8 сек.' },
-  greed:    { name: 'Руна жадности',     tint: 0x46d6ff, dur: 5, weight: 2, text: 'Притягивает все сферы' },
-  cleanse:  { name: 'Руна очищения',     tint: 0xffffff, dur: 0, weight: 0.6, text: 'Уничтожает врагов на экране' },
+  greed:    { name: 'Руна-магнит',       tint: 0xffd84a, dur: 5, weight: 2, text: 'Притягивает все кристаллы' },
+  cleanse:  { name: 'Руна очищения',     tint: 0x8fd8ff, dur: 0, weight: 0.6, text: 'Уничтожает врагов на экране' },
   timestop: { name: 'Руна времени',      tint: 0x9fe8b0, dur: 5, weight: 1.5, text: 'Враги замирают на 5 сек.' },
   curse:    { name: 'Проклятая руна',    tint: 0xff2d8a, dur: 0, weight: 0.8, text: 'Призывает элитных монстров. Последний оставит сундук' },
 };
 
+export type Spot = 'obelisk' | 'merchant';
+
 interface Item {
-  kind: 'chest' | 'rune';
+  kind: 'chest' | 'rune' | Spot;
   rune?: RuneType;
   x: number; y: number; t: number;
+  inside?: boolean;
   img: Phaser.GameObjects.Image;
   arrow?: Phaser.GameObjects.Image;
 }
@@ -31,6 +34,8 @@ export class Pickups {
   private runeT = 100;  // первая руна примерно на 1:40
   onChest: (() => void) | null = null;
   onRune: ((r: RuneType) => void) | null = null;
+  /** Подошёл к обелиску / торговцу */
+  onSpot: ((k: Spot) => void) | null = null;
 
   constructor(private scene: Phaser.Scene) {}
 
@@ -50,6 +55,22 @@ export class Pickups {
   rune(type: RuneType, x: number, y: number) {
     const img = this.scene.add.image(x, y, 'rune').setDepth(DEPTH.orb).setDisplaySize(18, 18).setTint(RUNES[type].tint).setBlendMode(Phaser.BlendModes.ADD);
     this.items.push({ kind: 'rune', rune: type, x, y, t: 0, img });
+  }
+
+  /** Обелиск или торговец рядом с магом, со стрелкой-указателем */
+  spot(kind: Spot) {
+    this.removeSpot(kind);
+    const p = this.around(130, 170);
+    const img = this.scene.add.image(p.x, p.y, kind).setDepth(DEPTH.enemy - 0.5).setDisplaySize(kind === 'obelisk' ? 30 : 34, kind === 'obelisk' ? 46 : 46);
+    const arrow = this.scene.add.image(0, 0, 'arrow').setDepth(DEPTH.top).setDisplaySize(13, 13).setTint(kind === 'obelisk' ? 0xff9a2e : 0xff3b4a).setVisible(false);
+    this.items.push({ kind, x: p.x, y: p.y, t: 0, img, arrow });
+  }
+
+  removeSpot(kind: Spot) {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const it = this.items[i];
+      if (it.kind === kind) { it.img.destroy(); it.arrow?.destroy(); this.items.splice(i, 1); }
+    }
   }
 
   private randomRune(): RuneType {
@@ -78,7 +99,8 @@ export class Pickups {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       it.t += dt;
-      it.img.setPosition(it.x, it.y + Math.sin(it.t * 3) * 2);
+      const spot = it.kind === 'obelisk' || it.kind === 'merchant';
+      it.img.setPosition(it.x, it.y + (spot ? 0 : Math.sin(it.t * 3) * 2));
       if (it.kind === 'rune') it.img.setAlpha(0.75 + 0.25 * Math.sin(it.t * 5));
       if (it.arrow) {
         // стрелка у края экрана, если сундук не виден
@@ -91,8 +113,13 @@ export class Pickups {
           it.arrow.setPosition(ax, ay).setRotation(Math.atan2(it.y - P.y, it.x - P.x));
         }
       }
-      const pr = it.kind === 'chest' ? 16 : 14;
-      if (Math.hypot(P.x - it.x, P.y - it.y) < pr + P.r) {
+      const pr = spot ? 20 : it.kind === 'chest' ? 16 : 14;
+      const touch = Math.hypot(P.x - it.x, P.y - it.y) < pr + P.r;
+      if (spot) {
+        // обелиск/торговец остаются на месте: окно открывается при каждом новом подходе
+        if (touch && !it.inside) this.onSpot?.(it.kind as Spot);
+        it.inside = touch;
+      } else if (touch) {
         it.img.destroy(); it.arrow?.destroy();
         this.items.splice(i, 1);
         if (it.kind === 'chest') this.onChest?.();
@@ -120,7 +147,8 @@ export class Pickups {
         const v = this.scene.cameras.main.worldView;
         for (const e of W.enemies.list) {
           if (!e.alive || !v.contains(e.x, e.y)) continue;
-          if (e.elite || e.type.id === 'big') W.enemies.damage(e, e.maxHp * 0.3);
+          if (e.type.id === 'boss') W.enemies.damage(e, e.maxHp * 0.05);
+          else if (e.elite || e.type.id === 'big') W.enemies.damage(e, e.maxHp * 0.3);
           else W.enemies.kill(e);
         }
         W.fx.burst(P.x, P.y, 320, 0xffffff, 0.6);

@@ -13,6 +13,9 @@ import { W } from './World';
 import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
 import { showDeath, showPause } from '../ui/screens';
 import { showChest, toast } from '../ui/chest';
+import { showEnhance, showShop, showZoneClear, type ShopItem } from '../ui/zone';
+import { Zone, ZONE } from './Zone';
+import { ARTIFACTS, RARITY } from './Artifacts';
 import { ArtifactSet } from './Artifacts';
 import { Pickups, RUNES } from './Pickups';
 
@@ -25,6 +28,11 @@ export class GameScene extends Phaser.Scene {
   private hudT = 0;
   private running = false;
   private pendingChests = 0;
+  /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
+  private zoneQ: ('enhance' | 'obelisk' | 'shop' | 'clear')[] = [];
+  private shopItems: ShopItem[] = [];
+  private obeliskRerolled = false;
+  private stageTint = -1;
 
   constructor() { super('game'); }
 
@@ -57,6 +65,18 @@ export class GameScene extends Phaser.Scene {
     W.book.add(STAR_NEEDLE);
     W.artifacts = new ArtifactSet();
     W.pickups = new Pickups(this);
+    W.zone = new Zone();
+    this.zoneQ = []; this.stageTint = -1;
+    W.zone.onBossKilled = (idx) => {
+      if (idx >= ZONE.bossAt.length - 1) { this.zoneQ.push('clear'); return; }
+      if (ZONE.enhanceAfter.includes(idx)) this.zoneQ.push('enhance');
+      this.obeliskRerolled = false;
+      W.pickups.spot('obelisk');
+      toast('<b>Босс повержен!</b><br>Рядом появился обелиск', 2600);
+    };
+    W.zone.onMerchant = () => { this.shopItems = this.rollShop(); W.pickups.spot('merchant'); toast('<b>Пришёл торговец</b><br>Товары за ману', 2400); };
+    W.zone.onMerchantGone = () => W.pickups.removeSpot('merchant');
+    W.pickups.onSpot = (k) => { if (k === 'obelisk') this.zoneQ.push('obelisk'); else if (!this.zoneQ.includes('shop')) this.zoneQ.push('shop'); };
     this.pendingChests = 0;
     W.pickups.onChest = () => { this.pendingChests++; };
     W.pickups.onRune = (r) => toast(`<b style="color:#${RUNES[r].tint.toString(16).padStart(6, '0')}">${RUNES[r].name}</b><br>${RUNES[r].text}`, 2000);
@@ -109,6 +129,56 @@ export class GameScene extends Phaser.Scene {
     else { this.inModal = false; this.paused = false; }
   }
 
+  /** 8 артефактов торговца, цена по редкости, на одном скидка 25% */
+  private rollShop(): ShopItem[] {
+    const base: Record<string, number> = { common: 450, rare: 700, epic: 1000 };
+    const pool = ARTIFACTS.filter((a) => a.rarity !== 'legend' && !W.artifacts.has(a.id));
+    const out: ShopItem[] = [];
+    while (out.length < 8 && pool.length) {
+      const total = pool.reduce((t, a) => t + RARITY[a.rarity].weight, 0);
+      let r = Math.random() * total;
+      const a = pool.find((x) => (r -= RARITY[x.rarity].weight) <= 0) ?? pool[pool.length - 1];
+      pool.splice(pool.indexOf(a), 1);
+      out.push({ a, price: Math.round(base[a.rarity] * (0.9 + Math.random() * 0.2) / 10) * 10, discount: false, sold: false });
+    }
+    const d = out[(Math.random() * out.length) | 0];
+    if (d) { d.discount = true; d.price = Math.round(d.price * 0.75 / 10) * 10; }
+    return out;
+  }
+
+  private openZone() {
+    const k = this.zoneQ.shift()!;
+    const close = () => { this.inModal = false; this.paused = false; };
+    this.inModal = true; this.paused = true; this.joy?.release();
+    if (k === 'enhance') {
+      showEnhance((id) => {
+        const s = W.stats;
+        s.addSpellDmg(id, 0.5);
+        s.spellCdr[id] = 1 - (1 - (s.spellCdr[id] ?? 0)) * 0.95;
+        s.enhanced[id] = (s.enhanced[id] ?? 0) + 1;
+        W.book.spells.get(id)?.onChange();
+        close();
+      });
+    } else if (k === 'obelisk') {
+      const open = () => {
+        const choices = W.artifacts.rollLegend(3);
+        if (!choices.length) { W.pickups.removeSpot('obelisk'); close(); return; }
+        showChest(choices, (a) => {
+          W.artifacts.add(a.id);
+          W.pickups.removeSpot('obelisk');
+          W.orbs.magnetAll(); // после алтаря все кристаллы притягиваются
+          close();
+        }, { title: 'Обелиск', cls: 'obelisk', onReroll: this.obeliskRerolled ? undefined : () => { this.obeliskRerolled = true; open(); } });
+      };
+      open();
+    } else if (k === 'shop') {
+      showShop(this.shopItems, (it) => { W.mana -= it.price; W.artifacts.add(it.a.id); }, close);
+    } else {
+      document.body.classList.remove('fury');
+      showZoneClear(() => this.startRun(), () => { this.cleanupRun(); this.cameras.main.centerOn(0, 0); showMenu(() => this.startRun()); });
+    }
+  }
+
   private openChest() {
     this.pendingChests--;
     this.inModal = true; this.paused = true; this.joy?.release();
@@ -146,7 +216,8 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.running || this.paused) return;
     const dt = Math.min(deltaMs / 1000, 1 / 20);
-    W.time += dt;
+    if (!W.zone.timeFrozen) W.time += dt;
+    W.zone.update();
 
     const mv = this.joy!.vector;
     W.player.move(mv.x, mv.y, dt);
@@ -159,13 +230,18 @@ export class GameScene extends Phaser.Scene {
     W.pickups.update(dt);
     W.artifacts.update(dt);
     W.fx.update(dt);
-    document.body.classList.toggle('fury', W.pickups.active.has('fury'));
+    document.body.classList.toggle('fury', W.pickups.active.has('fury') || W.zone.bossFight);
+    // пол меняет цвет по ходу зоны: трава → красная → тёмная
+    const st = Math.min(W.zone.stage, 2);
+    if (st !== this.stageTint) { this.stageTint = st; if (st === 0) this.ground.clearTint(); else this.ground.setTint(st === 1 ? 0xe0a08c : 0x8c8f99); }
 
     this.hudT -= dt;
     if (this.hudT <= 0) {
       this.hudT = 0.1;
       const P = W.player;
       this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
+      const b = W.zone.boss;
+      this.hud!.boss(b && b.alive ? b.hp / b.maxHp : null);
       const ph = W.book.spells.get('phase') as any;
       if (ph) this.hud!.cd('phase', 'ico_phase', ph.active > 0 ? 1 : ph.cdLeft / 45);
       for (const r of Object.keys(RUNES) as (keyof typeof RUNES)[]) {
@@ -178,5 +254,6 @@ export class GameScene extends Phaser.Scene {
     if (W.player.dead && !this.tryRevive()) { document.body.classList.remove('fury'); this.die(); return; }
     if (W.player.pendingLevels > 0 && !this.inModal) this.openLevelUp();
     else if (this.pendingChests > 0 && !this.inModal) this.openChest();
+    else if (this.zoneQ.length && !this.inModal) this.openZone();
   }
 }

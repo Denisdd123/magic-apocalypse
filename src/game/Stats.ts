@@ -36,6 +36,8 @@ export class Stats {
   // по заклинаниям (id заклинания -> бонус)
   spellDmg: Record<string, number> = {};
   spellCount: Record<string, number> = {};
+  spellCdr: Record<string, number> = {};   // доп. сокращение перезарядки (усиление заклинания)
+  enhanced: Record<string, number> = {};   // сколько раз заклинание усилено
 
   get atk() { return BASE_ATK * (1 + this.atkPct); }
   get maxHp() { return PLAYER.hp * (1 + this.hpPct); }
