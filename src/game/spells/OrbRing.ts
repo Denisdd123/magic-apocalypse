@@ -11,8 +11,8 @@ class OrbRing extends Spell {
   private angle = 0;
   private t = 0;
 
-  get baseCount() { return this.level >= 6 ? 6 : this.level; }
-  get dmgMul() { return 1 + 0.2 * (Math.min(this.level, 6) - 1); }
+  get baseCount() { return (this.level >= 6 ? 6 : this.level) + W.stats.sc('orbring'); }
+  get dmgMul() { return (1 + 0.2 * (Math.min(this.level, 6) - 1)) * W.stats.sd('orbring'); }
 
   onChange() {
     const merged = this.has('core');

@@ -82,13 +82,18 @@ export class Hud {
   }
 
   /** Иконка перезарядки (Фаза и др.): frac 0 = готово, 1 = только что использовано */
-  cd(id: string, iconKey: string, frac: number) {
+  cd(id: string, iconKey: string, frac: number, tint?: number) {
     let e = this.cdMap.get(id);
     if (!e) {
-      e = el('div', 'cdicon', `<img src="${icon(iconKey)}"><div class="shade"></div>`);
+      e = el('div', 'cdicon', `<img src="${icon(iconKey, tint)}"><div class="shade"></div>`);
       this.cds.appendChild(e); this.cdMap.set(id, e);
     }
     (e.querySelector('.shade') as HTMLElement).style.height = (Math.max(0, Math.min(1, frac)) * 100).toFixed(0) + '%';
+  }
+
+  clearCd(id: string) {
+    const e = this.cdMap.get(id);
+    if (e) { e.remove(); this.cdMap.delete(id); }
   }
 
   destroy() { this.wrap.remove(); }

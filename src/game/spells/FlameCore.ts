@@ -13,7 +13,7 @@ class FlameCore extends Spell {
     let m = 1 + (this.level >= 3 ? 0.5 : 0) + (this.level >= 6 ? 0.5 : 0);
     if (this.has('bigbang')) m *= 1.8;
     if (this.has('plague')) m *= 0.7;
-    return m;
+    return m * W.stats.sd('flame');
   }
   get radius() { return 26 * (this.level >= 4 ? 1.2 : 1) * W.stats.sizeMul; }
 

@@ -10,11 +10,11 @@ class Guardians extends Spell {
   private queue: { delay: number; idx: number }[] = [];
   private burst: { t: number; shots: number; done: number } | null = null;
 
-  get count() { return this.level >= 6 ? 6 : this.level; }
+  get count() { return (this.level >= 6 ? 6 : this.level) + W.stats.sc('guardians'); }
   get dmgMul() {
     let m = 1 + 0.2 * (Math.min(this.level, 6) - 1);
     if (this.has('blades')) m *= 2.5;
-    return m;
+    return m * W.stats.sd('guardians');
   }
   get baseCd() {
     if (this.has('guardian')) return 0.9 * 5;

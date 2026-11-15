@@ -1,6 +1,16 @@
 import { PASSIVES, SPELLS } from '../game/SpellBook';
 import { W } from '../game/World';
 import { clearModals, fmtTime, icon } from './ui';
+import { RARITY, SYNERGIES, artifactById } from '../game/Artifacts';
+import { artifactText, synergyHtml } from './chest';
+
+function artifactsHtml() {
+  if (!W.artifacts.owned.length) return '<div class="empty">Артефактов пока нет.<br>Ищи сундуки — стрелка у края экрана покажет, где он.</div>';
+  return W.artifacts.owned.map((id) => {
+    const a = artifactById(id);
+    return `<div class="artrow"><span class="ae" style="border-color:${RARITY[a.rarity].color}">${a.emoji}</span><div><b>${a.name}</b><div class="arar" style="color:${RARITY[a.rarity].color}">${RARITY[a.rarity].name}</div><div class="atext">${artifactText(a)}</div></div></div>`;
+  }).join('');
+}
 
 // Экраны паузы, истории боя и смерти.
 
@@ -103,8 +113,8 @@ export function showPause(onResume: () => void, onQuit: () => void) {
   m.querySelectorAll<HTMLButtonElement>('.rb').forEach((b) => b.addEventListener('click', () => {
     const k = b.dataset.k;
     if (k === 'magic') subPanel('Магия', '', spellsHtml());
-    if (k === 'art') subPanel('Артефакты', '', '<div class="empty">Артефактов пока нет.<br>Сундуки с артефактами появятся в следующем обновлении.</div>');
-    if (k === 'syn') subPanel('Синергии', '', '<div class="empty">Синергии появятся вместе с артефактами.</div>');
+    if (k === 'art') subPanel('Артефакты', `${W.artifacts.owned.length} шт.`, artifactsHtml());
+    if (k === 'syn') subPanel('Синергии', `Активно: ${W.artifacts.synergies.size} из ${SYNERGIES.length}`, SYNERGIES.map((s) => synergyHtml(s)).join(''));
     if (k === 'quit') {
       const c = div('modal confirm', '<h1>Завершить забег?</h1><div class="btns"><button class="y">Да</button><button class="n">Нет</button></div>');
       c.querySelector('.y')!.addEventListener('click', () => { clearModals(); onQuit(); });

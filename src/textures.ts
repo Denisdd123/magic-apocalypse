@@ -111,6 +111,26 @@ export function makeTextures(scene: Phaser.Scene) {
     g.fillStyle(0xe8ffe8, 1); g.fillRect(12, 7, 4, 14); g.fillRect(7, 12, 14, 4);
   });
 
+  // --- Сундук и руны ---
+  make(scene, 'chest', 64, 56, (g) => {
+    glow(g, 32, 30, 30, 0xffd36b, 8, 0.6);
+    g.fillStyle(0x5a3416, 1); g.fillRoundedRect(10, 20, 44, 28, 4);
+    g.fillStyle(0x7a4a22, 1); g.fillRoundedRect(10, 12, 44, 14, { tl: 10, tr: 10, bl: 0, br: 0 });
+    g.fillStyle(0xf2c94c, 1);
+    g.fillRect(10, 24, 44, 3); g.fillRect(29, 12, 6, 36);
+    g.fillStyle(0x2b1a0b, 1); g.fillRect(30, 27, 4, 6);
+  });
+  make(scene, 'rune', 64, 64, (g) => {
+    glow(g, 32, 32, 32, 0xffffff, 8, 0.7);
+    g.fillStyle(0xffffff, 1);
+    g.fillTriangle(32, 6, 50, 32, 14, 32); g.fillTriangle(32, 58, 50, 32, 14, 32);
+    g.fillStyle(0x000000, 0.55);
+    g.fillTriangle(32, 16, 42, 32, 22, 32); g.fillTriangle(32, 48, 42, 32, 22, 32);
+  });
+  make(scene, 'arrow', 32, 32, (g) => {
+    g.fillStyle(0xffffff, 1); g.fillTriangle(30, 16, 8, 4, 8, 28);
+  });
+
   // --- Снаряды и эффекты ---
   make(scene, 'bolt', 40, 12, (g) => {
     g.fillStyle(0xffffff, 0.25); g.fillEllipse(20, 6, 40, 12);

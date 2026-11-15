@@ -12,6 +12,9 @@ import { STAR_NEEDLE } from './spells/StarNeedle';
 import { W } from './World';
 import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
 import { showDeath, showPause } from '../ui/screens';
+import { showChest, toast } from '../ui/chest';
+import { ArtifactSet } from './Artifacts';
+import { Pickups, RUNES } from './Pickups';
 
 export class GameScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.TileSprite;
@@ -21,6 +24,7 @@ export class GameScene extends Phaser.Scene {
   private inModal = false;
   private hudT = 0;
   private running = false;
+  private pendingChests = 0;
 
   constructor() { super('game'); }
 
@@ -51,6 +55,12 @@ export class GameScene extends Phaser.Scene {
     W.player = new Player(this);
     W.book = new SpellBook();
     W.book.add(STAR_NEEDLE);
+    W.artifacts = new ArtifactSet();
+    W.pickups = new Pickups(this);
+    this.pendingChests = 0;
+    W.pickups.onChest = () => { this.pendingChests++; };
+    W.pickups.onRune = (r) => toast(`<b style="color:#${RUNES[r].tint.toString(16).padStart(6, '0')}">${RUNES[r].name}</b><br>${RUNES[r].text}`, 2000);
+    W.artifacts.onSynergy = (syn) => toast(`Синергия активирована!<br><b>${syn.emoji} ${syn.name}</b><br>${syn.text.join('<br>')}`, 3200);
     // стартовые сферы рядом, чтобы быстро взять первые уровни
     for (let i = 0; i < 6; i++) {
       const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 80;
@@ -99,6 +109,28 @@ export class GameScene extends Phaser.Scene {
     else { this.inModal = false; this.paused = false; }
   }
 
+  private openChest() {
+    this.pendingChests--;
+    this.inModal = true; this.paused = true; this.joy?.release();
+    const choices = W.artifacts.roll(3);
+    if (!choices.length) { W.orbs.drop(W.player.x, W.player.y, 'l', 30); this.inModal = false; this.paused = false; return; }
+    showChest(choices, (a) => {
+      W.artifacts.add(a.id);
+      this.inModal = false; this.paused = false;
+    });
+  }
+
+  /** Воскрешение (артефакты/синергии): полное здоровье, очищение экрана и неуязвимость */
+  private tryRevive() {
+    const s = W.stats, P = W.player;
+    if (s.revives <= 0) return false;
+    s.revives--;
+    P.dead = false; P.hp = s.maxHp; P.invulnT = 3;
+    W.pickups.activate('cleanse');
+    toast('<b>Воскрешение!</b>', 1800);
+    return true;
+  }
+
   private die() {
     this.paused = true; this.inModal = true;
     this.joy?.release();
@@ -124,7 +156,10 @@ export class GameScene extends Phaser.Scene {
     W.book.update(dt);
     W.projectiles.update(dt);
     W.orbs.update(dt);
+    W.pickups.update(dt);
+    W.artifacts.update(dt);
     W.fx.update(dt);
+    document.body.classList.toggle('fury', W.pickups.active.has('fury'));
 
     this.hudT -= dt;
     if (this.hudT <= 0) {
@@ -133,9 +168,15 @@ export class GameScene extends Phaser.Scene {
       this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
       const ph = W.book.spells.get('phase') as any;
       if (ph) this.hud!.cd('phase', 'ico_phase', ph.active > 0 ? 1 : ph.cdLeft / 45);
+      for (const r of Object.keys(RUNES) as (keyof typeof RUNES)[]) {
+        const left = W.pickups.active.get(r);
+        if (left !== undefined) this.hud!.cd('rune_' + r, 'rune', 1 - left / (RUNES[r].dur * (1 + W.stats.runeDur)), RUNES[r].tint);
+        else this.hud!.clearCd('rune_' + r);
+      }
     }
 
-    if (W.player.dead) { this.die(); return; }
+    if (W.player.dead && !this.tryRevive()) { document.body.classList.remove('fury'); this.die(); return; }
     if (W.player.pendingLevels > 0 && !this.inModal) this.openLevelUp();
+    else if (this.pendingChests > 0 && !this.inModal) this.openChest();
   }
 }

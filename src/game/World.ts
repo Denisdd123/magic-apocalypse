@@ -6,6 +6,8 @@ import type { Orbs } from './Orbs';
 import type { Projectiles } from './Projectiles';
 import type { Effects } from './Effects';
 import type { SpellBook } from './SpellBook';
+import type { ArtifactSet } from './Artifacts';
+import type { Pickups } from './Pickups';
 
 /** Общий контейнер состояния забега — чтобы системы видели друг друга без лишней передачи ссылок. */
 export interface World {
@@ -17,6 +19,8 @@ export interface World {
   projectiles: Projectiles;
   fx: Effects;
   book: SpellBook;
+  artifacts: ArtifactSet;
+  pickups: Pickups;
   time: number;      // секунд с начала забега
   kills: number;
   mana: number;      // собрано кристаллов (эссенции) за забег

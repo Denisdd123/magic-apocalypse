@@ -22,6 +22,7 @@ export class Enemy {
   kx = 0; ky = 0;          // отбрасывание
   stunT = 0; flashT = 0;
   elite = false;
+  cursed = false;
   type!: EnemyType;
   img!: Phaser.GameObjects.Image;
   ring?: Phaser.GameObjects.Image;
@@ -54,13 +55,15 @@ export class Enemies {
     }
     e.id = nextId++;
     e.type = type; e.x = x; e.y = y; e.alive = true;
-    e.elite = elite;
+    e.elite = elite; e.cursed = false;
     const scale = elite ? 1.7 : 1;
     e.r = type.r * scale;
-    e.maxHp = e.hp = type.hp * this.hpMul() * (elite ? 18 : 1);
-    e.speed = type.speed * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1);
+    const s = W.stats;
+    e.maxHp = e.hp = type.hp * this.hpMul() * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
+    e.speed = type.speed * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow);
     e.dmg = type.dmg * (1 + W.time / 400) * (elite ? 1.5 : 1);
-    e.xp = type.xp; e.kx = e.ky = 0; e.stunT = 0; e.flashT = 0;
+    e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0;
+    e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
     e.img.setTexture(type.tex).setVisible(true).setPosition(x, y).clearTint().setRotation(Math.random() * 6.28);
     e.img.setDisplaySize(type.size * scale, type.size * scale);
     if (elite) {
@@ -171,6 +174,7 @@ export class Enemies {
     if (!e.alive) return false;
     const s = W.stats;
     if (Math.random() < s.crit) amount *= s.critMult;
+    if (s.highHpBonus && e.hp > e.maxHp * 0.75) amount *= 1 + s.highHpBonus;
     if (src) W.dmgBy.set(src, (W.dmgBy.get(src) ?? 0) + Math.min(amount, e.hp));
     e.hp -= amount;
     if (e.flashT <= 0) e.img.setTintFill(0xffffff);
@@ -188,6 +192,7 @@ export class Enemies {
     this.free.push(e);
     this.aliveCount--;
     W.kills++;
+    if (e.cursed) W.pickups.cursedKilled(e.x, e.y);
     if (e.elite) {
       W.orbs.drop(e.x, e.y, 'l', 25);
       W.orbs.drop(e.x + 10, e.y, 'life', 0);

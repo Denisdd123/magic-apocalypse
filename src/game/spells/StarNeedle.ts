@@ -12,7 +12,7 @@ class StarNeedle extends Spell {
   private mirAngle = 0;
 
   get count() {
-    let c = 1 + (this.level >= 2 ? 1 : 0) + (this.level >= 5 ? 1 : 0) + (this.has('chain') ? 1 : 0);
+    let c = 1 + (this.level >= 2 ? 1 : 0) + (this.level >= 5 ? 1 : 0) + (this.has('chain') ? 1 : 0) + W.stats.sc('needle');
     if (this.has('barrage')) c *= 5;
     return c;
   }
@@ -21,7 +21,7 @@ class StarNeedle extends Spell {
     if (this.has('lance')) m *= 1.8;
     if (this.has('firecracker')) m *= 1.5;
     if (this.has('barrage')) m *= 1.5;
-    return m;
+    return m * W.stats.sd('needle');
   }
   get baseCd() {
     let c = 0.75;
