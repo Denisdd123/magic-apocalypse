@@ -25,9 +25,9 @@ export class Player {
   private hpBar: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene) {
-    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(40, 40).setBlendMode(Phaser.BlendModes.ADD);
+    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(34, 34).setBlendMode(Phaser.BlendModes.ADD);
     this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(20, 7);
-    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(21, 29);
+    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(18, 29);
     this.hpBg = scene.add.rectangle(0, 0, 18, 2.6, 0x1a1a1a).setDepth(DEPTH.player);
     this.hpBar = scene.add.rectangle(0, 0, 18, 2.6, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
   }
@@ -53,7 +53,7 @@ export class Player {
     const s = W.stats;
     if (s.regen > 0) this.heal(s.maxHp * s.regen * dt);
     // «живой» маг: плащ колышется (4 кадра), лёгкое покачивание; в движении чуть быстрее
-    this.animT += dt * (this.moving ? 9 : 5);
+    this.animT += dt * (this.moving ? 5 : 3); // кадров в секунду: спокойнее, без «дёрганья»
     const fr = Math.floor(this.animT) % 4;
     if (fr !== this.frame) { this.frame = fr; this.img.setTexture('player_' + fr); }
     const bob = Math.sin(this.animT * 0.8) * 0.8;

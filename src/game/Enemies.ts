@@ -170,7 +170,7 @@ export class Enemies {
 
       if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) e.img.clearTint(); }
       // «дрожащая линия»: кадры сменяются ~8 раз в секунду, у каждого моба со своим сдвигом
-      const fr = Math.floor(W.time * 8 + e.id * 0.37) % 3;
+      const fr = Math.floor(W.time * 4 + e.id * 0.37) % 3; // ~4 смены в секунду
       if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
       e.img.setPosition(e.x, e.y);
       if (e.ring) e.ring.setPosition(e.x, e.y);

@@ -36,12 +36,11 @@ button:active { transform: scale(0.97); }
 
 /* ---------- HUD ---------- */
 .hud { position: absolute; inset: 0; }
-.xpbar { position: absolute; left: 0; right: 0; top: var(--safe-top); height: 5px; background: rgba(0,0,0,0.35); }
+.xpbar { position: absolute; left: 0; right: 0; top: var(--safe-top); height: 4px; background: rgba(0,0,0,0.25); }
 .xpbar > div { height: 100%; width: 0; background: linear-gradient(90deg, #3fa7ff, #7fd8ff); transition: width 0.15s; }
 .topline {
   position: absolute; left: 0; right: 0; top: calc(var(--safe-top) + 7px); height: 34px;
   display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
-  background: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0));
   text-shadow: 0 1px 2px #000;
 }
 .topline .lvl { font-size: 14px; color: var(--mint); min-width: 70px; }
@@ -203,3 +202,6 @@ button:active { transform: scale(0.97); }
 
 /* руна ярости — красная виньетка */
 body.fury #game::after { content: ''; position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 30px rgba(255, 30, 30, 0.45); }
+
+/* фон страницы = цвет земли: под панелями Safari и в «подбородке» экрана не будет чёрных полос */
+html, body { background: #7a8c55; }

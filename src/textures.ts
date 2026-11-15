@@ -49,19 +49,19 @@ function witch(g: G, s: number, color: number, f = 0, accent = -1) {
   const P = (x: number, y: number) => new Phaser.Math.Vector2(x * s, y * s);
   g.fillStyle(color, 1);
   // шляпа с загнутым концом
-  g.fillPoints([P(9, 17), P(23, 17), P(19.5, 6), P(21 + sw * 0.6, 2), P(25 + sw, 3.5), P(18, 1.5), P(15, 6)], true);
-  g.fillEllipse(16 * s, 17.5 * s, 22 * s, 3.4 * s);
+  g.fillPoints([P(11.5, 17), P(20.5, 17), P(18.5, 7), P(20 + sw * 0.5, 2.5), P(23.5 + sw * 0.8, 3.5), P(17.5, 1.5), P(15, 7)], true);
+  g.fillEllipse(16 * s, 17.5 * s, 15 * s, 2.6 * s);
   // плащ: колышущийся рваный подол
-  const hem = [P(4 + sw2 * 0.8, 41), P(7, 38.5 + sw), P(9.5, 42.5), P(12.5, 39.5 - sw), P(16, 43), P(19.5, 39.5 + sw), P(22.5, 42.5), P(25, 38.5 - sw), P(28 - sw2 * 0.8, 41)];
-  g.fillPoints([P(16, 15), P(20.5, 19), P(24, 26), P(26 + sw * 0.5, 33), ...hem.reverse(), P(6 - sw * 0.5, 33), P(8, 26), P(11.5, 19)], true);
+  const hem = [P(9 + sw2 * 0.6, 41), P(11, 39 + sw * 0.7), P(12.8, 42.5), P(14.5, 40 - sw * 0.7), P(16, 43), P(17.5, 40 + sw * 0.7), P(19.2, 42.5), P(21, 39 - sw * 0.7), P(23 - sw2 * 0.6, 41)];
+  g.fillPoints([P(16, 15), P(18.8, 19), P(20.8, 26), P(22.3 + sw * 0.4, 33), ...hem.reverse(), P(9.7 - sw * 0.4, 33), P(11.2, 26), P(13.2, 19)], true);
   if (accent >= 0) {
     // цветная полоса по центру плаща и светящийся камень на шляпе
     g.fillStyle(accent, 0.9);
-    g.fillPoints([P(15.4, 20), P(16.6, 20), P(17.2, 40), P(14.8, 40)], true);
-    g.fillStyle(accent, 0.35); g.fillCircle(16 * s, 14.5 * s, 3.2 * s);
-    g.fillStyle(0xffffff, 1); g.fillCircle(16 * s, 14.5 * s, 1.2 * s);
+    g.fillPoints([P(15.6, 20), P(16.4, 20), P(16.8, 40), P(15.2, 40)], true);
+    g.fillStyle(accent, 0.3); g.fillCircle(16 * s, 14.5 * s, 2.2 * s);
+    g.fillStyle(0xffffff, 1); g.fillCircle(16 * s, 14.5 * s, 0.9 * s);
     // глаза
-    g.fillStyle(accent, 1); g.fillCircle(14.3 * s, 20.6 * s, 0.7 * s); g.fillCircle(17.7 * s, 20.6 * s, 0.7 * s);
+    g.fillStyle(accent, 1); g.fillCircle(15 * s, 20.4 * s, 0.55 * s); g.fillCircle(17 * s, 20.4 * s, 0.55 * s);
   }
 }
 
