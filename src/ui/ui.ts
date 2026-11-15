@@ -174,7 +174,7 @@ export class Joystick {
 // ---------------- Выбор заклинания ----------------
 export function showLevelUp(level: number, choices: Choice[], refundPct: number, onPick: (c: Choice) => void, onRefund: () => void) {
   clearModals();
-  const m = el('div', 'modal');
+  const m = el('div', 'modal levelup');
   m.appendChild(el('div', 'sub', 'Текущий уровень: ' + level));
   m.appendChild(el('h1', '', 'Выбор заклинания'));
   const cards = el('div', 'cards');

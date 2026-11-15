@@ -205,3 +205,27 @@ body.fury #game::after { content: ''; position: fixed; inset: 0; pointer-events:
 
 /* фон страницы = цвет земли: под панелями Safari и в «подбородке» экрана не будет чёрных полос */
 html, body { background: #7a8c55; }
+
+/* ---------- Выбор заклинания: на весь экран, как в оригинале ---------- */
+.modal.levelup {
+  background: radial-gradient(ellipse at 50% 40%, rgba(44,46,48,0.95), rgba(18,19,21,0.98) 80%);
+  justify-content: flex-start;
+  padding: calc(var(--safe-top) + 4vh) 4vw calc(var(--safe-bottom) + 3vh);
+}
+.levelup .sub { font-size: 16px; margin: 0 0 6px; letter-spacing: 0.5px; }
+.levelup h1 { font-size: 32px; margin: 0 0 3vh; text-shadow: 0 0 18px rgba(111,242,216,0.35); }
+.levelup .cards { max-width: 560px; flex: 1; gap: 2.2vh; max-height: 68vh; }
+.levelup .card {
+  flex: 1; min-height: 0; max-height: 21vh; padding: 2vh 18px 2vh 14px; gap: 16px;
+  background: #040506;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), inset 0 0 30px rgba(0,0,0,0.9);
+  clip-path: polygon(0% 5%, 2% 1%, 12% 3%, 23% 0%, 37% 2%, 51% 0%, 66% 3%, 79% 0%, 92% 2%, 100% 0%, 99% 22%, 100% 47%, 98% 71%, 100% 96%, 88% 99%, 73% 96%, 58% 100%, 43% 97%, 27% 100%, 13% 97%, 0% 100%, 1% 77%, 0% 52%, 2% 27%);
+}
+.levelup .card img { width: 74px; height: 74px; filter: drop-shadow(0 0 6px rgba(255,255,255,0.18)); }
+.levelup .card .title { font-size: 19px; margin-bottom: 6px; }
+.levelup .card .line { font-size: 13.5px; }
+.levelup .card .lv { top: 2vh; right: 20px; font-size: 15px; }
+.levelup .refund {
+  margin-top: 3vh; padding: 13px 34px; font-size: 15px; background: #000; color: var(--text);
+  clip-path: polygon(0% 8%, 6% 0%, 50% 4%, 94% 0%, 100% 10%, 98% 50%, 100% 92%, 92% 100%, 50% 96%, 6% 100%, 0% 90%, 2% 50%);
+}
