@@ -35,7 +35,7 @@ class StarNeedle extends Spell {
   onChange() {
     if (this.has('doppel') && this.mirages.length === 0) {
       for (let i = 0; i < 3; i++) {
-        this.mirages.push(W.scene.add.image(0, 0, 'mirage').setDepth(DEPTH.player).setDisplaySize(16, 22).setTint(0xc49bff).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD));
+        this.mirages.push(W.scene.add.image(0, 0, 'mirage_0').setDepth(DEPTH.player).setDisplaySize(16, 22).setTint(0xc49bff).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD));
       }
     }
   }

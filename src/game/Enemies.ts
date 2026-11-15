@@ -8,6 +8,9 @@ export interface EnemyType {
   hp: number; speed: number; dmg: number; xp: number;
 }
 
+/** Множитель скорости всех врагов (калибровка по видео оригинала) */
+export const ENEMY_SPEED = 0.85;
+
 export const ENEMY_TYPES: Record<string, EnemyType> = {
   basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 1 },
   red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 3 },
@@ -21,6 +24,7 @@ export class Enemy {
   hp = 1; maxHp = 1; speed = 30; dmg = 5; xp = 1;
   kx = 0; ky = 0;          // отбрасывание
   stunT = 0; flashT = 0;
+  frame = 0;
   elite = false;
   cursed = false;
   type!: EnemyType;
@@ -50,7 +54,7 @@ export class Enemies {
     let e = this.free.pop();
     if (!e) {
       e = new Enemy();
-      e.img = this.scene.add.image(0, 0, type.tex).setDepth(DEPTH.enemy);
+      e.img = this.scene.add.image(0, 0, type.tex + '_0').setDepth(DEPTH.enemy);
       this.list.push(e);
     }
     e.id = nextId++;
@@ -60,11 +64,12 @@ export class Enemies {
     e.r = type.r * scale;
     const s = W.stats;
     e.maxHp = e.hp = type.hp * this.hpMul() * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
-    e.speed = type.speed * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow);
+    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow);
     e.dmg = type.dmg * (1 + W.time / 400) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
-    e.img.setTexture(type.tex).setVisible(true).setPosition(x, y).clearTint().setRotation(Math.random() * 6.28);
+    e.frame = (Math.random() * 3) | 0;
+    e.img.setTexture(type.tex + '_' + e.frame).setVisible(true).setPosition(x, y).clearTint().setRotation(Math.random() * 6.28);
     e.img.setDisplaySize(type.size * scale, type.size * scale);
     if (elite) {
       if (!e.ring) e.ring = this.scene.add.image(0, 0, 'elite_ring').setDepth(DEPTH.enemy);
@@ -164,6 +169,9 @@ export class Enemies {
       if (dx * dx + dy * dy < rr * rr) P.hurt(e.dmg);
 
       if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) e.img.clearTint(); }
+      // «дрожащая линия»: кадры сменяются ~8 раз в секунду, у каждого моба со своим сдвигом
+      const fr = Math.floor(W.time * 8 + e.id * 0.37) % 3;
+      if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
       e.img.setPosition(e.x, e.y);
       if (e.ring) e.ring.setPosition(e.x, e.y);
     }

@@ -18,10 +18,16 @@ export class Player {
 
   img: Phaser.GameObjects.Image;
   private hpBg: Phaser.GameObjects.Rectangle;
+  private shadow: Phaser.GameObjects.Image;
+  private aura: Phaser.GameObjects.Image;
+  private animT = 0;
+  private frame = 0;
   private hpBar: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene) {
-    this.img = scene.add.image(0, 0, 'player').setDepth(DEPTH.player).setDisplaySize(18, 24);
+    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(40, 40).setBlendMode(Phaser.BlendModes.ADD);
+    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(20, 7);
+    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(21, 29);
     this.hpBg = scene.add.rectangle(0, 0, 18, 2.6, 0x1a1a1a).setDepth(DEPTH.player);
     this.hpBar = scene.add.rectangle(0, 0, 18, 2.6, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
   }
@@ -46,11 +52,18 @@ export class Player {
     if (this.invulnT > 0) this.invulnT -= dt;
     const s = W.stats;
     if (s.regen > 0) this.heal(s.maxHp * s.regen * dt);
-    this.img.setPosition(this.x, this.y - 4);
+    // «живой» маг: плащ колышется (4 кадра), лёгкое покачивание; в движении чуть быстрее
+    this.animT += dt * (this.moving ? 9 : 5);
+    const fr = Math.floor(this.animT) % 4;
+    if (fr !== this.frame) { this.frame = fr; this.img.setTexture('player_' + fr); }
+    const bob = Math.sin(this.animT * 0.8) * 0.8;
+    this.img.setPosition(this.x, this.y - 6 + bob);
+    this.shadow.setPosition(this.x, this.y + 8);
+    this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
     this.img.setAlpha(this.invulnT > 0 ? 0.45 + 0.25 * Math.sin(W.time * 30) : 1);
     if (this.hurtT > PLAYER.hurtCooldown - 0.12) this.img.setTint(0xff5050); else this.img.clearTint();
-    this.hpBg.setPosition(this.x, this.y + 11);
-    this.hpBar.setPosition(this.x - 9, this.y + 11).setSize(18 * Math.max(0, this.hp / s.maxHp), 2.6);
+    this.hpBg.setPosition(this.x, this.y + 12);
+    this.hpBar.setPosition(this.x - 9, this.y + 12).setSize(18 * Math.max(0, this.hp / s.maxHp), 2.6);
   }
 
   hurt(amount: number) {

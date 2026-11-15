@@ -9,9 +9,9 @@ export const RUNES: Record<RuneType, { name: string; tint: number; dur: number; 
   invuln:   { name: 'Руна неуязвимости', tint: 0xffe066, dur: 8, weight: 2, text: 'Неуязвимость на 8 сек.' },
   fury:     { name: 'Руна ярости',       tint: 0xff4a4a, dur: 8, weight: 2, text: 'Атака +50%, скорость +25% на 8 сек.' },
   greed:    { name: 'Руна жадности',     tint: 0x46d6ff, dur: 5, weight: 2, text: 'Притягивает все сферы' },
-  cleanse:  { name: 'Руна очищения',     tint: 0xffffff, dur: 0, weight: 1, text: 'Уничтожает врагов на экране' },
+  cleanse:  { name: 'Руна очищения',     tint: 0xffffff, dur: 0, weight: 0.6, text: 'Уничтожает врагов на экране' },
   timestop: { name: 'Руна времени',      tint: 0x9fe8b0, dur: 5, weight: 1.5, text: 'Враги замирают на 5 сек.' },
-  curse:    { name: 'Проклятая руна',    tint: 0xff2d8a, dur: 0, weight: 1.2, text: 'Призывает элитных монстров. Последний оставит сундук' },
+  curse:    { name: 'Проклятая руна',    tint: 0xff2d8a, dur: 0, weight: 0.8, text: 'Призывает элитных монстров. Последний оставит сундук' },
 };
 
 interface Item {
@@ -28,7 +28,7 @@ export class Pickups {
   active = new Map<RuneType, number>(); // руна -> оставшееся время
   cursedLeft = 0;
   private chestT = 45;
-  private runeT = 25;
+  private runeT = 100;  // первая руна примерно на 1:40
   onChest: (() => void) | null = null;
   onRune: ((r: RuneType) => void) | null = null;
 
@@ -69,7 +69,7 @@ export class Pickups {
     }
     this.runeT -= dt;
     if (this.runeT <= 0) {
-      this.runeT = 32 + Math.random() * 18;
+      this.runeT = 120 + Math.random() * 60; // руны — редкость: раз в 2–3 минуты
       const p = this.around(110, 240); this.rune(this.randomRune(), p.x, p.y);
     }
 

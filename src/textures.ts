@@ -38,15 +38,31 @@ function inkBlob(g: G, cx: number, cy: number, R: number) {
   }
 }
 
-function witch(g: G, s: number, color: number) {
-  // s — масштаб; базовый размер 24x32
+/**
+ * Маг: высокая шляпа, плащ с рваным подолом, цветная окантовка и светящийся камень.
+ * f — кадр «дыхания» (0..3): подол и плащ слегка колышутся, как в рисованной анимации.
+ * Базовый размер 32x44, s — масштаб.
+ */
+function witch(g: G, s: number, color: number, f = 0, accent = -1) {
+  const sw = Math.sin((f / 4) * Math.PI * 2);        // покачивание
+  const sw2 = Math.cos((f / 4) * Math.PI * 2);
+  const P = (x: number, y: number) => new Phaser.Math.Vector2(x * s, y * s);
   g.fillStyle(color, 1);
-  g.fillTriangle(5 * s, 13 * s, 19 * s, 13 * s, 15 * s, 1 * s);          // шляпа
-  g.fillTriangle(15 * s, 1 * s, 17 * s, 2 * s, 21 * s, 6 * s);           // загнутый кончик
-  g.fillEllipse(12 * s, 13.5 * s, 18 * s, 3 * s);                        // поля шляпы
-  g.fillTriangle(4 * s, 31 * s, 20 * s, 31 * s, 12 * s, 11 * s);         // плащ
-  g.fillTriangle(4 * s, 31 * s, 1 * s, 29 * s, 9 * s, 22 * s);           // развевающийся край
-  g.fillTriangle(20 * s, 31 * s, 23 * s, 28 * s, 16 * s, 22 * s);
+  // шляпа с загнутым концом
+  g.fillPoints([P(9, 17), P(23, 17), P(19.5, 6), P(21 + sw * 0.6, 2), P(25 + sw, 3.5), P(18, 1.5), P(15, 6)], true);
+  g.fillEllipse(16 * s, 17.5 * s, 22 * s, 3.4 * s);
+  // плащ: колышущийся рваный подол
+  const hem = [P(4 + sw2 * 0.8, 41), P(7, 38.5 + sw), P(9.5, 42.5), P(12.5, 39.5 - sw), P(16, 43), P(19.5, 39.5 + sw), P(22.5, 42.5), P(25, 38.5 - sw), P(28 - sw2 * 0.8, 41)];
+  g.fillPoints([P(16, 15), P(20.5, 19), P(24, 26), P(26 + sw * 0.5, 33), ...hem.reverse(), P(6 - sw * 0.5, 33), P(8, 26), P(11.5, 19)], true);
+  if (accent >= 0) {
+    // цветная полоса по центру плаща и светящийся камень на шляпе
+    g.fillStyle(accent, 0.9);
+    g.fillPoints([P(15.4, 20), P(16.6, 20), P(17.2, 40), P(14.8, 40)], true);
+    g.fillStyle(accent, 0.35); g.fillCircle(16 * s, 14.5 * s, 3.2 * s);
+    g.fillStyle(0xffffff, 1); g.fillCircle(16 * s, 14.5 * s, 1.2 * s);
+    // глаза
+    g.fillStyle(accent, 1); g.fillCircle(14.3 * s, 20.6 * s, 0.7 * s); g.fillCircle(17.7 * s, 20.6 * s, 0.7 * s);
+  }
 }
 
 function star4(g: G, cx: number, cy: number, r: number, w: number) {
@@ -77,26 +93,32 @@ export function makeTextures(scene: Phaser.Scene) {
   });
 
   // --- Маг ---
-  make(scene, 'player', 48, 64, (g) => witch(g, 2, 0x111114));
-  make(scene, 'mirage', 48, 64, (g) => witch(g, 2, 0xffffff));
+  for (let f = 0; f < 4; f++) {
+    make(scene, 'player_' + f, 64, 88, (g) => witch(g, 2, 0x0d0d10, f, 0x7fe3ff));
+    make(scene, 'mirage_' + f, 64, 88, (g) => witch(g, 2, 0xffffff, f));
+  }
+  make(scene, 'shadow', 64, 24, (g) => { g.fillStyle(0x000000, 0.28); g.fillEllipse(32, 12, 60, 20); g.fillStyle(0x000000, 0.25); g.fillEllipse(32, 12, 40, 12); });
+  make(scene, 'aura', 96, 96, (g) => glow(g, 48, 48, 48, 0x7fe3ff, 10, 0.35));
 
-  // --- Враги ---
-  make(scene, 'enemy_basic', 72, 72, (g) => inkBlob(g, 36, 36, 30));
-  make(scene, 'enemy_red', 80, 80, (g) => {
+  // --- Враги: по 3 кадра «дрожащей линии», чтобы клубки шевелились ---
+  for (let f = 0; f < 3; f++) {
+  make(scene, 'enemy_basic_' + f, 72, 72, (g) => inkBlob(g, 36, 36, 30));
+  make(scene, 'enemy_red_' + f, 80, 80, (g) => {
     inkBlob(g, 40, 40, 34);
     glow(g, 40, 40, 13, 0xff1a2a, 8, 1);
     g.fillStyle(0xff3040, 1); g.fillCircle(40, 40, 4);
   });
-  make(scene, 'enemy_white', 80, 80, (g) => {
+  make(scene, 'enemy_white_' + f, 80, 80, (g) => {
     inkBlob(g, 40, 40, 34);
     glow(g, 40, 40, 14, 0xfff4d6, 8, 1.2);
     g.fillStyle(0xffffff, 1); g.fillCircle(40, 40, 5);
   });
-  make(scene, 'enemy_small', 44, 44, (g) => inkBlob(g, 22, 22, 18));
-  make(scene, 'enemy_big', 128, 128, (g) => {
+  make(scene, 'enemy_small_' + f, 44, 44, (g) => inkBlob(g, 22, 22, 18));
+  make(scene, 'enemy_big_' + f, 128, 128, (g) => {
     inkBlob(g, 64, 64, 56);
     glow(g, 64, 64, 18, 0xb04cff, 8, 0.9);
   });
+  }
   make(scene, 'elite_ring', 128, 128, (g) => {
     g.lineStyle(5, 0xff2d8a, 0.9); g.strokeCircle(64, 64, 58);
     g.lineStyle(10, 0xff2d8a, 0.25); g.strokeCircle(64, 64, 56);

@@ -7,7 +7,7 @@ export const GRID_CELL = 40;
 
 export const PLAYER = {
   radius: 7,
-  speed: 82,
+  speed: 95,           // ≈ четверть ширины экрана в секунду, как в оригинале
   hp: 100,
   hurtCooldown: 0.35,
   pickupRadius: 38,
