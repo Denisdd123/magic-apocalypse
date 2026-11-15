@@ -62,8 +62,8 @@ export class GameScene extends Phaser.Scene {
     W.pickups.onRune = (r) => toast(`<b style="color:#${RUNES[r].tint.toString(16).padStart(6, '0')}">${RUNES[r].name}</b><br>${RUNES[r].text}`, 2000);
     W.artifacts.onSynergy = (syn) => toast(`Синергия активирована!<br><b>${syn.emoji} ${syn.name}</b><br>${syn.text.join('<br>')}`, 3200);
     // стартовые сферы рядом, чтобы быстро взять первые уровни
-    for (let i = 0; i < 6; i++) {
-      const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 80;
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 130;
       W.orbs.drop(Math.cos(a) * d, Math.sin(a) * d, 's', 1);
     }
     this.cameras.main.startFollow(W.player.img, true, 1, 1);

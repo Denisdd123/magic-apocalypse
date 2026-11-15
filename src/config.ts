@@ -21,5 +21,5 @@ export const DEPTH = {
 
 /** Сколько эссенции нужно для перехода с уровня lvl на lvl+1 */
 export function xpForLevel(lvl: number): number {
-  return Math.round(5 + lvl * 3 + lvl * lvl * 0.06);
+  return Math.round(6 + lvl * 5 + lvl * lvl * 0.12);
 }

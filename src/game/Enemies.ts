@@ -6,17 +6,19 @@ import { W } from './World';
 export interface EnemyType {
   id: string; tex: string; r: number; size: number;
   hp: number; speed: number; dmg: number; xp: number;
+  /** шанс выпадения кристалла при смерти (в оригинале кристаллы падают редко, основная мана лежит на поле) */
+  drop: number;
 }
 
 /** Множитель скорости всех врагов (калибровка по видео оригинала) */
 export const ENEMY_SPEED = 0.85;
 
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 1 },
-  red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 3 },
-  small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 1 },
-  white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 4 },
-  big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 20 },
+  basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 1, drop: 0.12 },
+  red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 3, drop: 0.35 },
+  small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 1, drop: 0.12 },
+  white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 4, drop: 0.4 },
+  big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 20, drop: 1 },
 };
 
 export class Enemy {
@@ -207,7 +209,7 @@ export class Enemies {
       W.fx.burst(e.x, e.y, 60, 0xff2d8a, 0.5);
     } else {
       const xp = e.xp;
-      W.orbs.drop(e.x, e.y, xp >= 15 ? 'l' : xp >= 3 ? 'm' : 's', xp);
+      if (Math.random() < e.type.drop) W.orbs.drop(e.x, e.y, xp >= 15 ? 'l' : xp >= 3 ? 'm' : 's', xp);
       if (Math.random() < 0.006) W.orbs.drop(e.x + 6, e.y, 'life', 0);
     }
   }

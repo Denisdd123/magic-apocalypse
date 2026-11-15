@@ -11,6 +11,8 @@ interface Orb {
 }
 
 const TEX: Record<OrbKind, string> = { s: 'orb_s', m: 'orb_m', l: 'orb_l', life: 'orb_life' };
+/** Кристаллы на поле: держим около keep штук в квадрате ±far вокруг мага, новый — раз в every сек */
+const FIELD = { keep: 12, far: 420, min: 190, every: 1.6 };
 const SIZE: Record<OrbKind, number> = { s: 8, m: 11, l: 14, life: 14 };
 
 /** Сферы эссенции (опыт) и сферы жизни */
@@ -18,6 +20,7 @@ export class Orbs {
   private list: Orb[] = [];
   private free: Orb[] = [];
   private count = 0;
+  private fieldT = 0;
   constructor(private scene: Phaser.Scene) {}
 
   drop(x: number, y: number, kind: OrbKind, value: number) {
@@ -39,7 +42,21 @@ export class Orbs {
   /** Притянуть все сферы (руна Жадности и т.п.) */
   magnetAll() { for (const o of this.list) if (o.alive && o.kind !== 'life') o.magnet = true; }
 
+  /** Как в оригинале: мелкие кристаллы сами появляются на поле вокруг мага */
+  private spawnField(dt: number) {
+    this.fieldT -= dt;
+    if (this.fieldT > 0) return;
+    this.fieldT = FIELD.every;
+    const P = W.player;
+    let near = 0;
+    for (const o of this.list) if (o.alive && o.kind === 's' && Math.abs(o.x - P.x) < FIELD.far && Math.abs(o.y - P.y) < FIELD.far) near++;
+    if (near >= FIELD.keep) return;
+    const a = Math.random() * Math.PI * 2, d = FIELD.min + Math.random() * (FIELD.far - FIELD.min);
+    this.drop(P.x + Math.cos(a) * d, P.y + Math.sin(a) * d, 's', 1);
+  }
+
   update(dt: number) {
+    this.spawnField(dt);
     const P = W.player;
     const pr = W.stats.pickupRadius;
     for (const o of this.list) {
