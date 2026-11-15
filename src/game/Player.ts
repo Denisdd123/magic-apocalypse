@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { DEPTH, PLAYER, xpForLevel } from '../config';
 import { W } from './World';
+import type { Pose } from '../textures';
+
+/** Высота фигуры мага в игровых единицах (крупнее замера оригинала — на телефоне был слишком мелким) */
+const MAGE_H = 31;
+const MAGE_K = MAGE_H / 88; // холст позы 96px, фигура 88px
 
 export class Player {
   x = 0; y = 0; r = PLAYER.radius;
@@ -11,6 +16,9 @@ export class Player {
   invulnT = 0;            // неуязвимость (Фаза, руны)
   speedBuff = 0;
   faceX = 0; faceY = -1;  // направление последнего движения
+  /** Точка, за которой следит камера (без покачивания — иначе мир «дёргается») */
+  follow = { x: 0, y: 0 };
+  private pose: Pose = 'idle';
   moving = false;
   dead = false;
   /** Фаза может перехватить удар: вернуть true, если урон отменён */
@@ -26,10 +34,10 @@ export class Player {
 
   constructor(scene: Phaser.Scene) {
     this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(34, 34).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
-    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(15, 5);
-    this.img = scene.add.image(0, 0, 'player_0').setDepth(DEPTH.player).setDisplaySize(14, 23);
-    this.hpBg = scene.add.rectangle(0, 0, 16, 2.4, 0x1a1a1a).setDepth(DEPTH.player);
-    this.hpBar = scene.add.rectangle(0, 0, 16, 2.4, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
+    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(20, 6.5);
+    this.img = scene.add.image(0, 0, 'mage_idle_0').setDepth(DEPTH.player).setScale(MAGE_K);
+    this.hpBg = scene.add.rectangle(0, 0, 20, 2.6, 0x1a1a1a).setDepth(DEPTH.player);
+    this.hpBar = scene.add.rectangle(0, 0, 20, 2.6, 0x46e05a).setDepth(DEPTH.player).setOrigin(0, 0.5);
   }
 
   get xpNeed() { return xpForLevel(this.level); }
@@ -43,7 +51,6 @@ export class Player {
       this.x += (dx / len) * sp * k * dt;
       this.y += (dy / len) * sp * k * dt;
       this.faceX = dx / len; this.faceY = dy / len;
-      this.img.setFlipX(dx < -0.05 ? true : dx > 0.05 ? false : this.img.flipX);
     }
   }
 
@@ -53,21 +60,28 @@ export class Player {
     const s = W.stats;
     if (s.regen > 0) this.heal(s.maxHp * s.regen * dt);
     // «живой» маг: плащ колышется (4 кадра), лёгкое покачивание; в движении чуть быстрее
-    this.animT += dt * (this.moving ? 5 : 3); // кадров в секунду: спокойнее, без «дёрганья»
-    const fr = Math.floor(this.animT) % 4;
-    if (fr !== this.frame) { this.frame = fr; this.img.setTexture('player_' + fr); }
-    const bob = Math.sin(this.animT * 0.8) * 0.8;
-    this.img.setPosition(this.x, this.y - 5 + bob);
-    this.shadow.setPosition(this.x, this.y + 6.5);
+    // 8 направлений (5 поз, влево = зеркало вправо) + дрожание подола 3 кадра
+    let pose: Pose = 'idle';
+    if (this.moving) {
+      const ax = Math.abs(this.faceX), ay = Math.abs(this.faceY);
+      pose = ay > 0.92 ? 'vert' : ax > 0.92 ? 'side' : 'diag';
+      if (ax > 0.38) this.img.setFlipX(this.faceX < 0);
+    }
+    this.animT += dt * (this.moving ? 7 : 4);
+    const fr = Math.floor(this.animT) % 3;
+    if (fr !== this.frame || pose !== this.pose) { this.frame = fr; this.pose = pose; this.img.setTexture(`mage_${pose}_${fr}`); }
+    this.img.setPosition(this.x, this.y - 5.4);
+    this.shadow.setPosition(this.x, this.y + 8.5);
+    this.follow.x = this.x; this.follow.y = this.y;
     this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
     // руна неуязвимости: маг становится белым (как в оригинале); иначе мигание при неуязвимости
     const white = W.pickups?.active.has('invuln');
     this.img.setAlpha(this.invulnT > 0 && !white ? 0.45 + 0.25 * Math.sin(this.animT * 8) : 1);
-    if (this.hurtT > PLAYER.hurtCooldown - 0.12) this.img.setTint(0xff5050);
+    if (this.hurtT > PLAYER.hurtCooldown - 0.1) this.img.setTintFill(0xffffff); // удар — белая вспышка, как в оригинале
     else if (white) this.img.setTintFill(0xffffff);
     else this.img.clearTint();
-    this.hpBg.setPosition(this.x, this.y + 10);
-    this.hpBar.setPosition(this.x - 8, this.y + 10).setSize(16 * Math.max(0, this.hp / s.maxHp), 2.4);
+    this.hpBg.setPosition(this.x, this.y + 12.5);
+    this.hpBar.setPosition(this.x - 10, this.y + 12.5).setSize(20 * Math.max(0, this.hp / s.maxHp), 2.6);
   }
 
   hurt(amount: number) {

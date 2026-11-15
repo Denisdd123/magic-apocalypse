@@ -195,6 +195,7 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
   for (const c of choices) {
     const card = el('div', 'card');
     const cls = c.attr ? 'attr' : c.isNew ? '' : 'up';
+    if (c.kind === 'enhance') card.classList.add('special');
     const tag = c.isNew && c.kind !== 'heal' ? '<span class="tag">новое</span>' : '';
     card.innerHTML = `
       <img src="${icon(c.icon)}">
@@ -202,7 +203,7 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
         <div class="title">${esc(c.title)}${tag}</div>
         ${c.lines.map((l) => `<div class="line ${cls}">${esc(l)}</div>`).join('')}
       </div>
-      ${c.level ? `<div class="lv">Lv ${c.level}</div>` : ''}`;
+      ${c.level ? `<div class="lv">Lv ${c.level}</div>` : c.kind === 'enhance' ? '<div class="lv star">★</div>' : ''}`;
     card.addEventListener('click', () => { if (locked) return; m.remove(); onPick(c); });
     cards.appendChild(card);
   }

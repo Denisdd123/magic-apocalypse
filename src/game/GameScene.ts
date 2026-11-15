@@ -29,7 +29,7 @@ export class GameScene extends Phaser.Scene {
   private running = false;
   private pendingChests = 0;
   /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
-  private zoneQ: ('enhance' | 'obelisk' | 'shop' | 'clear')[] = [];
+  private zoneQ: ('obelisk' | 'shop' | 'clear')[] = [];
   private shopItems: ShopItem[] = [];
   private obeliskRerolled = false;
   private stageTint = -1;
@@ -69,7 +69,6 @@ export class GameScene extends Phaser.Scene {
     this.zoneQ = []; this.stageTint = -1;
     W.zone.onBossKilled = (idx) => {
       if (idx >= ZONE.bossAt.length - 1) { this.zoneQ.push('clear'); return; }
-      if (ZONE.enhanceAfter.includes(idx)) this.zoneQ.push('enhance');
       this.obeliskRerolled = false;
       W.pickups.spot('obelisk');
       toast('<b>Босс повержен!</b><br>Рядом появился обелиск', 2600);
@@ -86,7 +85,7 @@ export class GameScene extends Phaser.Scene {
       const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 130;
       W.orbs.drop(Math.cos(a) * d, Math.sin(a) * d, 's', 1);
     }
-    this.cameras.main.startFollow(W.player.img, true, 1, 1);
+    this.cameras.main.startFollow(W.player.follow, false, 1, 1);
     this.hud = new Hud(() => this.openPause());
     this.joy = new Joystick(document.getElementById('game')!);
     this.paused = false; this.inModal = false; this.running = true;
@@ -116,6 +115,7 @@ export class GameScene extends Phaser.Scene {
     this.inModal = true; this.paused = true; this.joy?.release();
     const choices = W.book.buildChoices(3);
     showLevelUp(P.level - P.pendingLevels + 1, choices, W.book.refundPct(), (c) => {
+      if (c.kind === 'enhance') { showEnhance((id) => { this.enhance(id); this.afterChoice(); }); return; }
       const attr = W.book.apply(c);
       if (attr && attr.options.length) {
         showAttrPick(attr.spell, attr.options, (a) => { W.book.chooseAttr(attr.spell, a); this.afterChoice(); });
@@ -146,20 +146,20 @@ export class GameScene extends Phaser.Scene {
     return out;
   }
 
+  /** Усиление заклинания: урон +50%, перезарядка −5% (можно несколько раз) */
+  private enhance(id: string) {
+    const s = W.stats;
+    s.addSpellDmg(id, 0.5);
+    s.spellCdr[id] = 1 - (1 - (s.spellCdr[id] ?? 0)) * 0.95;
+    s.enhanced[id] = (s.enhanced[id] ?? 0) + 1;
+    W.book.spells.get(id)?.onChange();
+  }
+
   private openZone() {
     const k = this.zoneQ.shift()!;
     const close = () => { this.inModal = false; this.paused = false; };
     this.inModal = true; this.paused = true; this.joy?.release();
-    if (k === 'enhance') {
-      showEnhance((id) => {
-        const s = W.stats;
-        s.addSpellDmg(id, 0.5);
-        s.spellCdr[id] = 1 - (1 - (s.spellCdr[id] ?? 0)) * 0.95;
-        s.enhanced[id] = (s.enhanced[id] ?? 0) + 1;
-        W.book.spells.get(id)?.onChange();
-        close();
-      });
-    } else if (k === 'obelisk') {
+    if (k === 'obelisk') {
       const open = () => {
         const choices = W.artifacts.rollLegend(3);
         if (!choices.length) { W.pickups.removeSpot('obelisk'); close(); return; }

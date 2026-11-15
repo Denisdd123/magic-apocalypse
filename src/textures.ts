@@ -67,6 +67,37 @@ function witch(g: G, s: number, color: number, f = 0, accent = -1) {
 
 const v = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
 
+/** Позы мага по направлению движения (видео оригинала 1_mag/m8_pozy.png) */
+export const POSES = {
+  idle: { rot: 0, nx: 1.12, trail: 0 },          // стоит: широкий треугольник
+  vert: { rot: 0, nx: 0.78, trail: 0 },          // вверх/вниз: узкий, плащ поджат
+  diag: { rot: 0.42, nx: 0.95, trail: 0.22 },    // диагональ: наклон ~25°
+  side: { rot: 0.85, nx: 0.9, trail: 0.42 },     // вбок: наклон ~50°, плащ хвостом назад
+};
+export type Pose = keyof typeof POSES;
+
+/**
+ * Маг в позе (холст 96x96, фигура 32x44 ед. ×2, центр фигуры в (48,52)).
+ * Чистый чёрный силуэт как в оригинале; f — кадр дрожания подола.
+ */
+function witchPose(g: G, f: number, pose: Pose, color = 0x0b0b0d) {
+  const { rot, nx, trail } = POSES[pose];
+  const sw = Math.sin((f / 3) * Math.PI * 2), sw2 = Math.cos((f / 3) * Math.PI * 2);
+  const c = Math.cos(rot), si = Math.sin(rot);
+  const P = (x: number, y: number) => {
+    let dx = (x - 16) * (y > 18 ? nx : 1);
+    if (y > 28) dx -= (y - 28) * trail * 1.6;          // подол уносит назад
+    const dy = y - 26;
+    return v(48 + (dx * c - dy * si) * 2, 52 + (dx * si + dy * c) * 2);
+  };
+  g.fillStyle(color, 1);
+  g.fillPoints([P(11.5, 17), P(20.5, 17), P(18.5, 7), P(20 + sw * 0.4, 2.5), P(23.5 + sw * 0.6, 3.5), P(17.5, 1.5), P(15, 7)], true);
+  g.fillPoints([P(8.3, 17.6), P(16, 16), P(23.7, 17.6), P(16, 19.2)], true);
+  const k = 1 + trail;
+  const hem = [P(9 + sw2 * 0.7 * k, 41), P(11, 39 + sw * 0.9 * k), P(12.8, 42.5 + sw2 * 0.5 * k), P(14.5, 40 - sw * 0.9 * k), P(16, 43), P(17.5, 40 + sw * 0.9 * k), P(19.2, 42.5 - sw2 * 0.5 * k), P(21, 39 - sw * 0.9 * k), P(23 - sw2 * 0.7 * k, 41)];
+  g.fillPoints([P(16, 15), P(18.8, 19), P(20.8, 26), P(22.3 + sw * 0.4, 33), ...hem.reverse(), P(9.7 - sw * 0.4, 33), P(11.2, 26), P(13.2, 19)], true);
+}
+
 /** Череп: купол, челюсть, тёмные глазницы */
 function skull(g: G, cx: number, cy: number, r: number, color: number) {
   g.fillStyle(color, 1);
@@ -118,6 +149,7 @@ export function makeTextures(scene: Phaser.Scene) {
   // --- Маг ---
   for (let f = 0; f < 4; f++) {
     make(scene, 'player_' + f, 64, 88, (g) => witch(g, 2, 0x0d0d10, f, 0x7fe3ff));
+    if (f < 3) for (const p of Object.keys(POSES) as Pose[]) make(scene, `mage_${p}_${f}`, 96, 96, (g) => witchPose(g, f, p));
     make(scene, 'mirage_' + f, 64, 88, (g) => witch(g, 2, 0xffffff, f));
   }
   make(scene, 'shadow', 64, 24, (g) => { g.fillStyle(0x000000, 0.28); g.fillEllipse(32, 12, 60, 20); g.fillStyle(0x000000, 0.25); g.fillEllipse(32, 12, 40, 12); });

@@ -198,7 +198,7 @@ export class Enemies {
     if (s.highHpBonus && e.hp > e.maxHp * 0.75) amount *= 1 + s.highHpBonus;
     if (src) W.dmgBy.set(src, (W.dmgBy.get(src) ?? 0) + Math.min(amount, e.hp));
     e.hp -= amount;
-    if (e.flashT <= 0) e.img.setTintFill(0xffffff);
+    if (e.flashT <= 0) e.img.setTintFill(0x6a2a30); // мягкая тёмно-красная вспышка вместо белой
     e.flashT = 0.06;
     if (kx || ky) { const k = e.type.id === 'boss' ? 0 : e.elite || e.type.id === 'big' ? 0.25 : 1; e.kx += kx * k; e.ky += ky * k; }
     if (e.hp <= 0) { this.kill(e); return true; }

@@ -29,7 +29,7 @@ export const PASSIVES: PassiveDef[] = [
 ];
 
 export interface Choice {
-  kind: 'spell' | 'passive' | 'heal';
+  kind: 'spell' | 'passive' | 'heal' | 'enhance';
   id: string;
   icon: string;
   title: string;
@@ -43,6 +43,8 @@ export class SpellBook {
   spells = new Map<string, Spell>();
   passives = new Map<string, number>();
   refunds = 0;
+  /** Сколько экранов выбора прошло без «Усиления заклинания» (для гарантии ~3 раз за зону) */
+  private noEnhance = 0;
 
   add(def: SpellDef) {
     const sp = def.create();
@@ -77,6 +79,12 @@ export class SpellBook {
       out.push(pool[i].c);
       pool.splice(i, 1);
     }
+    // «Усиление заклинания» — редкая особая карточка (как красные пассивки), ~3 раза за 12-минутную зону
+    this.noEnhance++;
+    if (W.player.level >= 8 && this.spells.size >= 2 && out.length >= 2 && (Math.random() < 0.05 || this.noEnhance >= 17)) {
+      this.noEnhance = 0;
+      out[out.length - 1] = { kind: 'enhance', id: 'enhance', icon: 'ico_atk', title: 'Усиление заклинания', level: 0, lines: ['Выберите своё заклинание: урон +50%, перезарядка -5%'], isNew: false, attr: false };
+    }
     if (!out.length) out.push({ kind: 'heal', id: 'heal', icon: 'ico_hp', title: 'Передышка', level: 0, lines: ['Восстановить 30% здоровья'], isNew: false, attr: false });
     return out;
   }
@@ -84,6 +92,7 @@ export class SpellBook {
   /** Применить выбор. Если уровень даёт преображение — вернуть варианты для второго экрана. */
   apply(c: Choice): { spell: Spell; options: AttrDef[] } | null {
     if (c.kind === 'heal') { W.player.heal(W.stats.maxHp * 0.3); return null; }
+    if (c.kind === 'enhance') return null; // окно выбора открывает GameScene
     if (c.kind === 'passive') {
       const def = PASSIVES.find((p) => p.id === c.id)!;
       this.passives.set(def.id, c.level);

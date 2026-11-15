@@ -30,7 +30,7 @@ export class Pickups {
   items: Item[] = [];
   active = new Map<RuneType, number>(); // руна -> оставшееся время
   cursedLeft = 0;
-  private chestT = 45;
+  private chestT = 120;  // первый сундук ~2:00, дальше раз в ~2.5 мин (видео полной зоны: ~5 сундуков за 12 мин)
   private runeT = 100;  // первая руна примерно на 1:40
   onChest: (() => void) | null = null;
   onRune: ((r: RuneType) => void) | null = null;
@@ -85,7 +85,7 @@ export class Pickups {
     // появление
     this.chestT -= dt;
     if (this.chestT <= 0) {
-      this.chestT = 70 / (1 + s.chestRate);
+      this.chestT = 150 / (1 + s.chestRate);
       const p = this.around(220, 320); this.chest(p.x, p.y);
     }
     this.runeT -= dt;
