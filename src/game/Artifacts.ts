@@ -42,7 +42,7 @@ export const ARTIFACTS: ArtifactDef[] = [
   A({ id: 'sapphire', name: 'Сапфир', emoji: '🔷', rarity: 'common', text: ['Получение маны +12%'], apply: (s) => { s.xpGain += 0.12; } }),
   A({ id: 'harp', name: 'Арфа', emoji: '🪕', rarity: 'common', text: ['Длительность всех заклинаний +12%'], apply: (s) => { s.duration += 0.12; } }),
   A({ id: 'grimoire', name: 'Гримуар', emoji: '📕', rarity: 'common', text: ['Перезарядка всех заклинаний -5%'], apply: (s) => s.addCdr(0.05) }),
-  A({ id: 'torch', name: 'Факел', emoji: '🔥', rarity: 'common', text: ['Урон Пламенного ядра +25%'], apply: (s) => s.addSpellDmg('flame', 0.25) }),
+  A({ id: 'torch', name: 'Факел', emoji: '🔥', rarity: 'common', text: ['Урон Пламенного ядра +25%'], apply: (s) => s.addSpellDmg('fireball', 0.25) }),
 
   // ---- редкие ----
   A({ id: 'virus', name: 'Вирус', emoji: '🦠', rarity: 'rare', text: ['Макс. здоровье элитных монстров -10%'], apply: (s) => { s.eliteHpRed += 0.1; } }),
@@ -54,9 +54,9 @@ export const ARTIFACTS: ArtifactDef[] = [
   A({ id: 'bomb', name: 'Бомба', emoji: '💣', rarity: 'rare', text: ['Сила атаки +8%', 'Размер всех заклинаний +8%'], apply: (s) => { s.atkPct += 0.08; s.size += 0.08; } }),
   A({ id: 'radar', name: 'Радар', emoji: '📡', rarity: 'rare', text: ['Шанс крит. удара +9%'], apply: (s) => { s.crit += 0.09; } }),
   A({ id: 'grail', name: 'Святой Грааль', emoji: '🏆', rarity: 'rare', text: ['Исцеление в сек +0.5%'], apply: (s) => { s.regen += 0.005; } }),
-  A({ id: 'quiver', name: 'Звёздный колчан', emoji: '🏹', rarity: 'rare', text: ['Урон Звёздной иглы +30%', 'Число игл +1'], apply: (s) => { s.addSpellDmg('needle', 0.3); s.addSpellCount('needle', 1); } }),
-  A({ id: 'firefly', name: 'Светлячок', emoji: '✨', rarity: 'rare', text: ['Число духов-стражей +2'], apply: (s) => s.addSpellCount('guardians', 2) }),
-  A({ id: 'glassorb', name: 'Стеклянный шар', emoji: '🔮', rarity: 'rare', text: ['Число сфер в Кольце +2'], apply: (s) => s.addSpellCount('orbring', 2) }),
+  A({ id: 'quiver', name: 'Звёздный колчан', emoji: '🏹', rarity: 'rare', text: ['Урон Звёздной иглы +30%', 'Число игл +1'], apply: (s) => { s.addSpellDmg('bolt', 0.3); s.addSpellCount('bolt', 1); } }),
+  A({ id: 'firefly', name: 'Светлячок', emoji: '✨', rarity: 'rare', text: ['Число духов-стражей +2'], apply: (s) => s.addSpellCount('spirit', 2) }),
+  A({ id: 'glassorb', name: 'Стеклянный шар', emoji: '🔮', rarity: 'rare', text: ['Число сфер в Кольце +2'], apply: (s) => s.addSpellCount('satellite', 2) }),
   A({ id: 'heartroot', name: 'Сердце земли', emoji: '🍖', rarity: 'rare', text: ['Каждые 30 сек. рядом появляется сфера жизни'], period: 30, onTick: () => { const P = W.player; W.orbs.drop(P.x + 30, P.y - 20, 'life', 0); } }),
   A({ id: 'mask', name: 'Маска маскарада', emoji: '🎭', rarity: 'rare', text: ['Шанс крит. удара +5%', 'Уклонение +5%'], apply: (s) => { s.crit += 0.05; s.evasion += 0.05; } }),
   A({ id: 'stainedglass', name: 'Витраж', emoji: '🪟', rarity: 'rare', text: ['Длительность рун +25%'], apply: (s) => { s.runeDur += 0.25; } }),
@@ -70,9 +70,9 @@ export const ARTIFACTS: ArtifactDef[] = [
   A({ id: 'web', name: 'Паутина', emoji: '🕸️', rarity: 'epic', text: ['Скорость всех врагов -10%'], apply: (s) => { s.enemySlow += 0.1; } }),
   A({ id: 'secondheart', name: 'Второе сердце', emoji: '❤️‍🔥', rarity: 'epic', text: ['Воскрешение +1', 'Макс. здоровье +50%'], apply: (s) => { s.revives += 1; s.hpPct += 0.5; } }),
   A({ id: 'aegis', name: 'Эгида', emoji: '🛡️', rarity: 'epic', text: ['Получаемый урон -10%', 'Приумножение атаки +10%'], apply: (s) => { s.addArmor(0.1); s.amp += 0.1; } }),
-  A({ id: 'cauldron', name: 'Котёл', emoji: '🫕', rarity: 'epic', text: ['Урон Пламенного ядра +50%'], apply: (s) => s.addSpellDmg('flame', 0.5) }),
-  A({ id: 'magnet', name: 'Электромагнит', emoji: '🧲', rarity: 'epic', text: ['Урон Кольца сфер +50%'], apply: (s) => s.addSpellDmg('orbring', 0.5) }),
-  A({ id: 'wand', name: 'Волшебная палочка', emoji: '🪄', rarity: 'epic', text: ['Число духов-стражей +2', 'Урон духов +30%'], apply: (s) => { s.addSpellCount('guardians', 2); s.addSpellDmg('guardians', 0.3); } }),
+  A({ id: 'cauldron', name: 'Котёл', emoji: '🫕', rarity: 'epic', text: ['Урон Пламенного ядра +50%'], apply: (s) => s.addSpellDmg('fireball', 0.5) }),
+  A({ id: 'magnet', name: 'Электромагнит', emoji: '🧲', rarity: 'epic', text: ['Урон Кольца сфер +50%'], apply: (s) => s.addSpellDmg('satellite', 0.5) }),
+  A({ id: 'wand', name: 'Волшебная палочка', emoji: '🪄', rarity: 'epic', text: ['Число духов-стражей +2', 'Урон духов +30%'], apply: (s) => { s.addSpellCount('spirit', 2); s.addSpellDmg('spirit', 0.3); } }),
   A({ id: 'blackcat', name: 'Чёрная кошка', emoji: '🐈‍⬛', rarity: 'epic', text: ['Перезарядка всех заклинаний -9%'], apply: (s) => s.addCdr(0.09) }),
   // ---- легендарные (обелиск после босса) ----
   A({ id: 'abysscrown', name: 'Корона бездны', emoji: '👑', rarity: 'legend', text: ['Сила атаки +40%', 'Приумножение атаки +10%'], apply: (s) => { s.atkPct += 0.4; s.amp += 0.1; } }),
@@ -86,7 +86,7 @@ export const ARTIFACTS: ArtifactDef[] = [
   A({ id: 'blacksun', name: 'Чёрное солнце', emoji: '🌑', rarity: 'legend', text: ['Каждые 8 сек. волна вокруг мага (400% силы)'], period: 8, onTick: () => { const P = W.player; areaDamage(P.x, P.y, 150, W.stats.spellDamage(400), 300, 'Чёрное солнце'); W.fx.burst(P.x, P.y, 150, 0xff9a2e, 0.5, 'ring'); } }),
   A({ id: 'perpetuum', name: 'Вечный двигатель', emoji: '♾️', rarity: 'legend', text: ['Скорость движения +20%', 'Уклонение +12%', 'Исцеление в сек +0.5%'], apply: (s) => { s.speed += 0.2; s.evasion += 0.12; s.regen += 0.005; } }),
   A({ id: 'chaosdice', name: 'Кости хаоса', emoji: '🎲', rarity: 'legend', text: ['Шанс крит. удара +12%', 'Усиление крит. удара +60%'], apply: (s) => { s.crit += 0.12; s.critMult += 0.6; } }),
-  A({ id: 'freeshot', name: 'Вольный стрелок', emoji: '🌠', rarity: 'epic', text: ['Урон Звёздной иглы +100%'], apply: (s) => s.addSpellDmg('needle', 1) }),
+  A({ id: 'freeshot', name: 'Вольный стрелок', emoji: '🌠', rarity: 'epic', text: ['Урон Звёздной иглы +100%'], apply: (s) => s.addSpellDmg('bolt', 1) }),
 ];
 
 export interface SynergyDef {
@@ -104,10 +104,10 @@ export const SYNERGIES: SynergyDef[] = [
   { id: 'hunter', name: 'Охотник', emoji: '🏹', parts: ['target', 'radar', 'rainbow'], text: ['Шанс крит. удара +7%', 'Усиление крит. удара +40%'], apply: (s) => { s.crit += 0.07; s.critMult += 0.4; } },
   { id: 'wanderer', name: 'Странник', emoji: '🥾', parts: ['broom', 'breeze', 'shadowcloak'], text: ['Скорость движения +10%', 'Уклонение +10%'], apply: (s) => { s.speed += 0.1; s.evasion += 0.1; } },
   { id: 'healer', name: 'Целитель', emoji: '🌿', parts: ['bloodvial', 'mandrake', 'grail', 'heartroot'], text: ['Макс. здоровье +50%', 'Исцеление в сек +0.5%'], apply: (s) => { s.hpPct += 0.5; s.regen += 0.005; } },
-  { id: 'spiritlord', name: 'Повелитель духов', emoji: '👻', parts: ['firefly', 'wand', 'quiver'], text: ['Урон духов-стражей и Звёздной иглы +50%'], apply: (s) => { s.addSpellDmg('guardians', 0.5); s.addSpellDmg('needle', 0.5); } },
+  { id: 'spiritlord', name: 'Повелитель духов', emoji: '👻', parts: ['firefly', 'wand', 'quiver'], text: ['Урон духов-стражей и Звёздной иглы +50%'], apply: (s) => { s.addSpellDmg('spirit', 0.5); s.addSpellDmg('bolt', 0.5); } },
   { id: 'treasury', name: 'Сокровищница', emoji: '💰', parts: ['bag', 'sapphire', 'diamond'], text: ['Сундуки появляются на 30% чаще', 'Получение маны +15%'], apply: (s) => { s.chestRate += 0.3; s.xpGain += 0.15; } },
   { id: 'fortress', name: 'Крепость', emoji: '🏰', parts: ['cross', 'aegis', 'secondheart'], text: ['Получаемый урон -15%', 'Воскрешение +1'], apply: (s) => { s.addArmor(0.15); s.revives += 1; } },
-  { id: 'pyro', name: 'Пиромант', emoji: '🌋', parts: ['torch', 'cauldron', 'powder', 'bomb'], text: ['Урон Пламенного ядра +60%', 'Размер заклинаний +10%'], apply: (s) => { s.addSpellDmg('flame', 0.6); s.size += 0.1; } },
+  { id: 'pyro', name: 'Пиромант', emoji: '🌋', parts: ['torch', 'cauldron', 'powder', 'bomb'], text: ['Урон Пламенного ядра +60%', 'Размер заклинаний +10%'], apply: (s) => { s.addSpellDmg('fireball', 0.6); s.size += 0.1; } },
 ];
 
 export const artifactById = (id: string) => ARTIFACTS.find((a) => a.id === id)!;

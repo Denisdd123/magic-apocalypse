@@ -14,6 +14,11 @@ export function icon(key: string, tint?: number): string {
   const ck = key + ':' + (tint ?? '');
   const c = iconCache.get(ck);
   if (c) return c;
+  if (textures && !textures.exists(key)) {
+    // ключ без суффикса имени: 'pas_31' → 'pas_31_intelligence'
+    const full = textures.getTextureKeys().find((k) => k.startsWith(key + '_'));
+    if (full) key = full;
+  }
   if (!textures || !textures.exists(key)) return '';
   const src = textures.get(key).getSourceImage() as HTMLCanvasElement | HTMLImageElement;
   const cv = document.createElement('canvas');
@@ -195,7 +200,8 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
   for (const c of choices) {
     const card = el('div', 'card');
     const cls = c.attr ? 'attr' : c.isNew ? '' : 'up';
-    if (c.kind === 'enhance') card.classList.add('special');
+    if (c.kind === 'enchant' || c.kind === 'special') card.classList.add('special');
+    if (c.kind === 'combo') card.classList.add('combo');
     const tag = c.isNew && c.kind !== 'heal' ? '<span class="tag">новое</span>' : '';
     card.innerHTML = `
       <img src="${icon(c.icon)}">
@@ -203,7 +209,7 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
         <div class="title">${esc(c.title)}${tag}</div>
         ${c.lines.map((l) => `<div class="line ${cls}">${esc(l)}</div>`).join('')}
       </div>
-      ${c.level ? `<div class="lv">Lv ${c.level}</div>` : c.kind === 'enhance' ? '<div class="lv star">★</div>' : ''}`;
+      ${c.level ? `<div class="lv">Lv ${c.level}</div>` : c.kind === 'enchant' || c.kind === 'special' ? '<div class="lv star">★</div>' : ''}`;
     card.addEventListener('click', () => { if (locked) return; m.remove(); onPick(c); });
     cards.appendChild(card);
   }

@@ -1,3 +1,4 @@
+import { DataSpell } from '../game/spells/DataSpell';
 import { RARITY, type ArtifactDef } from '../game/Artifacts';
 import { W } from '../game/World';
 import { artifactText } from './chest';
@@ -67,8 +68,8 @@ export function showShop(items: ShopItem[], onBuy: (it: ShopItem) => void, onClo
 export function showEnhance(onPick: (id: string) => void) {
   clearModals();
   const m = div('modal enhance', `
-    <h1>Усиление заклинания</h1>
-    <div class="sub">Выберите заклинание для усиления</div>
+    <h1>Очарование</h1>
+    <div class="sub">Выберите заклинание (до 3 раз на каждое)</div>
     <div class="egrid"></div>
     <div class="einfo"></div>
     <button class="take" disabled>Выбрать</button>`);
@@ -77,13 +78,14 @@ export function showEnhance(onPick: (id: string) => void) {
   const take = m.querySelector('.take') as HTMLButtonElement;
   let sel = '';
   for (const sp of W.book.spells.values()) {
-    const n = W.stats.enhanced[sp.def.id] ?? 0;
+    if (!(sp instanceof DataSpell) || !sp.canEnchant()) continue;
+    const n = sp.enchants;
     const c = div('ecard', `<img src="${icon(sp.def.icon)}">${n ? `<b>+${n}</b>` : ''}`);
     c.addEventListener('click', () => {
       sel = sp.def.id; take.disabled = false;
       grid.querySelectorAll('.ecard').forEach((x) => x.classList.remove('sel'));
       c.classList.add('sel');
-      info.innerHTML = `<div class="aname">${esc(sp.def.name)}</div><div class="atext"><div>Урон +50%</div><div>Перезарядка -5%</div></div>`;
+      info.innerHTML = `<div class="aname">${esc(sp.def.name)}</div><div class="atext">${(sp.data.enchant?.mods ?? []).map((x) => `<div>${esc(x.text)}</div>`).join('')}</div>`;
     });
     grid.appendChild(c);
   }

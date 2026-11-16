@@ -40,6 +40,8 @@ export class Enemy {
   hp = 1; maxHp = 1; speed = 30; dmg = 5; xp = 1;
   kx = 0; ky = 0;          // отбрасывание
   stunT = 0; flashT = 0;
+  /** заморозка (стоит, синий), замедление: доля скорости slowK на slowT с */
+  freezeT = 0; slowT = 0; slowK = 0;
   frame = 0;
   elite = false;
   cursed = false;
@@ -125,7 +127,7 @@ export class Enemies {
     if (fixedHp) e.maxHp = e.hp = fixedHp * (1 - s.enemyHpRed);
     e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow) * (boss ? 1 : 1 + g.spd / 100);
     e.dmg = type.dmg * (1 + g.atk / 100) * (elite ? 1.5 : 1);
-    e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0;
+    e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0; e.freezeT = 0; e.slowT = 0; e.slowK = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
     e.frame = (Math.random() * 3) | 0;
     e.img.setTexture(type.tex + '_' + e.frame).setVisible(true).setPosition(x, y).clearTint().setRotation(boss ? 0 : Math.random() * 6.28);
@@ -213,10 +215,13 @@ export class Enemies {
         continue;
       }
 
-      if (e.stunT > 0) e.stunT -= dt;
+      if (e.freezeT > 0) { e.freezeT -= dt; if (e.freezeT <= 0 && e.flashT <= 0) e.img.clearTint(); }
+      else if (e.stunT > 0) e.stunT -= dt;
       else {
-        e.x += (dx / d) * e.speed * dt;
-        e.y += (dy / d) * e.speed * dt;
+        let sp = e.speed;
+        if (e.slowT > 0) { e.slowT -= dt; sp *= 1 - e.slowK; }
+        e.x += (dx / d) * sp * dt;
+        e.y += (dy / d) * sp * dt;
       }
       // отбрасывание
       if (e.kx || e.ky) {
@@ -240,7 +245,7 @@ export class Enemies {
       const rr = e.r + P.r;
       if (dx * dx + dy * dy < rr * rr) P.hurt(e.dmg);
 
-      if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) e.img.clearTint(); }
+      if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) { if (e.freezeT > 0) e.img.setTint(0x8fd0ff); else e.img.clearTint(); } }
       // «дрожащая линия»: кадры сменяются ~8 раз в секунду, у каждого моба со своим сдвигом
       const fr = Math.floor(W.scene.time.now / 250 + e.id * 0.37) % 3; // ~4 смены в секунду
       if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
@@ -285,10 +290,35 @@ export class Enemies {
       W.fx.burst(e.x, e.y, 60, 0xff2d8a, 0.5);
     }
     // сфера маны — не по шансу, а за каждые 20 убийств (общий счётчик)
-    if (++this.orbKills >= LOOT.orbEveryKills) {
+    if (++this.orbKills >= LOOT.orbEveryKills / (1 + W.stats.orbRate)) {
       this.orbKills = 0;
       W.orbs.drop(e.x, e.y, Math.random() < LOOT.smallOrbChance ? 's' : 'm');
     }
+  }
+
+  /** Боссы и элитки к заморозке невосприимчивы (как в оригинале) */
+  freeze(e: Enemy, sec: number) {
+    if (!e.alive || e.elite || e.type.id === 'boss') return;
+    e.freezeT = Math.max(e.freezeT, sec);
+    e.img.setTint(0x8fd0ff);
+  }
+  stun(e: Enemy, sec: number) { if (e.alive && e.type.id !== 'boss') e.stunT = Math.max(e.stunT, sec); }
+  slow(e: Enemy, k: number, sec: number) { if (!e.alive) return; e.slowK = Math.max(e.slowT > 0 ? e.slowK : 0, k); e.slowT = Math.max(e.slowT, sec); }
+
+  /** Все живые враги в видимой области (с запасом pad) */
+  visible(pad = 0): Enemy[] {
+    const v = this.scene.cameras.main.worldView, out: Enemy[] = [];
+    for (const e of this.list) if (e.alive && e.x > v.x - pad && e.x < v.right + pad && e.y > v.y - pad && e.y < v.bottom + pad) out.push(e);
+    return out;
+  }
+
+  /** n ближайших к точке (разные) */
+  nearestN(x: number, y: number, n: number, maxR = 9999): Enemy[] {
+    const c: [number, Enemy][] = [];
+    const r2 = maxR * maxR;
+    for (const e of this.list) { if (!e.alive) continue; const d = (e.x - x) ** 2 + (e.y - y) ** 2; if (d <= r2) c.push([d, e]); }
+    c.sort((a, b) => a[0] - b[0]);
+    return c.slice(0, n).map((p) => p[1]);
   }
 
   nearest(x: number, y: number, maxR = 9999, skip?: Set<Enemy>): Enemy | null {

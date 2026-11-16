@@ -8,7 +8,8 @@ import { Orbs } from './Orbs';
 import { Projectiles } from './Projectiles';
 import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
-import { STAR_NEEDLE } from './spells/StarNeedle';
+import { BOLT } from './spells/v2/Bolt';
+import { ART } from '../data/art';
 import { W } from './World';
 import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
 import { showDeath, showPause } from '../ui/screens';
@@ -38,6 +39,11 @@ export class GameScene extends Phaser.Scene {
 
   constructor() { super('game'); }
 
+  preload() {
+    // новая графика 2.0 (art-raw → public/v2, scripts/import_art.py)
+    for (const [k, p] of Object.entries(ART)) this.load.image(k, p);
+  }
+
   create() {
     makeTextures(this);
     initUi(this.textures);
@@ -64,7 +70,7 @@ export class GameScene extends Phaser.Scene {
     W.enemies = new Enemies(this);
     W.player = new Player(this);
     W.book = new SpellBook();
-    W.book.add(STAR_NEEDLE);
+    W.book.add(BOLT);
     W.artifacts = new ArtifactSet();
     W.pickups = new Pickups(this);
     W.zone = new Zone();
@@ -117,12 +123,12 @@ export class GameScene extends Phaser.Scene {
     this.inModal = true; this.paused = true; this.joy?.release();
     const choices = W.book.buildChoices(3);
     showLevelUp(P.level - P.pendingLevels + 1, choices, W.book.refundPct(), (c) => {
-      if (c.kind === 'enhance') { showEnhance((id) => { this.enhance(id); this.afterChoice(); }); return; }
+      if (c.kind === 'enchant') { showEnhance((id) => { W.book.enchant(id); this.afterChoice(); }); return; }
       const attr = W.book.apply(c);
       if (attr && attr.options.length) {
         showAttrPick(attr.spell, attr.options, (a) => { W.book.chooseAttr(attr.spell, a); this.afterChoice(); });
       } else this.afterChoice();
-    }, () => { W.book.refund(); this.afterChoice(); });
+    }, () => { if (choices[0]?.kind === 'combo') W.book.skipCombo(); else W.book.refund(); this.afterChoice(); });
   }
 
   private afterChoice() {
@@ -143,20 +149,11 @@ export class GameScene extends Phaser.Scene {
       let r = Math.random() * total;
       const a = pool.find((x) => (r -= RARITY[x.rarity].weight) <= 0) ?? pool[pool.length - 1];
       pool.splice(pool.indexOf(a), 1);
-      out.push({ a, price: Math.round(base[a.rarity] * visitMul * (0.98 + Math.random() * 0.1)), discount: false, sold: false });
+      out.push({ a, price: Math.round(base[a.rarity] * visitMul * (0.98 + Math.random() * 0.1) * (1 - W.stats.shopDiscount)), discount: false, sold: false });
     }
     const d = out[(Math.random() * out.length) | 0];
     if (d) { d.discount = true; d.price = Math.round(d.price * 0.75 / 10) * 10; }
     return out;
-  }
-
-  /** Усиление заклинания: урон +50%, перезарядка −5% (можно несколько раз) */
-  private enhance(id: string) {
-    const s = W.stats;
-    s.addSpellDmg(id, 0.5);
-    s.spellCdr[id] = 1 - (1 - (s.spellCdr[id] ?? 0)) * 0.95;
-    s.enhanced[id] = (s.enhanced[id] ?? 0) + 1;
-    W.book.spells.get(id)?.onChange();
   }
 
   private openZone() {
@@ -246,8 +243,6 @@ export class GameScene extends Phaser.Scene {
       this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
       const b = W.zone.boss;
       this.hud!.boss(b && b.alive ? b.hp / b.maxHp : null);
-      const ph = W.book.spells.get('phase') as any;
-      if (ph) this.hud!.cd('phase', 'ico_phase', ph.active > 0 ? 1 : ph.cdLeft / 45);
       for (const r of Object.keys(RUNES) as (keyof typeof RUNES)[]) {
         const left = W.pickups.active.get(r);
         if (left !== undefined) this.hud!.cd('rune_' + r, 'rune', 1 - left / (RUNES[r].dur * (1 + W.stats.runeDur)), RUNES[r].tint);
