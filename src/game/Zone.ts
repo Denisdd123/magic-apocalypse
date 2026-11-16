@@ -28,9 +28,6 @@ export class Zone {
   get bossFight() { return !!this.boss; }
   /** Таймер стоит во время боя с боссом */
   get timeFrozen() { return !!this.boss; }
-  /** Рост числа мобов после каждого босса */
-  get rateMul() { return [1, 1.8, 2.3, 2.8, 3][this.stage]; }
-  get speedMul() { return 1 + 0.12 * this.stage; }
 
   update() {
     const t = W.time;

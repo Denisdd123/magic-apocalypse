@@ -19,6 +19,15 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
   small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 1, drop: 0.12 },
   white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 4, drop: 0.4 },
   big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 20, drop: 1 },
+  // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
+  w1:  { id: 'w1',  tex: 'enemy_basic', r: 9,  size: 24, hp: 14, speed: 33, dmg: 6,  xp: 1, drop: 0.12 }, // Рой малый
+  w6:  { id: 'w6',  tex: 'enemy_basic', r: 10, size: 27, hp: 28, speed: 31, dmg: 8,  xp: 1, drop: 0.15 }, // Рой средний
+  w11: { id: 'w11', tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 31, dmg: 11, xp: 2, drop: 0.2 },  // Рой большой
+  w13: { id: 'w13', tex: 'enemy_red',   r: 10, size: 27, hp: 42, speed: 31, dmg: 22, xp: 2, drop: 0.2 },  // Перехватчик
+  w16: { id: 'w16', tex: 'enemy_white', r: 12, size: 31, hp: 70, speed: 27, dmg: 11, xp: 3, drop: 0.25 }, // Улей
+  w31: { id: 'w31', tex: 'enemy_small', r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 1, drop: 0.15 }, // Скарабей
+  w21: { id: 'w21', tex: 'enemy_white', r: 12, size: 31, hp: 56, speed: 29, dmg: 27, xp: 3, drop: 0.3 },  // Мина
+  w22: { id: 'w22', tex: 'enemy_white', r: 13, size: 33, hp: 56, speed: 29, dmg: 27, xp: 3, drop: 0.3 },  // Вой
   // боссы зоны (HP задаётся в Zone.ts)
   boss0: { id: 'boss', tex: 'boss_0', r: 30, size: 84, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },
   boss1: { id: 'boss', tex: 'boss_1', r: 32, size: 90, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },
@@ -42,6 +51,33 @@ export class Enemy {
 
 let nextId = 1;
 
+/**
+ * Спавн как в оригинале (замер из памяти Magic Survival, зона 1, research/source_findings.md):
+ * волна = один тип моба на 30 с, по кругу; каждые delay с создаётся num мобов; живых не больше ALIVE_CAP.
+ * Рост статов мобов — проценты к базе по стадии зоны (сколько боссов убито) и времени.
+ */
+export const ORIG = {
+  aliveCap: 300,
+  /** типы волн до первого босса (0:00, 0:30, 1:00 …), затем цикл после каждого босса */
+  firstCycle: ['w1', 'w6', 'w11', 'w13', 'w16', 'w31'],
+  cycle: ['w6', 'w11', 'w13', 'w16', 'w31', 'w21'],
+  bossWave: ['w21', 'w22', 'w22', 'w22'],
+  /** [время с, мобов за раз, интервал с] — до первого босса; 0:30 — оценка (не замерено) */
+  rate0: [[0, 2, 0.75], [30, 3, 0.5], [60, 3, 0.3], [90, 10, 0.75], [150, 15, 0.75]] as [number, number, number][],
+  rateBoss: [[30, 0.75], [80, 1], [120, 1], [120, 1]] as [number, number][],
+  /** после боссов: [время с, мобов, интервал] */
+  rateAfter: [[180, 40, 0.75], [300, 60, 1], [330, 70, 1], [360, 80, 1], [540, 120, 1]] as [number, number, number][],
+  /** HP %: во время босса k, после босса k — база + шаг за каждые 30 с (стадия 3 — оценка) */
+  hpBoss: [27.6, 398.5, 2112, 6000],
+  hpAfter: [[43.88, 16.28], [473.9, 75.4], [2400, 350], [6000, 0]] as [number, number][],
+  spdBoss: [60, 95, 130, 165],
+  spdAfter: [80, 115, 150, 185],
+  atkBoss: [80, 150, 220, 290],
+  atkAfter: [90, 160, 230, 300],
+};
+
+const step = (t: number, from: number) => Math.max(0, Math.floor((t - from) / 30));
+
 export class Enemies {
   list: Enemy[] = [];
   private free: Enemy[] = [];
@@ -53,12 +89,23 @@ export class Enemies {
 
   constructor(private scene: Phaser.Scene) {}
 
-  /** Множитель HP врагов от времени (мягкий старт на первой карте) */
-  hpMul() { const t = W.time; return 1 + t / 100 + (t / 320) ** 2; }
+  /** Проценты роста статов мобов (как Z_Database.EnemyUnitVar_*RatioU в оригинале) */
+  growth(): { hp: number; spd: number; atk: number } {
+    const t = W.time, z = W.zone, st = z.stage, bossAt = 180 * st;
+    if (z.bossFight) { const k = Math.min(st, 3); return { hp: ORIG.hpBoss[k], spd: ORIG.spdBoss[k], atk: ORIG.atkBoss[k] }; }
+    if (st === 0) {
+      const w = step(t, 0);
+      return { hp: 0, spd: Math.min(10 * w, 60), atk: w <= 4 ? 10 * w : 60 };
+    }
+    const k = Math.min(st, 4) - 1, n = step(t, bossAt);
+    const [h0, hs] = ORIG.hpAfter[k];
+    return { hp: h0 + hs * n, spd: ORIG.spdAfter[k] + n, atk: ORIG.atkAfter[k] + 10 * n };
+  }
+  hpMul() { return 1 + this.growth().hp / 100; }
 
-  spawn(type: EnemyType, x: number, y: number, elite = false, fixedHp = 0) {
+  spawn(type: EnemyType, x: number, y: number, elite = false, fixedHp = 0, wave = false) {
     const boss = type.id === 'boss';
-    if (this.aliveCount >= MAX_ENEMIES && !elite && !boss) return null;
+    if (this.aliveCount >= (wave ? ORIG.aliveCap : MAX_ENEMIES) && !elite && !boss) return null;
     let e = this.free.pop();
     if (!e) {
       e = new Enemy();
@@ -71,10 +118,11 @@ export class Enemies {
     const scale = elite ? 1.7 : 1;
     e.r = type.r * scale;
     const s = W.stats;
-    e.maxHp = e.hp = type.hp * this.hpMul() * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
+    const g = this.growth();
+    e.maxHp = e.hp = type.hp * (1 + g.hp / 100) * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
     if (fixedHp) e.maxHp = e.hp = fixedHp * (1 - s.enemyHpRed);
-    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow) * (boss ? 1 : W.zone.speedMul);
-    e.dmg = type.dmg * (1 + W.time / 400) * (elite ? 1.5 : 1);
+    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow) * (boss ? 1 : 1 + g.spd / 100);
+    e.dmg = type.dmg * (1 + g.atk / 100) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
     e.frame = (Math.random() * 3) | 0;
@@ -95,26 +143,35 @@ export class Enemies {
     return { x: W.player.x + Math.cos(a) * R, y: W.player.y + Math.sin(a) * R, a };
   }
 
-  private pickType(): EnemyType {
-    const t = W.time, r = Math.random(), st = W.zone.stage;
-    // после боссов состав волн меняется (видео полной зоны)
-    if (st >= 3) return r < 0.06 ? ENEMY_TYPES.big : r < 0.5 ? ENEMY_TYPES.white : r < 0.85 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
-    if (st >= 2) return r < 0.05 ? ENEMY_TYPES.big : r < 0.45 ? ENEMY_TYPES.white : r < 0.75 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
-    if (st >= 1) return t > 300 && r < 0.04 ? ENEMY_TYPES.big : r < 0.15 ? ENEMY_TYPES.white : r < 0.7 ? ENEMY_TYPES.red : ENEMY_TYPES.basic;
-    if (t > 300 && r < 0.04) return ENEMY_TYPES.big;
-    if (t > 240 && r < 0.25) return ENEMY_TYPES.white;
-    if (t > 75 && r < 0.45) return ENEMY_TYPES.red;
-    return ENEMY_TYPES.basic;
+  /** Тип текущей волны (один на 30 с) */
+  waveType(): EnemyType {
+    const t = W.time, z = W.zone, st = z.stage;
+    if (z.bossFight) return ENEMY_TYPES[ORIG.bossWave[Math.min(st, 3)]];
+    const id = st === 0 ? ORIG.firstCycle[Math.min(step(t, 0), 5)] : ORIG.cycle[step(t, 180 * st) % 6];
+    return ENEMY_TYPES[id];
+  }
+
+  /** [мобов за раз, интервал с] */
+  waveRate(): [number, number] {
+    const t = W.time, z = W.zone;
+    if (z.bossFight) return ORIG.rateBoss[Math.min(z.stage, 3)];
+    const tab = z.stage === 0 ? ORIG.rate0 : ORIG.rateAfter;
+    let r = tab[0];
+    for (const x of tab) if (t >= x[0]) r = x;
+    return [r[1], r[2]];
   }
 
   updateSpawner(dt: number) {
     const t = W.time;
-    const rate = Math.min(1.2 + t * 0.04 + (t / 60) ** 2 * 0.6, 32) * W.zone.rateMul;
-    this.spawnAcc += rate * dt;
-    while (this.spawnAcc >= 1) {
-      this.spawnAcc -= 1;
-      const p = this.spawnPoint();
-      this.spawn(this.pickType(), p.x, p.y);
+    this.spawnAcc -= dt;
+    if (this.spawnAcc <= 0) {
+      const [num, delay] = this.waveRate();
+      this.spawnAcc += delay;
+      const type = this.waveType();
+      for (let i = 0; i < num && this.aliveCount < ORIG.aliveCap; i++) {
+        const p = this.spawnPoint(20 + Math.random() * 60);
+        this.spawn(type, p.x, p.y, false, 0, true);
+      }
     }
     // элитка раз в минуту
     if (t >= this.nextElite) {
