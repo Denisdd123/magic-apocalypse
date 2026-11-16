@@ -89,9 +89,16 @@ export class Player {
     if (this.dead || this.hurtT > 0 || this.invulnT > 0) return;
     if (this.onBeforeHurt && this.onBeforeHurt()) return;
     if (Math.random() < W.stats.evasion) { this.hurtT = PLAYER.hurtCooldown; return; }
-    this.hp -= amount * (1 - W.stats.dmgTaken);
+    let d = amount * (1 - W.stats.dmgTaken);
+    const A = W.artifacts;
+    // артефакты: Силовое поле, Барьер, доп. здоровье Жизненного щита
+    if (A.hurtFx) { d = A.onHurt(d); if (d <= 0) { this.hurtT = PLAYER.hurtCooldown; return; } }
+    this.hp -= d;
     this.hurtT = PLAYER.hurtCooldown;
-    if (this.hp <= 0) { this.hp = 0; this.dead = true; }
+    if (this.hp <= 0) {
+      this.hp = 0;
+      if (!(A.hurtFx && A.saveFromDeath())) this.dead = true; // Гомункул
+    }
   }
 
   heal(v: number) { this.hp = Math.min(W.stats.maxHp, this.hp + v); }

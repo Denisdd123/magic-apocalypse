@@ -177,9 +177,11 @@ export class SpellBook {
     }
     // особая карточка (красная пассивка или Очарование): ~5% + гарантия раз в 17 экранов
     this.noSpecial++;
-    if (W.player.level >= 8 && out.length >= 2 && (Math.random() < 0.05 || this.noSpecial >= 17)) {
+    // Единорог (artFx.unicorn = 1): один раз гарантированно предлагает особую карточку, затем флаг = 2
+    const unicorn = s.artFx.unicorn === 1;
+    if (out.length >= 2 && (unicorn || (W.player.level >= 8 && (Math.random() < 0.05 || this.noSpecial >= 17)))) {
       const sp = this.specialChoice();
-      if (sp) { this.noSpecial = 0; out[out.length - 1] = sp; }
+      if (sp) { this.noSpecial = 0; out[out.length - 1] = sp; if (unicorn) s.artFx.unicorn = 2; }
     }
     if (!out.length) out.push({ kind: 'heal', id: 'heal', icon: 'life_heart', title: 'Передышка', level: 0, lines: ['Восстановить 30% здоровья'], isNew: false, attr: false });
     return out;

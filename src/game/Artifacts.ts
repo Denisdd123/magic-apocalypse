@@ -1,7 +1,10 @@
+import type Phaser from 'phaser';
 import type { Stats } from './Stats';
 import { areaDamage } from './Projectiles';
 import { W } from './World';
 import type { RuneType } from './Pickups';
+import type { Enemy } from './Enemies';
+import { DEPTH } from '../config';
 import { ALL_SPELLS } from './spells/registry';
 import { DMG_SCALE } from './spells/DataSpell';
 import { ART_DATA, SYN_DATA, type ArtData, type SynData } from '../data/artifacts_data';
@@ -126,73 +129,42 @@ function applyEff(s: Stats, id: number, v: number) {
   }
 }
 
-/** Что не реализовано (нужен хук в Enemies.damage / kill / Orbs / SpellBook / UI) */
+/** Что не реализовано (нужен код в заклинаниях / SpellBook / UI / волнах) */
 const TODO_ART: Record<number, string> = {
   57: 'КД вдвое после 5-го применения (хук в Spell.ready)',
-  60: 'крит при первом ударе (Enemies.damage)',
-  70: 'каждый 5-й удар — крит (Enemies.damage)',
-  74: 'казнь врагов <20% HP (Enemies.damage)',
-  80: 'замедление −10% при первой заморозке (Enemies.freeze)',
-  87: 'после 444 сфер маны враги рядом исчезают (Orbs)',
-  88: 'HP крупных монстров −15% (Enemies.spawn)',
-  92: 'мана от крупиц +10% (Orbs; отдельно от убийств)',
   95: 'время быстрее на 24%, золото +24%',
-  96: 'перевыбор артефактов сундука 3 раза (ui/chest)',
-  98: 'мгновенная смерть 8% при первом ударе (Enemies.damage)',
-  100: 'взрыв при подборе сферы жизни (Orbs)',
-  101: 'взрыв 15% при убийстве (Enemies.kill)',
-  102: 'Гидра: −1% текущего HP за удар, до 25 раз (Enemies.damage)',
-  106: 'излишек лечения сферой → доп. здоровье (Orbs/Player)',
-  107: 'размер персонажа −25% (Player)',
-  110: 'проход сквозь врагов (Enemies контакт)',
-  113: 'взрыв при каждом ударе спутника (Satellite)',
-  116: 'малые сферы маны → средние (Orbs)',
+  96: 'перевыбор артефактов сундука 3 раза (ui/chest; s.artFx[51] = 3)',
+  107: 'размер персонажа −25% — уменьшен только хитбокс P.r, картинка прежняя',
+  110: 'проход сквозь врагов — в нашей игре враги не толкают мага, эффекта нет',
   117: 'макс. уровень +5 (уровень +5 сделан)',
   120: 'экран не краснеет при низком HP (косметика UI)',
   122: 'уровень и макс. уровень обычных пассивок +1 (SpellBook)',
-  123: '+20% урона при не-крите (Enemies.damage)',
   129: 'каждый 4-й метеорит ×1,5 (Meteor)',
   130: 'интервал урона области электротока −15% (EZone; s.artFx[296])',
   131: 'энергопуля делится на 2 с шансом 22% (EBolt)',
   138: 'прямое попадание огн. шара +50%, пробивание +1 (Fireball)',
   140: 'доп. метеорит с шансом 20% (Meteor)',
   141: 'каждый 6-й вихрь ×2 урон и размер (Cyclone)',
-  144: 'испепеление: +1% урона за удар по цели (Incinerate)',
   146: 'цунами: +12% урона и −12% КД за запуск, сброс после 4 (Tsunami)',
-  147: 'спутник: +0,5% урона по той же цели, до 50% (Satellite)',
   148: 'лавовая область растёт на 2%/с (Lava)',
   152: 'обзор +10% (камера)',
-  154: '+15% урона по врагам, живущим >5 с (Enemies.damage)',
   155: 'возврат маны всегда 100%, но на 1 раз меньше (SpellBook.refund)',
-  158: 'Джокер: двойной крит с половинным шансом (Enemies.damage)',
-  160: '+1% приумножения за сферу маны, сброс каждые 5 с (Orbs)',
-  162: 'размер элиток −15% (Enemies.spawn)',
   168: 'слияний +1, макс. уровень +1 (SpellBook)',
-  172: 'мана за убийство +20% (Enemies.kill)',
-  179: 'эффект очарования ×2 (SpellBook.enchant)',
-  187: 'HP волны босса −10%, обычной волны +10% (Zone)',
-  190: 'взрыв и 10 предметов при подборе сундука (Pickups)',
-  193: 'после 100 убийств следующие 50 погибают от удара (Enemies.damage)',
-  196: 'до +50% урона по потерянному HP цели (Enemies.damage)',
-  197: 'аура +25% урона вокруг мага (Enemies.damage)',
-  206: 'мана от крупиц +20% (Orbs)',
-  210: 'крит пули/духов +15% — записан в s.spellCrit, нужен учёт в уроне',
-  211: 'взрыв при убийстве элитки (Enemies.kill); приумножение +30% сделано',
-  219: 'особая пассивка в выборе (SpellBook)',
+  179: 'эффект очарования ×2 (SpellBook.enchant; s.artFx[729] = 2)',
+  219: 'особая пассивка в выборе — выставлен флаг s.artFx.unicorn, подключить buildSpecialChoices',
   73: 'плод мирового древа — упрощён до 3 сфер жизни',
   83: 'вместо настоящих вихря/метеорита/цунами — взрыв 500% по врагу',
   202: 'выбор заклинания без окна: берётся атакующее с наибольшим уровнем',
   218: 'количество маны — оценка (300)',
   222: 'количество маны — оценка (1000)',
+  100: 'урон взрыва — оценка (2000% ATK, радиус 160)',
 };
 
 const TODO_SYN: Record<number, string> = {
-  1: 'порог казни Магического меча 25%', 2: 'больший взрыв Железной девы', 5: 'Экскалибур ×1,5 и шире',
-  6: 'пассивки +25%', 8: 'каждое 5-е применение +50% урона', 9: 'взрыв при казни Косой',
-  11: 'крит Клевера включает Джокер', 20: 'молнии Копья объединяются', 26: 'размер врагов и мага −9%',
-  30: 'предел доп. уровня +10', 32: '+15% урона по волне босса', 34: 'воскрешение с шансом 30%',
-  35: 'товар со скидкой бесплатный', 36: 'Реквием', 37: 'Клеймо ×2', 38: 'Медуза',
-  41: 'доп. здоровье даёт реген', 45: 'большая сфера маны с обычных врагов',
+  5: 'шире аура — радиус 90 → 120 (оценка)', 6: 'пассивки +25% (SpellBook)', 8: 'каждое 5-е применение +50% урона (Spell)',
+  20: 'молнии Копья объединяются (сейчас без изменений)', 26: 'размер мага −9% только хитбокс',
+  30: 'предел доп. уровня +10 (SpellBook)', 35: 'товар со скидкой бесплатный (GameScene.rollShop; s.artFx.syn35)',
+  38: 'урон от стаков Гидры — оценка +1% за стак', 41: 'реген от доп. здоровья — оценка (1%/с × доля доп. HP)',
 };
 
 const GRADE: Rarity[] = ['common', 'common', 'rare', 'epic', 'special', 'legend'];
@@ -301,44 +273,84 @@ export const artifactById = (id: string) => BY_ID.get(id)!;
 export const synergiesOf = (id: string) => SYNERGIES.filter((s) => s.parts.includes(id));
 
 // поля Stats, которые меняются «на лету» (зависят от других статов, HP, маны, убийств…)
-const DYN_KEYS = ['atkPct', 'amp', 'crit', 'critMult', 'magicDmg', 'cdr', 'hpPct', 'comboDmg', 'xpGain', 'lifeOrbHeal', 'enemyHpRed', 'speed'] as const;
+const DYN_KEYS = ['atkPct', 'amp', 'crit', 'critMult', 'magicDmg', 'cdr', 'hpPct', 'comboDmg', 'xpGain', 'lifeOrbHeal', 'enemyHpRed', 'speed', 'regen'] as const;
 type DynKey = typeof DYN_KEYS[number];
 const COUNT_PCT_SPELLS = ['thunder', 'ebolt', 'blizzard'];
 
 type CountedSpell = { count?: number; level: number; def: { id: string; kind: string; maxLevel: number }; onChange(): void };
 
 /** Артефакты и синергии текущего забега */
+// Номера, для которых нужны хуки (флаги ниже пересчитываются при каждом add — в горячем коде только проверка булева поля)
+const HIT_ARTS = [60, 70, 74, 98, 102, 113, 123, 144, 147, 154, 158, 193, 196, 197, 210];
+const HIT_SYNS = [32, 38];
+const KILL_ARTS = [101, 172, 193, 211];
+const KILL_SYNS = [2, 9, 36, 45];
+const ORB_ARTS = [87, 100, 106, 160];
+const HURT_ARTS = [54, 94, 106];
+const SCAN_ARTS = [80, 88, 154, 162, 187];
+
+// состояние по врагу: слот = id & MASK (id растут, живых ≤ 480 — коллизии практически исключены)
+const MASK = 8191;
+
 export class ArtifactSet {
   owned: string[] = [];
   synergies = new Set<string>();
   private timers = new Map<string, number>();
   onSynergy: ((s: SynergyDef) => void) | null = null;
 
+  /** быстрые флаги для хуков в Enemies.damage/kill, Player.hurt, Orbs, Pickups */
+  hitFx = false;
+  killFx = false;
+  orbFx = false;
+  hurtFx = false;
+  private scanFx = false;
+
   private nums = new Set<number>();
   private synNums = new Set<number>();
   private gotKills = new Map<number, number>(); // номер артефакта → W.kills при получении
   /** оставшееся время Десперадо */
   desperadoT = 0;
+  /** доп. здоровье (Жизненный щит), поглощает урон раньше HP */
+  extraHp = 0;
   private ffCd = 0;          // Силовое поле
   private potionCd = 0;      // Зелье здоровья
   private potionLeft = 0;    // сколько ещё вылечить
   private potionT = 0;
   private standT = 0;        // Военный флаг
-  private lastHp = -1;
-  private lastMaxHp = 0;
   private lastKills = 0;
+  private lastHp = -1;
   private wolfNext = 0;      // Оборотень: следующий порог убийств
   private gilNext = 0;       // Гильгамеш
   private dnaN = 0; private dnaAmp = 0; private dnaHp = 0;
   private bondKey: string | null = null;
   private bondPending = false;
   private dynT = 0;
+  private scanT = 0;
   private dyn: Record<DynKey, number> = Object.fromEntries(DYN_KEYS.map((k) => [k, 0])) as Record<DynKey, number>;
   private dynSpell: Record<string, number> = {};
   private dynCount: Record<string, number> = {};
   private dynArmor = 0;
+  // удары и убийства
+  private hitN = 0;          // Клевер: общий счётчик ударов
+  private underKills = 0;    // Загробный мир: убийств до заряда
+  private underCharges = 0;  // сколько ещё врагов погибнут от удара
+  private killedByUnder: Enemy | null = null;
+  private reaped: Enemy | null = null;   // убит Косой жнеца (для Некроманта)
+  private boomDepth = 0;
+  private bellN = 0;         // Колокол смерти: собранные сферы
+  private schemeN = 0;       // Схема маны: стаки
+  private schemeT = 5;
+  private auraR = 0; private auraR2 = 0; private auraK = 0;
+  private aura: Phaser.GameObjects.Image | null = null;
+  // по врагу
+  private sId = new Int32Array(MASK + 1).fill(-1);
+  private sBorn = new Float32Array(MASK + 1);
+  private sFlags = new Uint8Array(MASK + 1);   // 1 — осмотрен, 2 — уже был заморожен, 4 — уже получал урон
+  private sHydra = new Uint8Array(MASK + 1);
+  private sSaw = new Uint8Array(MASK + 1);
+  private sBurn = new Uint8Array(MASK + 1);
 
-  has(id: string) { return this.nums.has(BY_ID.get(id)?.num ?? -1) || this.owned.includes(id); }
+  has(id: string) { return this.nums.has(BY_ID.get(id)?.num ?? -1); }
   hasNum(n: number) { return this.nums.has(n); }
   synNum(n: number) { return this.synNums.has(n); }
 
@@ -346,11 +358,13 @@ export class ArtifactSet {
     if (this.has(id)) return;
     const def = artifactById(id);
     if (!def) return;
-    const s = W.stats;
+    const s = W.stats, P = W.player;
     this.owned.push(id);
     this.nums.add(def.num);
     this.gotKills.set(def.num, W.kills);
     if (def.num === 194) this.wolfNext = W.kills + 2500;
+    if (def.num === 107) P.r *= 0.75;                       // Книга сказок: маг меньше (хитбокс)
+    if (def.num === 219) s.artFx.unicorn = 1;               // Единорог: особая пассивка (подключает SpellBook)
     const hpBefore = s.maxHp;
     def.apply?.(s);
     if (def.period && def.onTick) this.timers.set(id, def.num === 50 ? 0 : def.period * this.artCdMul());
@@ -360,11 +374,28 @@ export class ArtifactSet {
       this.dnaAmp += k; this.dnaHp += k;
     }
     this.checkSynergies();
+    this.refreshFlags();
     def.onGet?.();
     this.recompute();
     // новые HP сразу добавляются к текущему здоровью; заклинания пересчитывают число снарядов
-    W.player.heal(Math.max(0, s.maxHp - hpBefore));
+    P.heal(Math.max(0, s.maxHp - hpBefore));
     for (const sp of W.book.spells.values()) sp.onChange();
+  }
+
+  private refreshFlags() {
+    const a = (l: number[]) => l.some((n) => this.nums.has(n)), y = (l: number[]) => l.some((n) => this.synNums.has(n));
+    this.hitFx = a(HIT_ARTS) || y(HIT_SYNS);
+    this.killFx = a(KILL_ARTS) || y(KILL_SYNS);
+    this.orbFx = a(ORB_ARTS);
+    this.hurtFx = a(HURT_ARTS) || this.synNums.has(34);
+    this.scanFx = a(SCAN_ARTS) || this.synNums.has(26);
+    // Экскалибур: аура (Авалон — ×1,5 и шире)
+    if (this.nums.has(197)) {
+      const av = this.synNums.has(5);
+      this.auraR = av ? 120 : 90; this.auraR2 = this.auraR * this.auraR; this.auraK = av ? 0.375 : 0.25;
+      if (!this.aura) this.aura = W.scene.add.image(W.player.x, W.player.y, 'ring').setDepth(DEPTH.zone).setAlpha(0.22).setTint(0xffe08a);
+      this.aura.setDisplaySize(this.auraR * 2, this.auraR * 2);
+    }
   }
 
   /** Активирует все собранные синергии (Магнум Опус: каждой синергии нужно на 1 артефакт меньше) */
@@ -391,10 +422,11 @@ export class ArtifactSet {
   private onSynergyGot(num: number) {
     const s = W.stats;
     if (num === 23) spawnChests(2, 350, 700);                                     // Охотник за сокровищами
+    if (num === 26) W.player.r *= 0.91;                                           // Вондерлэнд: маг меньше
     if (num === 31 && this.bondKey) s.addSpellDmg(this.bondKey, 1.2);             // Конфлюкс: Связь ×1,5
     if (num === 33) this.gilNext = W.kills + 2500;                                // Гильгамеш
     if (num === 40) this.potionCd = Math.max(0, this.potionCd - 20);              // Эликсир
-    if (TODO_SYN[num]) s.artFx['syn' + num] = 1; // флаг для будущих хуков
+    if (num === 35) s.artFx.syn35 = 1;                                            // Брокер (для торговца)
   }
 
   /** Связь: +240% урона одному атакующему заклинанию (todo: окно выбора; пока — с наибольшим уровнем) */
@@ -447,6 +479,152 @@ export class ArtifactSet {
 
   private artCdMul() { return Math.max(0.2, 1 - W.stats.artifactCdr); }
 
+  /** слот состояния врага; новый враг — обнуляется */
+  private slot(e: Enemy) {
+    const i = e.id & MASK;
+    if (this.sId[i] !== e.id) {
+      this.sId[i] = e.id; this.sBorn[i] = W.time; this.sFlags[i] = 0;
+      this.sHydra[i] = 0; this.sSaw[i] = 0; this.sBurn[i] = 0;
+    }
+    return i;
+  }
+
+  // ---------------- хуки ----------------
+  /** Enemies.damage (только при hitFx): крит и все модификаторы урона артефактов. Возвращает итоговый урон. */
+  onDamage(e: Enemy, amount: number, crit: boolean, src: string): number {
+    const s = W.stats, n = this.nums, y = this.synNums;
+    const i = this.slot(e), first = (this.sFlags[i] & 4) === 0;
+    this.sFlags[i] |= 4;
+    const boss = e.type.id === 'boss';
+    if (!boss) {
+      // Загробный мир: заряженные враги гибнут от удара
+      if (this.underCharges > 0 && !e.elite) { this.underCharges--; this.killedByUnder = e; return e.hp + 1; }
+      // Коса жнеца: мгновенная смерть при первом ударе
+      if (first && n.has(98) && Math.random() < 0.08) { this.reaped = e; return e.hp + 1; }
+    }
+    if (!crit && src) { const sc = s.spellCrit[src]; if (sc && Math.random() < sc) crit = true; } // Сюрикен
+    if (!crit && first && n.has(60)) crit = true;                                                // Убийство
+    let clover = false;
+    if (n.has(70) && ++this.hitN >= 5) { this.hitN = 0; clover = !crit; crit = true; }          // Клевер
+    if (crit) {
+      amount *= s.critMult;
+      if (n.has(158) && ((clover && y.has(11)) || Math.random() < s.crit * 0.5)) amount *= s.critMult; // Джокер (Трикстер)
+    } else if (n.has(123)) amount *= 1.2;                                                          // Таран
+    let mul = 1;
+    if (n.has(154)) { const fan = y.has(37); if (W.time - this.sBorn[i] > (fan ? 2.5 : 5)) mul += fan ? 0.3 : 0.15; } // Клеймо (Фанатик)
+    if (n.has(196)) mul += 0.5 * (1 - e.hp / e.maxHp);                                            // Затмение
+    if (this.auraR2) { const dx = e.x - W.player.x, dy = e.y - W.player.y; if (dx * dx + dy * dy < this.auraR2) mul += this.auraK; } // Экскалибур
+    if (y.has(32) && W.zone.bossFight && !boss) mul += 0.15;                                      // Мясник
+    if (n.has(102) && this.sHydra[i] < 25) { this.sHydra[i]++; amount += e.hp * 0.01; }           // Гидра
+    if (y.has(38)) mul += 0.01 * this.sHydra[i];                                                  // Медуза (оценка)
+    if (src === 'satellite') {
+      if (n.has(147)) { mul += 0.005 * this.sSaw[i]; if (this.sSaw[i] < 100) this.sSaw[i]++; }   // Пильный диск
+      if (n.has(113) && this.boomDepth === 0) {                                                  // Энергия ядра
+        this.boomDepth++;
+        areaDamage(e.x, e.y, 28, amount, 0, 'Энергия ядра');
+        W.fx.burst(e.x, e.y, 28, 0x8fd8ff, 0.25);
+        this.boomDepth--;
+      }
+    } else if (src === 'incinerate' && n.has(144)) { mul += 0.01 * this.sBurn[i]; if (this.sBurn[i] < 255) this.sBurn[i]++; } // Дыхание дракона
+    amount *= mul;
+    // Магический меч: казнь (Эгосворд — порог 25%)
+    if (!boss && n.has(74) && e.hp - amount < e.maxHp * (y.has(1) ? 0.25 : 0.2)) return e.hp + 1;
+    return amount;
+  }
+
+  /** Enemies.kill (только при killFx) */
+  onKill(e: Enemy) {
+    const n = this.nums, y = this.synNums, boss = e.type.id === 'boss';
+    if (n.has(172)) W.player.gainXp((boss ? 500 : e.elite ? 10 : e.xp) * 0.2);                  // Экзорцизм
+    if (n.has(193) && this.underCharges === 0 && ++this.underKills >= 100) { this.underKills = 0; this.underCharges = 50; } // Загробный мир
+    if (this.killedByUnder === e) { this.killedByUnder = null; if (y.has(36) && n.has(87)) this.bell(1); } // Реквием
+    if (y.has(45) && !e.elite && !boss && Math.random() < 0.01) W.orbs.drop(e.x, e.y, 'l', 1);   // Джинн
+    if (this.boomDepth >= 2) return;
+    // взрывы при убийстве: урон — доля макс. HP убитого
+    let pct = 0, r = 0;
+    if (n.has(101) && Math.random() < 0.15) {                                                     // Железная дева (Найтмэр)
+      pct = 0.75; r = 40;
+      if (y.has(2)) { r = 60; if (Math.random() < 0.15) pct *= 3; }
+    }
+    if (n.has(211) && e.elite) { pct = Math.max(pct, 0.3); r = Math.max(r, 70); }                 // Графиня
+    if (this.reaped === e) { this.reaped = null; if (y.has(9)) { pct = Math.max(pct, 0.75); r = Math.max(r, 45); } } // Некромант
+    if (!pct) return;
+    this.boomDepth++;
+    areaDamage(e.x, e.y, r, e.maxHp * pct, 60, 'Взрыв');
+    W.fx.burst(e.x, e.y, r, 0xff6a3a, 0.35);
+    this.boomDepth--;
+  }
+
+  /** Player.hurt (только при hurtFx): урон после брони → сколько дойдёт до HP (0 — заблокирован) */
+  onHurt(d: number): number {
+    const P = W.player, s = W.stats;
+    if (this.nums.has(54) && this.ffCd <= 0) {                                                    // Силовое поле
+      this.ffCd = 60 * this.artCdMul();
+      P.invulnT = Math.max(P.invulnT, 3);
+      W.fx.burst(P.x, P.y, 30, 0x8fd8ff, 0.4, 'ring');
+      return 0;
+    }
+    if (this.nums.has(94)) d = Math.min(d, s.maxHp * 0.3);                                        // Барьер
+    if (this.extraHp > 0) { const t = Math.min(this.extraHp, d); this.extraHp -= t; d -= t; }   // Жизненный щит
+    return d;
+  }
+
+  /** Player.hurt: смертельный удар. true — спасён (Гомункул: 30%, если обычных возрождений нет) */
+  saveFromDeath(): boolean {
+    if (!this.synNums.has(34) || W.stats.revives > 0 || Math.random() >= 0.3) return false;
+    const P = W.player;
+    P.hp = W.stats.maxHp; P.invulnT = Math.max(P.invulnT, 3);
+    W.fx.burst(P.x, P.y, 80, 0xffffff, 0.6, 'ring');
+    return true;
+  }
+
+  /** Orbs: подобрана сфера жизни на v лечения (до лечения) */
+  onLifeOrb(v: number) {
+    const P = W.player, s = W.stats;
+    if (this.nums.has(106)) { const over = P.hp + v - s.maxHp; if (over > 0) this.extraHp = Math.min(s.maxHp, this.extraHp + over); } // Жизненный щит
+    if (this.nums.has(100)) {                                                                      // Глаз смотрящего (оценка 2000%)
+      areaDamage(P.x, P.y, 160, origDmg(2000), 200, 'Глаз смотрящего');
+      W.fx.burst(P.x, P.y, 160, 0xff4a6a, 0.5);
+    }
+  }
+
+  /** Orbs: подобрана сфера маны (value — сколько слито в одну) */
+  onManaOrb(value: number) {
+    if (this.nums.has(160)) this.schemeN += value;                                               // Схема маны
+    if (this.nums.has(87)) this.bell(value);                                                      // Колокол смерти
+  }
+
+  private bell(k: number) {
+    this.bellN += k;
+    if (this.bellN < 444) return;
+    this.bellN = 0;
+    const P = W.player;
+    W.enemies.grid.query(P.x, P.y, 320, (e) => {
+      if (e.type.id === 'boss') return;
+      if (e.elite || e.type.id === 'big') W.enemies.damage(e, e.maxHp * 0.3); else W.enemies.kill(e);
+    });
+    W.fx.burst(P.x, P.y, 320, 0xcfc6ff, 0.6, 'ring');
+  }
+
+  /** Pickups: подобран сундук (Мимик: взрыв, уничтожающий врагов, и 10 предметов рядом) */
+  onChestPick(x: number, y: number) {
+    if (!this.nums.has(190)) return;
+    const v = W.scene.cameras.main.worldView;
+    for (const e of W.enemies.list) {
+      if (!e.alive || !v.contains(e.x, e.y)) continue;
+      if (e.type.id === 'boss') W.enemies.damage(e, e.maxHp * 0.05);
+      else if (e.elite || e.type.id === 'big') W.enemies.damage(e, e.maxHp * 0.3);
+      else W.enemies.kill(e);
+    }
+    W.fx.burst(x, y, 260, 0xffd36b, 0.6);
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 50, px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
+      const r = Math.random();
+      if (r < 0.1) W.pickups.rune(W.pickups.randomRune(), px, py);
+      else W.orbs.drop(px, py, r < 0.3 ? 'life' : r < 0.55 ? 'l' : 'm', r < 0.3 ? 0 : 1);
+    }
+  }
+
   update(dt: number) {
     const P = W.player, s = W.stats;
     // периодические артефакты
@@ -462,6 +640,9 @@ export class ArtifactSet {
     if (this.ffCd > 0) this.ffCd -= dt;
     if (this.potionCd > 0) this.potionCd -= dt;
     if (this.bondPending) this.pickBond();
+    if (this.nums.has(84)) P.gainXp(P.xpNeed * 0.01 * dt);                                        // Эфир: 1% маны в секунду
+    if (this.nums.has(160)) { this.schemeT -= dt; if (this.schemeT <= 0) { this.schemeT = 5; this.schemeN = 0; } } // Схема маны
+    if (this.aura) this.aura.setPosition(P.x, P.y);
 
     // счётчики убийств
     const dk = W.kills - this.lastKills;
@@ -473,17 +654,9 @@ export class ArtifactSet {
     }
     this.standT = P.moving ? 0 : this.standT + dt;
 
-    // перехват удара: Силовое поле (блок + 3 с неуязвимости), Барьер (не больше 30% макс. HP за раз)
-    if (this.lastHp >= 0 && s.maxHp === this.lastMaxHp && P.hp < this.lastHp - 1e-6) {
-      if (this.nums.has(54) && this.ffCd <= 0) {
-        P.hp = this.lastHp; P.dead = false; P.invulnT = Math.max(P.invulnT, 3);
-        this.ffCd = 60 * this.artCdMul();
-        W.fx.burst(P.x, P.y, 30, 0x8fd8ff, 0.4, 'ring');
-      } else if (this.nums.has(94) && this.lastHp - P.hp > s.maxHp * 0.3) {
-        P.hp = this.lastHp - s.maxHp * 0.3;
-        if (P.hp > 0) P.dead = false;
-      }
-    }
+    // осмотр новых врагов (размер/HP при появлении, первая заморозка, время жизни для Клейма)
+    if (this.scanFx) { this.scanT -= dt; if (this.scanT <= 0) { this.scanT = 0.2; this.scan(); } }
+
     // Зелье здоровья: при HP < 25% — 50% HP за 3 с (Эликсир — сразу)
     if (this.nums.has(65) && !P.dead && this.potionCd <= 0 && P.hp < s.maxHp * 0.25) {
       this.potionCd = 50 * this.artCdMul();
@@ -504,7 +677,30 @@ export class ArtifactSet {
     // Некрономикон: HP не выше 50% (снимает Космический ужас)
     if (this.nums.has(115) && !this.synNums.has(27)) P.hp = Math.min(P.hp, s.maxHp * 0.5);
     if (P.hp > s.maxHp) P.hp = s.maxHp;
-    this.lastHp = P.hp; this.lastMaxHp = s.maxHp;
+    this.lastHp = P.hp;
+  }
+
+  private scan() {
+    const n = this.nums, y = this.synNums, boss = W.zone.bossFight;
+    for (const e of W.enemies.list) {
+      if (!e.alive) continue;
+      const i = this.slot(e);
+      const f = this.sFlags[i];
+      if ((f & 1) === 0) {
+        this.sFlags[i] = f | 1;
+        if (e.type.id !== 'boss') {
+          let k = 1;
+          if (y.has(26)) k *= 0.91;                                        // Вондерлэнд: враги меньше
+          if (n.has(162) && e.elite) k *= 0.85;                             // Игрушечный замок: элитки меньше
+          if (k !== 1) { e.r *= k; e.sc *= k; e.img.setScale(e.sc); }
+          let h = 1;
+          if (n.has(88) && e.type.id === 'big') h *= 0.85;                  // Мутировавший ген
+          if (n.has(187)) h *= boss ? 0.9 : 1.1;                            // Имп
+          if (h !== 1) { e.hp *= h; e.maxHp *= h; }
+        }
+      }
+      if (n.has(80) && e.freezeT > 0 && (this.sFlags[i] & 2) === 0) { this.sFlags[i] |= 2; e.speed *= 0.9; } // Лунный кристалл
+    }
   }
 
   private add1(k: DynKey, v: number) { if (v) { W.stats[k] += v; this.dyn[k] += v; } }
@@ -528,6 +724,7 @@ export class ArtifactSet {
     if (has(166) && !syn(28)) this.add1('lifeOrbHeal', -(1 + s.lifeOrbHeal));      // Киборг: лечения сферой нет
     if (has(104)) { const x = 0.5 * manaRatio; if (x > 0 && x < 1) { s.addArmor(x); this.dynArmor = x; } } // Магический щит
     if (has(195)) { const half = s.xpGain / 2; this.add1('atkPct', half); if (!syn(27)) this.add1('xpGain', -half); } // Бездна
+    if (syn(41) && this.extraHp > 0) this.add1('regen', 0.01 * this.extraHp / s.maxHp);  // Хилинг-Фактор (оценка)
     // 3. перезарядка
     if (has(78)) this.add1('cdr', Math.floor(s.speed / 0.03 + 1e-6) * 0.01 * (1 - s.cdr)); // Акселератор
     // 4. крит
@@ -541,6 +738,7 @@ export class ArtifactSet {
     if (has(109)) this.add1('amp', 0.25 * manaRatio);                                // Мантия Мерлина
     if (has(117)) this.add1('amp', Math.floor(P.level / 2) * 0.01);                  // Хроники Акаши
     if (has(153) && P.hp >= s.maxHp * 0.75) this.add1('amp', 0.75);                  // Неприкосновенность
+    if (has(160)) this.add1('amp', 0.01 * this.schemeN);                             // Схема маны
     if (has(164)) this.add1('amp', (Math.floor((W.kills - (this.gotKills.get(164) ?? 0)) / 100) % 25) * 0.01); // Охотник
     if (has(167)) this.add1('amp', 0.03 * this.synNums.size);                        // Пирамида
     if (has(171)) this.add1('amp', syn(46) ? 0.2 : Math.min(0.2, Math.floor(this.standT) * 0.02)); // Военный флаг
@@ -588,10 +786,10 @@ export class ArtifactSet {
       if (want !== old) { s.addSpellCount(k, want - old); this.dynCount[k] = want; sp.onChange(); }
     }
     // прирост макс. HP сразу лечит
-    if (s.maxHp > maxHpBefore + 1e-6 && this.lastHp >= 0) { P.heal(s.maxHp - maxHpBefore); this.lastHp = P.hp; }
-    this.lastMaxHp = s.maxHp;
+    if (s.maxHp > maxHpBefore + 1e-6 && this.lastHp >= 0) P.heal(s.maxHp - maxHpBefore);
   }
 }
+
 
 /** Номер синергии → id (для UI/отладки) */
 export const synergyIdByNum = (n: number) => SYN_KEY_BY_NUM.get(n);

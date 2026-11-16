@@ -17,7 +17,7 @@ def lum(im):
     return ImageOps.grayscale(im)
 
 
-def to_alpha(im, dark_on_light, solid=False):
+def to_alpha(im, dark_on_light, solid=False, thr=26):
     im = im.convert("RGB")
     L = lum(im)
     if solid:
@@ -28,7 +28,7 @@ def to_alpha(im, dark_on_light, solid=False):
     if dark_on_light:
         L = ImageOps.invert(L)
     # порог: фон 0..~0.1 → прозрачный, дальше линейно
-    a = L.point(lambda v: 0 if v < 26 else min(255, int((v - 26) * 255 / 200))) if not solid else L.point(lambda v: 0 if v < 18 else min(255, int((v - 18) * 255 / 40)))
+    a = L.point(lambda v: 0 if v < thr else min(255, int((v - thr) * 255 / 200))) if not solid else L.point(lambda v: 0 if v < 18 else min(255, int((v - 18) * 255 / 40)))
     if not dark_on_light and not solid:
         a = a.point(lambda v: min(255, int(v * 1.6)))
     if dark_on_light:
@@ -67,7 +67,13 @@ def main():
             im = im.resize((size, size), Image.LANCZOS)
             corners = [im.getpixel(p) for p in [(1, 1), (size - 2, 1), (1, size - 2), (size - 2, size - 2)]]
             bright = sum(sum(c) / 3 for c in corners) / 4 > 160
-            out = to_alpha(im, bright, solid=(cat == 'world' and not bright))
+            # серый (не чёрный) фон, напр. pas_39, res_264: порог альфы поднимаем над яркостью края,
+            # иначе вокруг иконки остаётся полупрозрачный серый квадрат
+            thr = 26
+            if not bright:
+                edge = sorted(lum(im).getpixel(p) for p in [(1, 1), (size - 2, 1), (1, size - 2), (size - 2, size - 2), (size // 2, 1), (1, size // 2), (size - 2, size // 2), (size // 2, size - 2)])
+                thr = max(26, edge[len(edge) // 2] + 16)
+            out = to_alpha(im, bright, solid=(cat == 'world' and not bright), thr=thr)
             out.save(os.path.join(od, key + ".webp"), "WEBP", quality=82, method=6)
             manifest[key] = f"v2/{cat}/{key}.webp"
     ts = ["// АВТОГЕНЕРАЦИЯ scripts/import_art.py — ключ картинки → путь в public/", "export const ART: Record<string, string> = " + json.dumps(manifest, ensure_ascii=False, indent=1) + ";", ""]

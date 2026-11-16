@@ -88,11 +88,18 @@ export class Orbs {
     o.img.setVisible(false);
     this.free.push(o);
     this.count--;
-    if (o.kind === 'life') W.player.heal(W.stats.maxHp * 0.2 * (1 + W.stats.lifeOrbHeal));
-    else {
+    const A = W.artifacts, s = W.stats;
+    if (o.kind === 'life') {
+      const v = s.maxHp * 0.2 * (1 + s.lifeOrbHeal);
+      if (A.orbFx) A.onLifeOrb(v); // Жизненный щит, Глаз смотрящего
+      W.player.heal(v);
+    } else {
+      // Специфика (artFx[63]): малые сферы считаются средними; Фонарь/Ртуть (artFx[45]): опыт от сфер +N%
+      const kind = o.kind === 's' && s.artFx[63] ? 'm' : o.kind;
       // мана-валюта (торговец): малая/средняя +1, большая +5; опыт — по формуле оригинала
-      W.mana += (o.kind === 'l' ? 5 : 1) * o.value;
-      W.player.gainXp(orbXp(o.kind) * o.value);
+      W.mana += (kind === 'l' ? 5 : 1) * o.value;
+      W.player.gainXp(orbXp(kind) * o.value * (1 + (s.artFx[45] ?? 0) / 100));
+      if (A.orbFx) A.onManaOrb(o.value); // Схема маны, Колокол смерти
     }
   }
 }

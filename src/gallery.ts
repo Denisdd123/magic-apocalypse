@@ -5,6 +5,7 @@ import { SPELLS, PASSIVES } from './game/SpellBook';
 import { ARTIFACTS, SYNERGIES, RARITY, artifactById } from './game/Artifacts';
 import { RUNES } from './game/Pickups';
 import { ENEMY_TYPES } from './game/Enemies';
+import { ART } from './data/art';
 
 // Галерея разработчика: вся графика и контент игры на одной странице — смотреть и оценивать без игры.
 
@@ -88,9 +89,17 @@ function build() {
   [0, 1, 2, 3].forEach((f) => tile(g, ['player_' + f], 'кадр ' + (f + 1), 1));
   tile(g, [0, 1, 2, 3].map((f) => 'player_' + f), 'в игре (размер)', 0.33, { fps: 3 });
   tile(g, [0, 1, 2, 3].map((f) => 'mirage_' + f), 'двойник (Шквал/Двойники)', 1, { fps: 3, tint: 0xc49bff, dark: true });
+  // маг в игре 2.0: 4 позы (вверх-вниз / диагональ / вбок — влево зеркально), 3 кадра подола
+  for (const [p, n] of [['idle', 'стоит'], ['vert', 'вверх/вниз'], ['diag', 'диагональ'], ['side', 'вбок']] as const) {
+    tile(g, [0, 1, 2].map((f) => `mage_${p}_${f}`), 'поза: ' + n, 1, { fps: 9 });
+  }
 
-  g = section('mobs', 'Мобы', 'Каждый моб — 3 кадра «дрожащей линии», ~4 смены в секунду. Появляются по времени: обычный — сразу, с красным ядром — с 1:15, рой — с 2:30, с белым ядром — с 4:00, большой — с 5:00.');
-  for (const t of Object.values(ENEMY_TYPES)) tile(g, [0, 1, 2].map((f) => `${t.tex}_${f}`), `${t.id} (HP ${t.hp})`, 1, { fps: 4 });
+  g = section('mobs', 'Мобы', 'Графика 2.0 (en_*): один кадр, в игре «дышит» покачиванием. Старые процедурные кляксы — 3 кадра «дрожащей линии».');
+  for (const [k, t] of Object.entries(ENEMY_TYPES)) {
+    // en_* — один кадр; старые текстуры — tex_0..2
+    const keys = tm.exists(t.tex + '_0') ? [0, 1, 2].map((f) => `${t.tex}_${f}`) : [t.tex];
+    tile(g, keys, `${k} (HP ${t.hp})`, t.id === 'boss' ? 0.5 : 0.6, { fps: 4 });
+  }
   tile(g, ['elite_ring'], 'кольцо элитки', 0.6);
 
   g = section('items', 'Предметы на земле');
@@ -139,6 +148,8 @@ function build() {
 }
 
 class Boot extends Phaser.Scene {
+  // картинки мира 2.0 нужны для мобов en_*, сундука, обелиска и торговца
+  preload() { for (const [k, p] of Object.entries(ART)) if (p.includes('/world/')) this.load.image(k, p); }
   create() { makeTextures(this); tm = this.textures; build(); }
 }
 new Phaser.Game({ type: Phaser.CANVAS, parent: 'phaser', width: 2, height: 2, scene: [Boot], banner: false });

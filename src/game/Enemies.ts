@@ -17,25 +17,25 @@ export const ENEMY_SPEED = 0.85;
 // старые процедурные 'enemy_*' / 'boss_N' (3 кадра tex_0..2) тоже поддерживаются.
 // size — видимый размер силуэта (картинка 2.0 обрезана по содержимому), чуть больше 2r: у тварей лапы и тень.
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  basic: { id: 'basic', tex: 'en_minion',  r: 10, size: 29, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон
-  red:   { id: 'red',   tex: 'en_stinger', r: 11, size: 32, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер
-  small: { id: 'small', tex: 'en_swarm_s', r: 6,  size: 18, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
-  white: { id: 'white', tex: 'en_seraph',  r: 12, size: 35, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим
-  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 62, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик
+  basic: { id: 'basic', tex: 'en_minion',  r: 10, size: 23, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон
+  red:   { id: 'red',   tex: 'en_stinger', r: 11, size: 26, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер
+  small: { id: 'small', tex: 'en_swarm_s', r: 6,  size: 14, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
+  white: { id: 'white', tex: 'en_seraph',  r: 12, size: 28, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим
+  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 50, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик
   // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
-  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 9,  size: 25, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
-  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 10, size: 30, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
-  w11: { id: 'w11', tex: 'en_swarm_l',     r: 11, size: 32, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
-  w13: { id: 'w13', tex: 'en_interceptor', r: 10, size: 31, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
-  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 34, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
-  w31: { id: 'w31', tex: 'en_scarab',      r: 7,  size: 23, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
-  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 35, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
-  w22: { id: 'w22', tex: 'en_oculus',      r: 13, size: 37, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
+  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 9,  size: 20, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
+  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 10, size: 24, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
+  w11: { id: 'w11', tex: 'en_swarm_l',     r: 11, size: 26, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
+  w13: { id: 'w13', tex: 'en_interceptor', r: 10, size: 25, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
+  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 27, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
+  w31: { id: 'w31', tex: 'en_scarab',      r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
+  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 28, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
+  w22: { id: 'w22', tex: 'en_oculus',      r: 13, size: 30, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
   // боссы зоны (HP задаётся в Zone.ts)
-  boss0: { id: 'boss', tex: 'en_citadel',     r: 30, size: 86, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },  // Цитадель
-  boss1: { id: 'boss', tex: 'en_nemesis',     r: 32, size: 96, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },  // Немезида
-  boss2: { id: 'boss', tex: 'en_apostle',     r: 34, size: 104, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 }, // Апостол
-  boss3: { id: 'boss', tex: 'en_apostle_red', r: 36, size: 114, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 }, // Апостол (финал, багровый)
+  boss0: { id: 'boss', tex: 'en_citadel',     r: 30, size: 69, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },  // Цитадель
+  boss1: { id: 'boss', tex: 'en_nemesis',     r: 32, size: 77, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },  // Немезида
+  boss2: { id: 'boss', tex: 'en_apostle',     r: 34, size: 83, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 }, // Апостол
+  boss3: { id: 'boss', tex: 'en_apostle_red', r: 36, size: 91, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 }, // Апостол (финал, багровый)
 };
 
 export class Enemy {
@@ -275,8 +275,11 @@ export class Enemies {
   /** Нанести урон врагу. Возвращает true, если враг погиб. */
   damage(e: Enemy, amount: number, kx = 0, ky = 0, src = ''): boolean {
     if (!e.alive) return false;
-    const s = W.stats;
-    if (Math.random() < s.crit) amount *= s.critMult;
+    const s = W.stats, A = W.artifacts;
+    const crit = Math.random() < s.crit;
+    // артефакты (крит при первом ударе, казнь, Гидра, Клеймо…) — только если есть хоть один такой
+    if (A.hitFx) amount = A.onDamage(e, amount, crit, src);
+    else if (crit) amount *= s.critMult;
     if (s.highHpBonus && e.hp > e.maxHp * 0.75) amount *= 1 + s.highHpBonus;
     if (src) W.dmgBy.set(src, (W.dmgBy.get(src) ?? 0) + Math.min(amount, e.hp));
     e.hp -= amount;
@@ -298,6 +301,7 @@ export class Enemies {
     W.pickups.onKill();
     // опыт даёт само убийство (оригинал: ManaGain(«마나량» моба)); элитка — 10, босс — 500
     W.player.gainXp(e.type.id === 'boss' ? 500 : e.elite ? 10 : e.xp);
+    if (W.artifacts.killFx) W.artifacts.onKill(e); // взрывы, Экзорцизм, Загробный мир…
     if (e.type.id === 'boss') { W.zone.bossDied(e); return; }
     if (e.cursed) W.pickups.cursedKilled(e.x, e.y);
     if (e.elite) {

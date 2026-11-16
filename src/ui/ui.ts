@@ -3,6 +3,7 @@ import type { Choice } from '../game/SpellBook';
 import type { AttrDef, Spell } from '../game/spells/Spell';
 import { W } from '../game/World';
 import { ART } from '../data/art';
+import { combosForProp, type ComboData } from '../data/spells_data';
 
 // Интерфейс поверх игры — обычный HTML: чёткий текст на любом экране и простая вёрстка.
 // Стиль 2.0 — Dark Fantasy: почти чёрные плашки с рваным краем, кистевые иконки, тусклое золото и багрянец.
@@ -164,7 +165,10 @@ export class Hud {
       if (tint !== undefined) e.style.borderColor = hex(tint);
       this.cds.appendChild(e); this.cdMap.set(id, e);
     }
-    (e.querySelector('.shade') as HTMLElement).style.height = (Math.max(0, Math.min(1, frac)) * 100).toFixed(0) + '%';
+    // откат — тёмный сектор «часов», готово — золотое свечение
+    const f = Math.max(0, Math.min(1, frac));
+    (e.querySelector('.shade') as HTMLElement).style.background = f > 0 ? `conic-gradient(rgba(5,4,5,0.72) ${(f * 100).toFixed(1)}%, transparent 0)` : 'none';
+    e.classList.toggle('ready', f <= 0);
   }
 
   clearCd(id: string) {
@@ -260,7 +264,7 @@ function cardHtml(c: Choice) {
         <div class="badge">Слияние</div>
         <div class="title">${esc(c.title)}</div>
         ${pair ? `<div class="pair">${esc(pair)}</div>` : ''}
-        ${rest.slice(0, 3).map((l) => `<div class="line">${numHl(l)}</div>`).join('')}
+        ${rest.map((l) => `<div class="line">${numHl(l)}</div>`).join('')}
       </div>`;
   }
   let corner = '';
@@ -288,7 +292,9 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
   let locked = true;
   setTimeout(() => (locked = false), 250); // защита от случайного тапа
   choices.forEach((c, i) => {
-    const card = el('div', `card k-${c.kind}`);
+    // длинное описание (слияния) — мельче шрифт; карточка растёт, список прокручивается
+    const long = c.lines.join(' ').length > 150;
+    const card = el('div', `card k-${c.kind}${long ? ' long' : ''}`);
     card.style.animationDelay = (i * 0.05).toFixed(2) + 's';
     card.innerHTML = cardHtml(c);
     card.addEventListener('click', () => { if (locked) return; m.remove(); onPick(c); });
@@ -303,6 +309,15 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
 }
 
 // ---------------- Выбор свойства (преображения) ----------------
+/** Ключ иконки слияния: 'combo_17_lightning_bolts' */
+export const comboIconKey = (c: ComboData) => 'combo_' + String(c.id).padStart(2, '0') + '_' + c.en.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/** Маленькие иконки слияний (иконки грузятся фоном — пока нет картинки, пустая рамка) */
+function comboChips(list: ComboData[]) {
+  if (!list.length) return '';
+  return `<div class="cchips">${list.map((c) => { const src = icon(comboIconKey(c)); return `<i title="${esc(c.name)}">${src ? `<img src="${src}" alt="">` : ''}</i>`; }).join('')}</div>`;
+}
+
 /** Как в оригинале: иконка заклинания в 3 цветах треугольником, выбранная ярче; ниже описание и «Изучить» */
 export function showAttrPick(sp: Spell, options: AttrDef[], onPick: (a: AttrDef) => void) {
   clearModals();
@@ -316,14 +331,16 @@ export function showAttrPick(sp: Spell, options: AttrDef[], onPick: (a: AttrDef)
   learn.disabled = true;
   options.forEach((a, i) => {
     const col = hex(a.tint);
-    const opt = el('button', 'opt o' + i, `<img src="${icon(sp.def.icon, a.tint)}" alt=""><span>${esc(a.name)}</span>`);
+    const combos = /^\d+$/.test(a.id) ? combosForProp(Number(a.id)) : [];
+    const opt = el('button', 'opt o' + i, `<img src="${icon(sp.def.icon, a.tint)}" alt=""><span>${esc(a.name)}</span>${comboChips(combos)}`);
     opt.style.setProperty('--c', col);
     opt.addEventListener('click', () => {
       tri.querySelectorAll('.opt').forEach((r) => r.classList.remove('sel'));
       tri.classList.add('has');
       opt.classList.add('sel'); sel = a; learn.disabled = false;
       desc.style.setProperty('--c', col);
-      desc.innerHTML = `<div class="title">${esc(a.name)}</div>${a.lines.map((l) => `<div class="line">${numHl(l)}</div>`).join('')}`;
+      desc.innerHTML = `<div class="title">${esc(a.name)}</div>${a.lines.map((l) => `<div class="line">${numHl(l)}</div>`).join('')}`
+        + (combos.length ? `<div class="cnames">Ведёт к слияниям: ${combos.map((c) => esc(c.name)).join(', ')}</div>` : '');
     });
     tri.appendChild(opt);
   });

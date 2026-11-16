@@ -131,7 +131,7 @@ export class Pickups {
       } else if (touch) {
         it.img.destroy(); it.arrow?.destroy();
         this.items.splice(i, 1);
-        if (it.kind === 'chest') this.onChest?.();
+        if (it.kind === 'chest') { W.artifacts.onChestPick(it.x, it.y); this.onChest?.(); } // Мимик
         else this.activate(it.rune!);
       }
     }
