@@ -31,6 +31,8 @@ export class GameScene extends Phaser.Scene {
   /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
   private zoneQ: ('obelisk' | 'shop' | 'clear')[] = [];
   private shopItems: ShopItem[] = [];
+  /** сколько раз уже приходил торговец за забег — цены растут */
+  private merchantVisits = 0;
   private obeliskRerolled = false;
   private stageTint = -1;
 
@@ -131,8 +133,9 @@ export class GameScene extends Phaser.Scene {
 
   /** 8 артефактов торговца, цена по редкости, на одном скидка 25% */
   private rollShop(): ShopItem[] {
-    // мана-валюта как в оригинале (+1 со сферы, +5 с большой) — к 5:25 обычно 200–300; цены — оценка
-    const base: Record<string, number> = { common: 150, rare: 230, epic: 330 };
+    // цены из кода оригинала (V_Artifact_Manager): база по редкости × Random(98..108)% × множитель визита
+    const base: Record<string, number> = { common: 220, rare: 260, epic: 360 };
+    const visitMul = [1, 1.25, 1.6, 2.2, 2.8, 3.5, 3.75][Math.min(this.merchantVisits++, 6)];
     const pool = ARTIFACTS.filter((a) => a.rarity !== 'legend' && !W.artifacts.has(a.id));
     const out: ShopItem[] = [];
     while (out.length < 8 && pool.length) {
@@ -140,7 +143,7 @@ export class GameScene extends Phaser.Scene {
       let r = Math.random() * total;
       const a = pool.find((x) => (r -= RARITY[x.rarity].weight) <= 0) ?? pool[pool.length - 1];
       pool.splice(pool.indexOf(a), 1);
-      out.push({ a, price: Math.round(base[a.rarity] * (0.9 + Math.random() * 0.2) / 10) * 10, discount: false, sold: false });
+      out.push({ a, price: Math.round(base[a.rarity] * visitMul * (0.98 + Math.random() * 0.1)), discount: false, sold: false });
     }
     const d = out[(Math.random() * out.length) | 0];
     if (d) { d.discount = true; d.price = Math.round(d.price * 0.75 / 10) * 10; }
