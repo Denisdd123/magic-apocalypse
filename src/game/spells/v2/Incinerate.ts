@@ -18,7 +18,7 @@ interface Tongue {
 interface Spot { x: number; y: number; delay: number; left: number }
 
 /**
- * #15 Испепеление → «Пламя пасти». Конус огня вперёд по движению мага: count языков вылетают потоком за ~0.45 с.
+ * #15 Испепеление → «Пламя пасти». Конус огня вперёд по движению мага: count языков вылетают потоком за ~0.85 с (всё пламя видно ~1.3 с, как в оригинале).
  * Урон одному врагу — не чаще 0.12 с (общие ворота на всё заклинание), так что в гуще конуса враг получает несколько ударов.
  * Свойства: 488 Пламенный удар (с каждым кастом мощнее, до урона ×4 и размера ×1.5; пламя краснеет → синеет),
  * 489 Пироман (+2 очага в конусе с тем же уроном), 490 Пламя Цербера (ещё два конуса по бокам).
@@ -109,7 +109,8 @@ class Incinerate extends DataSpell {
   private cur: Tongue | null = null;
   private tDmg = 0;
   private onHit = (e: Enemy) => {
-    if (!this.gate.ok(e.id, this.clock, 0.12)) return;
+    // ворота 0.2 с (было 0.12): пламя длится дольше, число ударов по врагу в конусе (~6–7) — как раньше
+    if (!this.gate.ok(e.id, this.clock, 0.2)) return;
     const t = this.cur!, sp = Math.hypot(t.vx, t.vy) || 1;
     W.enemies.damage(e, this.tDmg, (t.vx / sp) * 12, (t.vy / sp) * 12, this.def.id);
   };
@@ -125,10 +126,11 @@ class Incinerate extends DataSpell {
     if (this.hasCombo(55)) n *= 2;
     const half = 0.42 * this.stat('width', 1);           // полуширина конуса, рад
     const speed = 240 * this.stat('range', 1) * (this.hasCombo(11) ? 1.4 : 1);
-    const life = 0.42;
+    // по видео оригинала (15_incineration_lv1, 4 к/с) пламя видно ~1.3 с (5–6 кадров); у нас было 0.45+0.42 ≈ 0.9 с
+    const life = 0.5;
     const r = 9 * this.size;
     const blue = this.ramp > 0.5;
-    const stream = 0.45;
+    const stream = 0.85;
     for (const d of dirs) {
       for (let i = 0; i < n; i++) {
         const a = d + (Math.random() * 2 - 1) * half;

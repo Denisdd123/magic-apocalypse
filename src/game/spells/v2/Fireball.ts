@@ -3,6 +3,14 @@ import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { aimR, lifeToEdge, rnd } from './_proj';
+import { LF, MAGE_H, animFrames, ensureLineFx } from './_linefx';
+
+/** Длина огненной кометы (голова + шлейф) — ~1.7 роста мага, голова ≈ треть роста */
+const COMET = 1.7 * MAGE_H;
+/** Диаметр огненной сферы «Созвездия» */
+const ORB = 1.1 * MAGE_H;
+/** Покадровая анимация пламени (3 кадра штриховых языков, ~14 кадров/с) */
+const fireAnim = animFrames(LF.fire, 14);
 
 /** Облако яда / многократный взрыв: расширяется и бьёт hitsMax раз */
 interface Gas { x: number; y: number; t: number; hits: number; hitsMax: number; r: number; dmg: number; step: number; tint: number }
@@ -23,6 +31,7 @@ class Fireball extends DataSpell {
 
   update(dt: number) {
     if (this.readyData(dt)) {
+      ensureLineFx(W.scene);
       const n = this.count;
       if (this.hasCombo(46)) {
         // Чёрная смерть: шар сразу взрывается в случайной точке, 4 удара
@@ -70,8 +79,8 @@ class Fireball extends DataSpell {
     const dmg = this.dmg * k, r = Fireball.R * size;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: 0,
-      r: 7 * size, life: lifeToEdge(sp, 1.5), tex: 'fx_fireball_proj', size: 24 * size, tint: this.projTint,
-      pierce: Math.round(this.stat('pierce', 0)),
+      r: 7 * size, life: lifeToEdge(sp, 1.5), tex: LF.fire[0], size: COMET * size, tint: this.projTint,
+      pierce: Math.round(this.stat('pierce', 0)), update: fireAnim,
       onHit: (p) => this.explode(p.x, p.y, r, dmg),
       // долетел, ни в кого не попав — взрыв в конце пути
       onEnd: (p) => { if (p.t >= p.life && p.hit.size === 0) this.explode(p.x, p.y, r, dmg); },
@@ -85,7 +94,7 @@ class Fireball extends DataSpell {
     const a = Math.random() * Math.PI * 2, sp = rnd(140, 220) * this.speedMul;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: 0, vy: 0, dmg: 0, r: 7 * size, life: 3.5 * W.stats.durMul,
-      tex: 'fx_fireball_proj', size: 18 * size, tint: this.projTint, rotateToVel: false, spin: 2.5,
+      tex: LF.fireOrb, size: ORB * size, tint: this.projTint, rotateToVel: false, spin: 2.5,
       pierce: Math.round(this.stat('pierce', 0)),
       // ox/oy — смещение от мага, v — скорость разлёта (гаснет)
       data: { ox: 0, oy: 0, cx: Math.cos(a), cy: Math.sin(a), v: sp },
@@ -110,7 +119,7 @@ class Fireball extends DataSpell {
     const a = Math.random() * Math.PI * 2, sp = 120 * this.speedMul;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: touch,
-      r: 8 * size, life, tex: 'fx_fireball_proj', size: 22 * size, tint: 0xd8e4ff,
+      r: 8 * size, life, tex: LF.fire[0], size: COMET * size, tint: 0xd8e4ff,
       pierce: Infinity, hitInterval: 0.5, knock: 10,
       data: { turn: rnd(-2, 2) },
       update: (p, dt) => {
@@ -122,6 +131,7 @@ class Fireball extends DataSpell {
         const dx = W.player.x - p.x, dy = W.player.y - p.y, dist = Math.hypot(dx, dy);
         if (dist > 110) { vx += (dx / dist) * sp * 0.6; vy += (dy / dist) * sp * 0.6; }
         p.vx = vx; p.vy = vy;
+        fireAnim(p);
       },
       onEnd: (p) => this.explode(p.x, p.y, r * 1.3, base * 3, true),
     });
@@ -140,7 +150,9 @@ class Fireball extends DataSpell {
   private explode(x: number, y: number, r: number, dmg: number, plain = false) {
     if (!plain && this.hasProp(372)) { this.addGas(x, y, r, dmg, 3, 0.3, 0x8fdc5a); return; }
     areaDamage(x, y, r, dmg, 40, this.def.id);
-    W.fx.burst(x, y, r * 1.1, this.boomTint, 0.4, 'fx_fireball_boom');
+    // кольцо рваных огненных штрихов + белая вспышка лучами в центре
+    W.fx.burst(x, y, r * 1.15, this.boomTint, 0.45, LF.fireBoom);
+    W.fx.burst(x, y, r * 0.8, 0xfff0d0, 0.2, LF.spark);
     W.fx.sparks(x, y, 3, 0xffa060, 80);
   }
 
@@ -160,8 +172,8 @@ class Fireball extends DataSpell {
         g.hits++;
         const r = g.r * (1 + 0.25 * (g.hits - 1));
         areaDamage(g.x, g.y, r, g.dmg, 0, this.def.id);
-        W.fx.burst(g.x, g.y, r, g.tint, 0.5, 'fx_fireball_boom');
-        if (g.hits === 1) W.fx.burst(g.x, g.y, r * 1.2, g.tint, 0.6, 'blast');
+        W.fx.burst(g.x, g.y, r * 1.1, g.tint, 0.5, LF.fireBoom);
+        if (g.hits === 1) W.fx.burst(g.x, g.y, r * 1.2, g.tint, 0.6, LF.ring);
       }
       if (g.hits >= g.hitsMax) {
         this.gas[i] = this.gas[this.gas.length - 1]; this.gas.pop();

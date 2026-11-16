@@ -5,11 +5,17 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { SkyFx, freezeCrust } from './_skyfx';
+import { MAGE_H } from './_linefx';
 
 interface Sat { img: Phaser.GameObjects.Image; hits: Map<number, number>; ring: number; frost: boolean; x: number; y: number }
 
 /** базовая скорость вращения, рад/с — по видео оригинала ≈ 1 оборот за 6 с (~58°/с) */
 const SPIN = 1.05;
+/**
+ * Радиус орбиты: по видео оригинала (04_satellite_lv1) центр сферы в ~166 px от мага при росте мага ~47 px
+ * → ≈3.5 роста мага (было 52 ед. ≈ 2.3 роста). Внутреннее/внешнее кольцо «Блуждающих огоньков» — в той же пропорции.
+ */
+const ORBIT = 3.5 * MAGE_H, ORBIT_IN = ORBIT * 0.73, ORBIT_OUT = ORBIT * 1.42;
 /** базовый радиус сферы */
 const ORB_R = 8;
 
@@ -94,12 +100,12 @@ class Satellite extends DataSpell {
     const sq = Math.sqrt(W.stats.sizeMul);
     for (const s of this.sats) {
       let R: number, a: number;
-      if (merged) { R = (52 + r * 0.6) * sq; a = this.angle + (s.frost ? Math.PI : 0); }
+      if (merged) { R = (ORBIT + r * 0.6) * sq; a = this.angle + (s.frost ? Math.PI : 0); }
       else if (s.ring === 0) {
-        R = (this.hasProp(390) ? 38 : 52) * sq;
+        R = (this.hasProp(390) ? ORBIT_IN : ORBIT) * sq;
         a = this.angle + (i0++ * Math.PI * 2) / per0;
       } else {
-        R = 74 * sq;
+        R = ORBIT_OUT * sq;
         a = -this.angle + (i1++ * Math.PI * 2) / per1;
       }
       s.x = P.x + Math.cos(a) * R; s.y = P.y + Math.sin(a) * R;

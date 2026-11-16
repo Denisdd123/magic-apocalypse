@@ -6,9 +6,10 @@ import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { aimR, keepTarget } from './_proj';
 import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
+import { CYC_D, CYC_TEX, CYC_TEX_VOID, ensureInkCyclone } from './_inkfx';
 
-/** fx_cyclone / fx_cyclone_void: круглые спирали, видимый диаметр ≈ 210 px из 256 */
-const TEX = 'fx_cyclone', TEX_VOID = 'fx_cyclone_void', TEX_D = 210;
+/** штриховой вихрь (_inkfx): 3 кадра закрученных росчерков, смена ~12 раз в секунду + вращение */
+const TEX_D = CYC_D, CYC_FPS = 12;
 
 type Mode = 'seek' | 'void' | 'orbit' | 'neutron' | 'typhoon' | 'super' | 'hole';
 
@@ -44,6 +45,7 @@ class Cyclone extends DataSpell {
   private get cdAfterEnd(): boolean { return this.hasCombo(39) || this.hasCombo(50); }
 
   update(dt: number) {
+    ensureInkCyclone();
     this.clock += dt;
     if (!(this.cdAfterEnd && this.winds.length) && this.readyData(dt)) this.cast();
     if (!this.winds.length) return;
@@ -97,6 +99,8 @@ class Cyclone extends DataSpell {
       }
       w.x += w.vx * dt; w.y += w.vy * dt;
       const img = w.img!;
+      const key = this.frames(w.mode)[(((this.clock * CYC_FPS) | 0) + i) % 3];
+      if (img.texture.key !== key) img.setTexture(key);
       const a = k < 0.1 ? k / 0.1 : k > 0.85 ? (1 - k) / 0.15 : 1;
       img.setPosition(w.x, w.y).setScale((w.r * 2) / TEX_D).setAlpha(a * 0.9);
       img.rotation -= dt * (w.mode === 'void' || w.mode === 'hole' ? 3 : 7);
@@ -106,7 +110,8 @@ class Cyclone extends DataSpell {
     }
   }
 
-  private texFor(m: Mode) { return m === 'void' || m === 'hole' || m === 'orbit' ? TEX_VOID : TEX; }
+  private frames(m: Mode) { return m === 'void' || m === 'hole' || m === 'orbit' ? CYC_TEX_VOID : CYC_TEX; }
+  private texFor(m: Mode) { return this.frames(m)[0]; }
 
   private cur: Wind | null = null;
   private curTick = 0.3;

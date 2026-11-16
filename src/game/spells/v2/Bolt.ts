@@ -1,28 +1,16 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
-import { areaDamage } from '../../Projectiles';
+import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimR, faceVel, lifeToEdge, ROT, rnd } from './_proj';
+import { aimR, lifeToEdge, rnd } from './_proj';
+import { LF, MAGE_H, ensureLineFx, lighten } from './_linefx';
 
-/** Своя текстура иглы: тёмное лезвие + один белый блик на острие (без ореола и «осколков») */
-const NEEDLE = 'v2_star_needle';
-function ensureNeedle() {
-  if (W.scene.textures.exists(NEEDLE)) return;
-  const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-  // хвост-тень
-  g.fillStyle(0x1c1826, 0.55); g.fillTriangle(0, 4, 22, 1, 22, 7);
-  // тело иглы: тёмный фиолетово-серый
-  g.fillStyle(0x3e3858, 1); g.fillTriangle(6, 4, 30, 2, 30, 6);
-  g.fillTriangle(30, 2, 30, 6, 38, 4);
-  // холодная сердцевина
-  g.fillStyle(0x8f88b4, 1); g.fillRect(14, 3, 20, 2);
-  // блик на острие: маленький белый крестик
-  g.fillStyle(0xffffff, 1); g.fillRect(33, 3, 4, 2); g.fillRect(34, 2, 2, 4);
-  g.generateTexture(NEEDLE, 40, 8);
-  g.destroy();
-}
+/** Длина иглы (вместе со следом) в игровых единицах — заметная на телефоне: ~1.5 роста мага */
+const NEEDLE_LEN = 1.5 * MAGE_H;
+/** Вспышка попадания — радиус */
+const HIT_R = 0.45 * MAGE_H;
 
 /**
  * #1 Магическая пуля → «Звёздная игла». ОБРАЗЕЦ для остальных заклинаний на DataSpell:
@@ -100,20 +88,23 @@ class Bolt extends DataSpell {
     const speed = 320 * spd;
     // дальность — до края экрана и дальше (без короткого предела)
     const life = lifeToEdge(speed);
-    if (!blast) ensureNeedle();
+    ensureLineFx(W.scene);
     for (const a of dirs) {
-      const p = W.projectiles.fire({
+      W.projectiles.fire({
         src: this.def.id, x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
         dmg, r: 4 * size, life,
-        tex: blast ? 'fx_bolt_proj' : NEEDLE, size: (blast ? 30 : 16) * size, tint: this.tint,
-        rotateToVel: !blast, update: blast ? faceVel(ROT.tipLeft) : undefined,
+        // светлая игла-звезда со следом (ADD-свечение); Бластер — та же игла, вдвое крупнее
+        tex: LF.needle, size: NEEDLE_LEN * size * (blast ? 1.3 : 1), tint: blast ? 0xffe0b0 : lighten(this.tint, 0.5),
         pierce: arrow ? Infinity : 0, knock: 30,
-        onHit: this.hasProp(363) ? (q) => this.firecracker(q.x, q.y, dmg * 0.5) : undefined,
+        onHit: this.hasProp(363) ? this.hitCracker : this.hitPlain,
       });
-      // обычная игла — без ADD-свечения (темнее, без пересвета)
-      if (!blast) p.img.setBlendMode(Phaser.BlendModes.NORMAL);
     }
   }
+
+  /** Попадание: маленькая звёздная вспышка из тонких лучей */
+  private hitPlain = (q: Projectile) => { W.fx.burst(q.x, q.y, HIT_R, 0xffffff, 0.18, LF.spark); };
+  /** Петарда: вспышка + 3 искры со взрывом (половина урона пули) */
+  private hitCracker = (q: Projectile) => { this.hitPlain(q); this.firecracker(q.x, q.y, q.dmg * 0.5); };
 
   private firecracker(x: number, y: number, dmg: number) {
     for (let i = 0; i < 3; i++) {
@@ -138,18 +129,19 @@ class Bolt extends DataSpell {
     const size = this.sizeMul, sp = 300 * this.speedMul;
     const e = Math.random() < 0.5 ? W.enemies.randomVisible() : null;
     const a = e ? Math.atan2(e.y - y, e.x - x) : Math.random() * Math.PI * 2;
+    ensureLineFx(W.scene);
     const dist = e ? Math.max(20, Math.min(aimR(), Math.hypot(e.x - x, e.y - y))) : rnd(60, 180);
     const dmg = this.dmg;
     W.projectiles.fire({
       src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: 0, r: 1, life: dist / sp,
-      tex: 'fx_bolt_proj', size: 22 * size, tint: 0xffc890, pierce: Infinity,
-      rotateToVel: false, update: faceVel(ROT.tipLeft),
+      tex: LF.needle, size: NEEDLE_LEN * size, tint: 0xffd8a8, pierce: Infinity,
       onEnd: (p) => {
         const k = 1 + ((Math.random() * 9) | 0);
         const r = 18 * size * (1 + 0.15 * k);
         areaDamage(p.x, p.y, r, dmg * k, 20, this.def.id);
         // без звезды-«разбитого стекла»: одна приглушённая вспышка
-        W.fx.burst(p.x, p.y, r * 1.2, 0xb0607a, 0.45, 'blast');
+        W.fx.burst(p.x, p.y, r * 1.2, 0xffc890, 0.4, LF.spark);
+        W.fx.burst(p.x, p.y, r, 0xffe0c0, 0.35, LF.ring);
         W.fx.sparks(p.x, p.y, 2 + (k >> 1), 0xffc070, 110);
       },
     });

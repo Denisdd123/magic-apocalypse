@@ -1,13 +1,23 @@
 // Глобальные константы баланса и экрана.
-export const VIEW_W = 380;          // сколько игровых единиц видно по ширине экрана
+export const VIEW_W = 380;          // сколько игровых единиц видно по ширине экрана iPhone 19.5:9 (= 6.69 ед. оригинала)
+/**
+ * 1 единица мира оригинала (Unity) = ORIG_U наших единиц (≈56.8).
+ * Камера оригинала: orthographicSize = UnitApply_Vision = 7.25 → по высоте видно 14.5 ед. (на 19.5:9 — 6.69 ед. по ширине).
+ * Спрайты оригинала — 100 px на 1 ед. (Sprite.m_PixelsToUnits), т.е. 1 px спрайта оригинала = 0.568 наших ед.
+ */
+export const ORIG_U = VIEW_W / 6.69;
+/** Видимая высота мира (как в оригинале: 2 × orthographicSize = 14.5 ед.) — по ней подгоняется зум камеры */
+export const VIEW_H = 14.5 * ORIG_U;
 export const MAX_DPR = 2;           // ограничение плотности пикселей (производительность)
-export const MAX_ENEMIES = 480;
+/** общий предел живых (пул обычных мобов оригинала 450 + элитки/боссы/проклятые) */
+export const MAX_ENEMIES = 520;
 export const MAX_ORBS = 350;
 export const GRID_CELL = 40;
 
 export const PLAYER = {
   radius: 7,
-  speed: 95,           // ≈ четверть ширины экрана в секунду, как в оригинале
+  /** оригинал: UnitAlly_MoveSpeed = 2.56 ед/с при «скорости 100» (V_JoyStickController.FixedUpdate: вектор × скорость × dt) */
+  speed: 2.56 * (VIEW_W / 6.69),
   hp: 100,
   hurtCooldown: 0.35,
   pickupRadius: 38,

@@ -1,4 +1,4 @@
-import { ENEMY_TYPES, type Enemy } from './Enemies';
+import { ENEMY_TYPES, ORIG_UNIT, type Enemy } from './Enemies';
 import { W } from './World';
 
 /**
@@ -40,15 +40,12 @@ export class Zone {
     const P = W.player, idx = this.stage;
     this.onMerchantGone?.();
     const type = ENEMY_TYPES['boss' + idx] ?? ENEMY_TYPES.boss0;
-    const b = W.enemies.spawn(type, P.x, P.y - 200, false, ZONE.bossHp[idx]);
+    // босс крупный (спрайт ~5 ед. оригинала) — появляется за верхним краем экрана (место — оценка)
+    const b = W.enemies.spawn(type, P.x, P.y - 9.5 * ORIG_UNIT, false, ZONE.bossHp[idx]);
     if (!b) return;
     this.boss = b;
-    // свита: кольцо мобов волны босса (в оригинале во время босса идёт волна «마인/하울링» и т.п.)
-    const n = 26 + idx * 8, et = W.enemies.waveType();
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2, d = 230 + Math.random() * 40;
-      W.enemies.spawn(et, P.x + Math.cos(a) * d, P.y + Math.sin(a) * d);
-    }
+    // свиты-кольца в оригинале нет: во время босса просто идёт волна «마인/하울링» обычным спавнером
+    // (Enemies.waveType/waveRate при bossFight — 30 мобов за 0.75 с и т.д.)
   }
 
   /** Вызывается из Enemies.kill */

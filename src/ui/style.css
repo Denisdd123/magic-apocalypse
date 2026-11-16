@@ -40,13 +40,13 @@ html, body {
   /* фон страницы = средний цвет тёмной земли: под панелями Safari и в «подбородке» не будет полос */
   background: #24261c;
 }
-#game { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; }
+/* на весь экран, включая зону home-indicator: --app-h ставит main.ts (в standalone = высота экрана) */
+#game { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; height: var(--app-h, 100lvh); }
 /* лёгкая виньетка поверх карты: статичный слой CSS, GPU почти не нагружает */
-#game::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+#game::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
   background: radial-gradient(ellipse 75% 62% at 50% 50%, transparent 50%, rgba(3, 3, 4, 0.38) 82%, rgba(3, 3, 4, 0.66) 100%); }
-@supports (height: 100dvh) { #game { height: 100lvh; } }
 #game canvas { display: block; }
-#ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#ui { position: fixed; left: 0; top: 0; right: 0; height: 100vh; height: var(--app-h, 100lvh); pointer-events: none; z-index: 10; }
 #ui .interactive, #ui button, #ui .modal { pointer-events: auto; }
 
 button {
@@ -404,7 +404,7 @@ button:disabled { opacity: 0.38; }
 .toast.out { opacity: 0; }
 
 /* руна ярости / бой с боссом — красная виньетка */
-body.fury #game::after { content: ''; position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 30px rgba(255, 30, 30, 0.45); }
+body.fury #game::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 30px rgba(255, 30, 30, 0.45); }
 
 /* низкие экраны (iPhone SE, альбомная) — плотнее */
 @media (max-height: 640px) {

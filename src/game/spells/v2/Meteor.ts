@@ -1,3 +1,4 @@
+import type Phaser from 'phaser';
 import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage } from '../../Projectiles';
@@ -5,11 +6,21 @@ import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, randomInView } from './_skyfx';
 import { RING_K, ensureDarkTex, quarterRot } from './_darkfx';
+import { ImgPool } from './_zoneKit';
 
 /** базовый радиус взрыва метеорита */
 const R0 = 42;
-/** время падения (тень на земле растёт — телеграф) */
-const FALL = 0.7;
+/** время падения (тень на земле растёт — телеграф): быстро, «бух и приземлилась» как в оригинале */
+const FALL = 0.36;
+/** высота старта над точкой удара и снос вбок (дуга: сначала полого, потом почти отвесно) */
+const FALL_H = 300, FALL_DX = 0.75;
+
+/** Летящая звезда: квадратичная кривая Безье S → C → E с ускорением к земле */
+interface Fall {
+  sx: number; sy: number; cx: number; cy: number; ex: number; ey: number;
+  t: number; dur: number; delay: number; R: number; dmg: number; crater: boolean;
+  head: Phaser.GameObjects.Image | null; tail: Phaser.GameObjects.Image | null; spin: number;
+}
 /** базовый интервал между метеоритами одного залпа, с (стат interval) */
 const GAP = 0.3;
 
@@ -27,13 +38,17 @@ class Meteor extends DataSpell {
   private later = new Later();
   private craters: Crater[] = [];
   private freeCr: Crater[] = [];
+  private falls: Fall[] = [];
+  private freeFall: Fall[] = [];
+  private imgs = new ImgPool();
 
-  destroy() { this.fx.destroy(); this.later.clear(); this.craters = []; }
+  destroy() { this.fx.destroy(); this.later.clear(); this.craters = []; this.falls = []; this.imgs.destroy(); }
 
   update(dt: number) {
     ensureDarkTex();
     this.fx.update(dt);
     this.later.update(dt);
+    this.updateFalls(dt);
     this.updateCraters(dt);
 
     if (this.hasCombo(5)) {
@@ -100,15 +115,60 @@ class Meteor extends DataSpell {
       this.later.add(delay + tele, () => this.land(x, y, R, dmg, crater));
       return;
     }
-    const fall = R > R0 * 2 ? FALL * 1.4 : FALL;
-    const H = 240, dx = H * 0.35;
+    const fall = R > R0 * 2 ? FALL * 1.35 : FALL;
     this.fx.spawn('shadow', { x, y, w: R * 0.5, w1: R * 2, h: R * 0.25, h1: R * 0.8, a0: 0.25, a1: 0.85, life: fall, delay, add: false, depth: DEPTH.zone });
     this.fx.spawn('dk_ring', { x, y, w: R * RING_K, a0: 0.1, a1: 0.45, life: fall, delay, tint: 0x6a2418, add: false, depth: DEPTH.zone + 0.1 });
-    const vx = dx / fall, vy = H / fall, rot = Math.atan2(vy, vx);
+    // кривая падения: старт высоко и сбоку (сторона случайная), контрольная точка даёт дугу —
+    // сначала камень летит полого, затем почти отвесно «втыкается» в землю
+    const side = Math.random() < 0.5 ? -1 : 1, dx = FALL_H * FALL_DX * (0.85 + Math.random() * 0.3);
+    const f = this.freeFall.pop() ?? ({} as Fall);
+    f.sx = x - side * dx; f.sy = y - FALL_H;
+    f.cx = x - side * dx * 0.35; f.cy = y - FALL_H * 0.8;
+    f.ex = x; f.ey = y;
+    f.t = 0; f.dur = fall; f.delay = delay; f.R = R; f.dmg = dmg; f.crater = crater;
+    f.head = null; f.tail = null; f.spin = quarterRot();
+    this.falls.push(f);
+    if (delay <= 0) this.showFall(f);
+  }
+
+  /** Картинки звезды (вид прежний: dk_streak + dk_star из _darkfx) */
+  private showFall(f: Fall) {
     // след: «голова» картинки (правый край) совпадает с камнем
-    this.fx.spawn('dk_streak', { x: x - dx, y: y - H, vx, vy, w: R * 2.2, h: R * 0.42, life: fall, delay, a0: 0.9, a1: 0.9, add: false, rot, ox: 0.92, oy: 0.5, depth: DEPTH.top });
-    this.fx.spawn('dk_star', { x: x - dx, y: y - H, vx, vy, w: R * 0.8, life: fall, delay, a0: 1, a1: 1, add: false, rot: quarterRot(), depth: DEPTH.top + 0.01 });
-    this.later.add(delay + fall, () => this.land(x, y, R, dmg, crater));
+    f.tail = this.imgs.get('dk_streak', DEPTH.top, false).setOrigin(0.92, 0.5).setDisplaySize(f.R * 2.2, f.R * 0.42).setAlpha(0);
+    f.head = this.imgs.get('dk_star', DEPTH.top + 0.01, false).setDisplaySize(f.R * 0.8, f.R * 0.8).setRotation(f.spin);
+    this.placeFall(f, 0);
+  }
+
+  /** Позиция и поворот по кривой; k — доля пути 0..1 */
+  private placeFall(f: Fall, k: number) {
+    const m = 1 - k;
+    const x = m * m * f.sx + 2 * m * k * f.cx + k * k * f.ex;
+    const y = m * m * f.sy + 2 * m * k * f.cy + k * k * f.ey;
+    // касательная — направление следа
+    const tx = m * (f.cx - f.sx) + k * (f.ex - f.cx), ty = m * (f.cy - f.sy) + k * (f.ey - f.cy);
+    f.tail!.setPosition(x, y).setRotation(Math.atan2(ty, tx));
+    f.head!.setPosition(x, y);
+  }
+
+  private updateFalls(dt: number) {
+    for (let i = this.falls.length - 1; i >= 0; i--) {
+      const f = this.falls[i];
+      if (f.delay > 0) { f.delay -= dt; if (f.delay > 0) continue; this.showFall(f); }
+      f.t += dt;
+      if (f.t >= f.dur) {
+        if (f.head) this.imgs.put(f.head);
+        if (f.tail) this.imgs.put(f.tail);
+        f.head = f.tail = null;
+        this.falls[i] = this.falls[this.falls.length - 1]; this.falls.pop();
+        this.freeFall.push(f);
+        this.land(f.ex, f.ey, f.R, f.dmg, f.crater);
+        continue;
+      }
+      const u = f.t / f.dur;
+      // разгон к земле: медленнее вверху, «бух» в конце
+      this.placeFall(f, u * (0.45 + 0.55 * u));
+      f.tail!.setAlpha(Math.min(0.9, u * 6));
+    }
   }
 
   private land(x: number, y: number, R: number, dmg: number, crater: boolean) {

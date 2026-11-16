@@ -5,13 +5,14 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
-import { LAVA_D, ensureDarkTex } from './_darkfx';
+import { LAVA_D, LAVA_TEX, ensureInkLava } from './_inkfx';
 
 /**
- * Лужа — пиксельная магма из _darkfx в 2 кадрах (dk_lava0/1): тёмная корка, тлеющие трещины, пузыри.
- * Кадры меняются рывком раз в FRAME_SEC. fx_lava_wave — дуга фронта (выпуклостью вниз) для C56.
+ * Лужа — штриховая магма из _inkfx в 2 кадрах (ink_lava0/1): тёмная корка со штриховкой плит,
+ * рваная кромка, ветвящиеся тлеющие трещины, пузыри. Кадры отличаются накалом трещин и меняются раз в FRAME_SEC.
+ * fx_lava_wave — дуга фронта (выпуклостью вниз) для C56.
  */
-const POOL_TEX = ['dk_lava0', 'dk_lava1'], POOL_D = LAVA_D;
+const POOL_TEX = LAVA_TEX, POOL_D = LAVA_D;
 const FRAME_SEC = 0.32;
 const WAVE_TEX = 'fx_lava_wave', WAVE_D = 153;
 
@@ -43,7 +44,7 @@ class Lava extends DataSpell {
   }
 
   update(dt: number) {
-    ensureDarkTex();
+    ensureInkLava();
     this.clock += dt;
     // КД идёт только когда луж нет (оригинал: «5 с после окончания»)
     if (!this.pools.length && this.readyData(dt)) this.cast();
@@ -111,9 +112,9 @@ class Lava extends DataSpell {
   }
 
   private spawn(x: number, y: number, vx: number, vy: number, r: number, life: number, moving: boolean) {
-    // поворот кратен 90° — у разных луж разный рисунок трещин, пиксели не плывут
+    // случайный поворот — у разных луж разный рисунок трещин
     const img = this.pool.get(POOL_TEX[0], DEPTH.zone, false).setPosition(x, y).setAlpha(0)
-      .setRotation(((Math.random() * 4) | 0) * (Math.PI / 2));
+      .setRotation(Math.random() * Math.PI * 2);
     if (this.hasProp(533)) img.setTint(0xffc4b4); // Плавление: корка чуть краснее
     const front = moving ? this.pool.get(WAVE_TEX, DEPTH.zone).setAlpha(0).setTint(0xb06040) : null;
     this.pools.push({ x, y, vx, vy, r0: r, r, t: 0, life, img, front });

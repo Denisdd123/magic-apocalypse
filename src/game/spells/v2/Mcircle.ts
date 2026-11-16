@@ -4,6 +4,13 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { effCd } from './_utilGuard';
+import { MAGE_H } from './_linefx';
+
+/**
+ * Радиус печати: по спрайту оригинала MagicCircle (≈400 px в конце раскрытия, 100 px/ед.) и камере
+ * (6.69 ед. на 540 px видео, маг ≈47 px) → ≈3.5 роста мага (было 62 ед. ≈ 2.7 роста). Вид не меняем — только размер.
+ */
+const SEAL_R = 3.5 * MAGE_H;
 
 /**
  * #19 Магический круг → «Руна силы». Раз в cdSec (20 с, отсчёт после окончания круга) под магом
@@ -57,7 +64,7 @@ class Mcircle extends DataSpell {
       s.tempAmp = this.amp;
       s.cdSpeedBonus = this.hasProp(524) ? 0.15 : 0;
       const img = this.img!;
-      this.r = 62 * W.stats.sizeMul * (this.hasProp(526) ? 1.3 : 1);
+      this.r = SEAL_R * W.stats.sizeMul * (this.hasProp(526) ? 1.3 : 1);
       img.setPosition(P.x, P.y + 4).setDisplaySize(this.r * 2, this.r * 2);
       img.rotation += dt * 0.5;
       const fade = perpetual ? 1 : Math.min(1, this.active / 0.4, (this.dur - this.active) / 0.25 + 0.2);
@@ -77,7 +84,7 @@ class Mcircle extends DataSpell {
     this.dur = this.durSec;
     this.active = this.dur;
     this.cdLeft = 0;
-    this.r = 62 * W.stats.sizeMul * (this.hasProp(526) ? 1.3 : 1);
+    this.r = SEAL_R * W.stats.sizeMul * (this.hasProp(526) ? 1.3 : 1);
     const tint = this.hasProp(524) ? 0x8fd8ff : this.hasProp(525) ? 0xc89bff : this.hasProp(526) ? 0xff8a6a : 0xe0c070;
     this.img?.setVisible(true).setPosition(P.x, P.y + 4).setDisplaySize(this.r * 2, this.r * 2).setTint(tint).setAlpha(0.2);
     W.fx.burst(P.x, P.y, this.r, tint, 0.5, 'ring');

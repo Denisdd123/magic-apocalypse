@@ -38,7 +38,12 @@ const FIELD = { tile: 20 * U, slots: 20, chance: 86 / 195, spread: 10 * U };
  * x = cos a · U(2.8, 11) ед., y = sin a · U(2.8, 11) ед. от мага; 80% малые, 20% средние.
  */
 const START = { num: 50, rMin: 2.8 * U, rMax: 11 * U, smallPct: 80 };
-const SIZE: Record<OrbKind, number> = { s: 8, m: 11, l: 14, life: 14 };
+/**
+ * Половина размера на экране. Оригинал: объект Obj_Item масштаб 0.8, спрайты 100 px/ед. —
+ * малая Item1 34 px → 0.27 ед., средняя Item2 48 px → 0.38 ед., большая Item3 99 px → 0.79 ед. (со свечением);
+ * коллайдер предмета BoxCollider 0.25 × 0.8 = 0.2 ед.
+ */
+const SIZE: Record<OrbKind, number> = { s: 0.272 * U / 2, m: 0.384 * U / 2, l: 0.792 * U / 2, life: 14 };
 
 /** Сферы эссенции (опыт) и сферы жизни */
 export class Orbs {

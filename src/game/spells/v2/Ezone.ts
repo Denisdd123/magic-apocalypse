@@ -5,7 +5,7 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { SkyFx } from './_skyfx';
-import { ERING_K, ensureDarkTex, freezeOnly } from './_darkfx';
+import { EARC_TEX, EBALL_K, ERING_K, ensureInkEzone, freezeOnly } from './_inkfx';
 
 /** базовый радиус поля вокруг мага */
 const R0 = 55;
@@ -30,6 +30,8 @@ class Ezone extends DataSpell {
   private arc: Phaser.GameObjects.Image | null = null;
   private arcT = 0;
   private arcRot = 0;
+  /** кадр разряда (3 разных рисунка молний) */
+  private arcFr = 0;
   private wave: Phaser.GameObjects.Image | null = null;
   private charges: Phaser.GameObjects.Image[] = [];
   private t = 0;
@@ -56,14 +58,14 @@ class Ezone extends DataSpell {
     this.ring = this.arc = this.wave = null; this.charges = [];
   }
 
-  /** приглушённые цвета (без неона) */
-  private get color() { return this.hasProp(426) ? 0x6aa89a : this.hasProp(425) ? 0xb0a2d8 : 0x9a8ec8; }
+  /** светлые холодные цвета (светящаяся магия на тёмной карте); текстуры уже бледно-фиолетовые */
+  private get color() { return this.hasProp(426) ? 0xc0fff0 : this.hasProp(425) ? 0xfff0ff : 0xffffff; }
 
   private ensure() {
-    ensureDarkTex();
-    // поле: тонкое пиксельное кольцо + пара штрихов (вместо картинки с «отростками»)
-    if (!this.ring) this.ring = W.scene.add.image(0, 0, 'dk_ering').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD);
-    if (!this.arc) this.arc = W.scene.add.image(0, 0, 'dk_earc').setDepth(DEPTH.zone + 0.21).setBlendMode(Phaser.BlendModes.ADD);
+    ensureInkEzone();
+    // поле: кольцо из многих тонких линий + пара бегущих молний поверх
+    if (!this.ring) this.ring = W.scene.add.image(0, 0, 'ink_ering').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    if (!this.arc) this.arc = W.scene.add.image(0, 0, EARC_TEX[0]).setDepth(DEPTH.zone + 0.21).setBlendMode(Phaser.BlendModes.ADD);
     if (!this.wave) this.wave = W.scene.add.image(0, 0, 'fx_ezone_firewave').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
   }
 
@@ -106,8 +108,9 @@ class Ezone extends DataSpell {
       this.arcT += ARC_STEP;
       if (this.arcT < 0) this.arcT = ARC_STEP;
       this.arcRot += ARC_ANG + Math.random() * 0.5;
-      this.arc!.setAlpha(Math.random() < 0.2 ? 0.45 : 0.9);
-      this.ring!.setAlpha(Math.random() < 0.15 ? 0.3 : 0.48);
+      this.arcFr = (this.arcFr + 1) % EARC_TEX.length;
+      this.arc!.setTexture(EARC_TEX[this.arcFr]).setAlpha(Math.random() < 0.2 ? 0.55 : 1);
+      this.ring!.setAlpha(Math.random() < 0.15 ? 0.45 : 0.7);
     }
     this.ring!.setVisible(true).setPosition(P.x, P.y).setDisplaySize(D, D).setTint(col);
     this.arc!.setVisible(true).setPosition(P.x, P.y).setDisplaySize(D, D).setRotation(this.arcRot).setTint(col);
@@ -173,7 +176,7 @@ class Ezone extends DataSpell {
   private updateCharges(dt: number) {
     const P = W.player, R = R0 * this.sizeMul;
     while (this.charges.length < CHARGES) {
-      this.charges.push(W.scene.add.image(0, 0, 'dk_ering').setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD));
+      this.charges.push(W.scene.add.image(0, 0, 'ink_eball').setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD));
     }
     this.spin += dt * 5 * this.speedMul;
     const cr = R * 0.3, orbit = R * 0.8;
@@ -181,9 +184,9 @@ class Ezone extends DataSpell {
     for (let i = 0; i < this.charges.length; i++) {
       const a = this.spin + (i * Math.PI * 2) / this.charges.length;
       const x = P.x + Math.cos(a) * orbit, y = P.y + Math.sin(a) * orbit;
-      // заряд — маленькое пиксельное кольцо; поворот рывками по 90° (сетка не плывёт)
-      this.charges[i].setVisible(true).setPosition(x, y).setDisplaySize(cr * ERING_K, cr * ERING_K)
-        .setRotation((((this.t * 14) | 0) + i) * (Math.PI / 2)).setAlpha(0.8).setTint(this.color);
+      // заряд — штриховой шар с искрами; поворот рывками — искры «перескакивают»
+      this.charges[i].setVisible(true).setPosition(x, y).setDisplaySize(cr * EBALL_K, cr * EBALL_K)
+        .setRotation((((this.t * 14) | 0) + i) * 1.9).setAlpha(0.95).setTint(this.color);
       W.enemies.grid.query(x, y, cr, this.onCharge);
     }
   }

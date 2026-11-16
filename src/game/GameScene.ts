@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEPTH, VIEW_W } from '../config';
+import { DEPTH, VIEW_H, VIEW_W } from '../config';
 import { makeTextures, GROUND_TILE_SCALE } from '../textures';
 import { Stats } from './Stats';
 import { Player } from './Player';
@@ -63,10 +63,17 @@ export class GameScene extends Phaser.Scene {
     this.loadRest();
   }
 
-  /** Камера: по ширине всегда видно VIEW_W игровых единиц */
+  /**
+   * Камера как в оригинале: фиксирована ВЫСОТА обзора (orthographicSize 7.25 → 14.5 ед. = VIEW_H),
+   * ширина зависит от экрана (на iPhone 19.5:9 — 6.69 ед. = VIEW_W). На широких экранах (ПК, альбомная)
+   * ширину ограничиваем 8.2 ед. (как у портретного 16:9), чтобы спавн за краем не был виден.
+   */
   private fitCamera() {
-    const cam = this.cameras.main;
-    cam.setZoom(this.scale.width / VIEW_W);
+    const cam = this.cameras.main, w = this.scale.width, h = this.scale.height;
+    let zoom = h / VIEW_H;
+    const maxW = VIEW_W * (8.2 / 6.69);
+    if (w / zoom > maxW) zoom = w / maxW;
+    cam.setZoom(zoom);
   }
 
   private startRun() {

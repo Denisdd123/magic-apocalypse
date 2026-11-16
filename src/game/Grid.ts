@@ -6,15 +6,19 @@ export interface GridItem { x: number; y: number; r: number; alive: boolean; }
 export class Grid<T extends GridItem> {
   private cells = new Map<number, T[]>();
   private used: T[][] = [];
+  /** наибольший радиус среди вставленных (боссы оригинала r≈50 > ячейки) — запас при поиске */
+  private maxR = 0;
 
   private key(cx: number, cy: number) { return (cx + 30000) * 65536 + (cy + 30000); }
 
   clear() {
     for (const arr of this.used) arr.length = 0;
     this.used.length = 0;
+    this.maxR = 0;
   }
 
   insert(item: T) {
+    if (item.r > this.maxR) this.maxR = item.r;
     const cx = Math.floor(item.x / GRID_CELL), cy = Math.floor(item.y / GRID_CELL);
     const k = this.key(cx, cy);
     let arr = this.cells.get(k);
@@ -28,7 +32,7 @@ export class Grid<T extends GridItem> {
    * пересекается с кругом (x,y,r). Возвращает их число. out переиспользуется вызывающим.
    */
   near(x: number, y: number, r: number, out: T[], max: number): number {
-    const pad = r + 40;
+    const pad = r + this.maxR;
     const x0 = Math.floor((x - pad) / GRID_CELL), x1 = Math.floor((x + pad) / GRID_CELL);
     const y0 = Math.floor((y - pad) / GRID_CELL), y1 = Math.floor((y + pad) / GRID_CELL);
     let n = 0;
@@ -49,7 +53,7 @@ export class Grid<T extends GridItem> {
 
   /** Вызывает cb для каждого живого объекта, чей круг пересекается с кругом (x,y,r). cb вернул true — стоп. */
   query(x: number, y: number, r: number, cb: (item: T) => boolean | void) {
-    const pad = r + 40; // учёт радиуса самих врагов
+    const pad = r + this.maxR; // учёт радиуса самих врагов
     const x0 = Math.floor((x - pad) / GRID_CELL), x1 = Math.floor((x + pad) / GRID_CELL);
     const y0 = Math.floor((y - pad) / GRID_CELL), y1 = Math.floor((y + pad) / GRID_CELL);
     for (let cx = x0; cx <= x1; cx++) {

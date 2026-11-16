@@ -73,10 +73,11 @@ const v = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
  * наклон оси / вытянутость: стоит 2°/2.2, вверх-вниз 1°/3.2, диагональ ~22°/2.3, вбок ~40°/2.4 (короче и шире, не «огурец»).
  */
 export const POSES = {
-  idle: { rot: 0,    nx: 1.35, trail: 0,    ny: 0.9  },   // широкий треугольник
+  // фидбек 2.1 (T7.1): стоя маг был «толстым» — покой теперь стройный, как бег вверх; диагональ/бок тоже сужены
+  idle: { rot: 0,    nx: 1.0,  trail: 0,    ny: 0.95 },   // стройный, как vert
   vert: { rot: 0,    nx: 1.0,  trail: 0,    ny: 0.95 },   // узкий, плащ поджат
-  diag: { rot: 0.25, nx: 1.15, trail: 0.12, ny: 0.88 },   // ~22°
-  side: { rot: 0.42, nx: 1.25, trail: 0.28, ny: 0.85 },   // ~39°, короче и шире (не «огурец»)
+  diag: { rot: 0.25, nx: 1.0,  trail: 0.12, ny: 0.9  },   // ~22°
+  side: { rot: 0.42, nx: 1.05, trail: 0.24, ny: 0.88 },   // ~39°, не «огурец», но и не толстый
 };
 export type Pose = keyof typeof POSES;
 
@@ -490,9 +491,27 @@ export function makeTextures(scene: Phaser.Scene) {
   });
 
   // --- Предметы ---
-  make(scene, 'orb_s', 16, 16, (g) => { glow(g, 8, 8, 8, 0x46d6ff, 6, 0.9); g.fillStyle(0xb8f2ff, 1); g.fillCircle(8, 8, 2.6); });
-  make(scene, 'orb_m', 22, 22, (g) => { glow(g, 11, 11, 11, 0x3f9dff, 6, 1); g.fillStyle(0xd0eaff, 1); g.fillCircle(11, 11, 3.6); });
-  make(scene, 'orb_l', 28, 28, (g) => { glow(g, 14, 14, 14, 0xff5ad2, 6, 1); g.fillStyle(0xffd6f4, 1); g.fillCircle(14, 14, 4.6); });
+  // Сферы маны — цвета как у спрайтов оригинала (research/orig_sprites/items Item1/2/3):
+  // малая — голубой диск (#23b9f5), средняя — оранжевый (#fbb110), большая — розовое свечение с белым ядром (#fc99ef).
+  // Холст ×2 к размеру на экране (Orbs.SIZE), чтобы не мылилось на ретине.
+  make(scene, 'orb_s', 32, 32, (g) => {
+    glow(g, 16, 16, 16, 0x23b9f5, 6, 0.8);
+    g.fillStyle(0x1f9fe0, 1); g.fillCircle(16, 16, 10.5);
+    g.fillStyle(0x6fd6ff, 1); g.fillCircle(16, 16, 6);
+    g.fillStyle(0xd8f6ff, 1); g.fillCircle(15, 15, 2.6);
+  });
+  make(scene, 'orb_m', 44, 44, (g) => {
+    glow(g, 22, 22, 22, 0xf59a0c, 7, 0.75);
+    g.fillStyle(0xf08a08, 1); g.fillCircle(22, 22, 12.5);
+    g.fillStyle(0xfbb110, 1); g.fillCircle(22, 22, 9);
+    g.fillStyle(0xffe37a, 1); g.fillCircle(21, 21, 4.2);
+  });
+  make(scene, 'orb_l', 90, 90, (g) => {
+    glow(g, 45, 45, 45, 0xd860c8, 10, 0.7);
+    glow(g, 45, 45, 22, 0xfc99ef, 6, 0.9);
+    g.fillStyle(0xff5ae0, 1); g.fillCircle(45, 45, 10);
+    g.fillStyle(0xffe6fb, 1); g.fillCircle(45, 45, 6.5);
+  });
   make(scene, 'orb_life', 28, 28, (g) => {
     glow(g, 14, 14, 14, 0x55ff77, 6, 0.9);
     g.fillStyle(0xe8ffe8, 1); g.fillRect(12, 7, 4, 14); g.fillRect(7, 12, 14, 4);

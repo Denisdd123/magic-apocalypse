@@ -3,7 +3,13 @@ import type { Enemy } from '../../Enemies';
 import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimR, faceVel, lifeToEdge, ROT, rnd } from './_proj';
+import { aimR, lifeToEdge, rnd } from './_proj';
+import { LF, MAGE_H, animFrames, ensureLineFx } from './_linefx';
+
+/** Длина одного разряда — ~2.7 роста мага (раньше был короткий штрих) */
+const LEN = 2.7 * MAGE_H;
+/** Ломаная перерисовывается каждые 0.05 с (4 кадра штриховой молнии по кругу) */
+const shockAnim = animFrames(LF.shock, 20);
 
 /**
  * #13 Электрический удар → «Разряд». Ломаные разряды из мага в случайные стороны (летят до края экрана), пробивают всех.
@@ -17,7 +23,7 @@ class Eshock extends DataSpell {
   private static readonly LIFE = 0.32;
 
   update(dt: number) {
-    if (this.readyData(dt)) this.cast();
+    if (this.readyData(dt)) { ensureLineFx(W.scene); this.cast(); }
     for (let i = this.queue.length - 1; i >= 0; i--) {
       const q = this.queue[i];
       q.delay -= dt;
@@ -73,16 +79,20 @@ class Eshock extends DataSpell {
     const sp = Eshock.SPEED * this.speedMul * (front ? 1.3 : 1);
     const chain = this.hasProp(470) && !this.hasCombo(22);
     W.projectiles.fire({
-      src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
+      // хвост молнии начинается у мага — разряд «отрывается» от него и улетает вперёд
+      src: this.def.id, x: x + Math.cos(a) * LEN * size * 0.2, y: y + Math.sin(a) * LEN * size * 0.2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
       // без предела длины: разряд пролетает весь экран (Буйство — ещё дальше)
-      r: 6 * size, life: lifeToEdge(sp) * this.rangeK, tex: 'fx_eshock_proj', size: 34 * size,
+      r: 6 * size, life: lifeToEdge(sp) * this.rangeK, tex: LF.shock[(Math.random() * 4) | 0], size: LEN * size,
       tint: this.tintFor(), pierce: Infinity, knock: 12,
-      rotateToVel: false, update: faceVel(ROT.eshock),
+      update: shockAnim,
       data: { chained: false },
-      onHit: chain ? (p, e) => this.startChain(p, e, dmg, size) : (_p, e) => W.fx.sparks(e.x, e.y, 2, 0xd9b8ff, 70),
+      onHit: chain ? (p, e) => this.startChain(p, e, dmg, size) : this.hitFx,
       onEnd: hi ? (p) => this.discharge(p.x, p.y, dmg) : undefined,
     });
   }
+
+  /** Попадание: маленькая вспышка тонких лучей */
+  private hitFx = (_p: Projectile, e: Enemy) => { W.fx.burst(e.x, e.y, 0.4 * MAGE_H, 0xe8dcff, 0.15, LF.spark); };
 
   private tintFor() {
     return this.hasProp(472) ? 0xa8c8ff : this.hasProp(471) ? 0xffb0c8 : 0xffffff;
@@ -115,9 +125,9 @@ class Eshock extends DataSpell {
       const nd = heart ? dmg * 0.8 : dmg, ns = size * (heart ? 0.8 : 0.85);
       const p = W.projectiles.fire({
         src: this.def.id, x: from.x, y: from.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: nd,
-        r: 5 * ns, life: d / sp + 0.05, tex: 'fx_eshock_proj', size: Math.min(48, Math.max(20, d)) * ns, tint: this.tintFor(),
-        pierce: 0, rotateToVel: false, update: faceVel(ROT.eshock),
-        onHit: (_p, e) => { W.fx.sparks(e.x, e.y, 2, 0xd9b8ff, 70); this.jump(e, nd, ns, left - 1, heart); },
+        r: 5 * ns, life: d / sp + 0.05, tex: LF.shock[0], size: Math.min(LEN, Math.max(20, d)) * ns, tint: this.tintFor(),
+        pierce: 0, update: shockAnim,
+        onHit: (q, e) => { this.hitFx(q, e); this.jump(e, nd, ns, left - 1, heart); },
       });
       p.hit.set(from.id, 0); // не бить врага, из которого прыгнули
     }
@@ -128,7 +138,8 @@ class Eshock extends DataSpell {
     const dis = this.hasCombo(63);
     const r = 20 * (dis ? 1.8 : 1);
     areaDamage(x, y, r, dmg, 20, this.def.id);
-    W.fx.burst(x, y, r, 0xe0b0ff, 0.3, 'blast');
+    W.fx.burst(x, y, r * 1.3, 0xe8d8ff, 0.3, LF.spark);
+    W.fx.burst(x, y, r, 0xe8d8ff, 0.3, LF.ring);
     W.fx.sparks(x, y, 3, 0xd9b8ff, 90);
     if (!dis) return;
     const a0 = Math.random() * Math.PI * 2;
@@ -136,8 +147,8 @@ class Eshock extends DataSpell {
       const a = a0 + (i * Math.PI) / 2 + rnd(-0.2, 0.2), sp = Eshock.SPEED;
       W.projectiles.fire({
         src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: dmg * 0.5,
-        r: 5, life: Eshock.LIFE * 0.8, tex: 'fx_eshock_proj', size: 24, tint: 0xffb0c8,
-        pierce: Infinity, rotateToVel: false, update: faceVel(ROT.eshock),
+        r: 5, life: Eshock.LIFE * 0.8, tex: LF.shock[i], size: LEN * 0.6, tint: 0xffb0c8,
+        pierce: Infinity, update: shockAnim,
       });
     }
   }

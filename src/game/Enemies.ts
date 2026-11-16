@@ -1,44 +1,66 @@
 import Phaser from 'phaser';
-import { DEPTH, LOOT, MAX_ENEMIES, VIEW_W } from '../config';
+import { DEPTH, LOOT, MAX_ENEMIES, ORIG_U } from '../config';
 import { Grid } from './Grid';
 import { W } from './World';
 
 export interface EnemyType {
   id: string; tex: string; r: number; size: number;
+  /** speed — «이동속도» оригинала (Dictionary_UnitStat, напр. 34); в ед/с переводит origSpeed() */
   hp: number; speed: number; dmg: number; xp: number;
   /** xp — опыт сразу за убийство («마나량» моба в оригинале); drop не используется */
   drop: number;
+  /** «유닛크기» оригинала, % (масштаб объекта моба) */
+  pct: number;
+  /** особая способность 1 оригинала: при касании мага бьёт его и сам погибает (без награды) — «взрыв» */
+  kami: boolean;
 }
 
-/** Множитель скорости всех врагов (калибровка по видео оригинала) */
-export const ENEMY_SPEED = 0.85;
+/** 1 единица мира оригинала в наших единицах (≈56.8; см. config.ORIG_U) */
+export const ORIG_UNIT = ORIG_U;
+const U = ORIG_U;
 
-// tex: 'en_*' — картинки мобов (mobArt.ts: кадры en_<имя>_0.._2); старые процедурные тоже поддерживаются.
-// РАЗМЕРЫ — по оригиналу (research/orig_sprites + Dictionary_UnitStat «유닛크기»): видимый размер =
-// размер спрайта оригинала, px × «유닛크기»/100 × (наш маг 31 ед. / маг оригинала 63 px) ≈ px × %/100 × 0.49.
-// ХИТБОКС — в оригинале у всех обычных мобов одинаковый BoxCollider 0.44×0.55 ед. (префаб Obj_UnitEnemy,
-// размер мага 0.21×0.5) → r ≈ 0.25 ед. × 49 ≈ 12 у всех; разный только рисунок.
+/**
+ * Скорость моба как в оригинале (C_Battle_EnemyUnit.Start_Unit + корутина Unit_Move):
+ * S = round(«이동속도» × множители роста); моб шагает на step = S·0.00135 + 0.018 ед. (≤ 0.18)
+ * раз в delay = 0.095 − 0.225·step с (≥ 0.033) → скорость step/delay ед/с.
+ * Пример: S 34 (Рой малый) → 0.79 ед/с ≈ 45 наших; маг 2.56 ед/с — в 3.2 раза быстрее.
+ */
+export function origSpeed(S: number): number {
+  const st = Math.min(0.18, Math.max(1e-7, S * 0.00135 + 0.018));
+  const delay = Math.min(1, Math.max(0.033, 0.095 - 0.225 * st));
+  return (st / delay) * U;
+}
+
+/**
+ * Типы мобов. РАЗМЕРЫ — из кода/ассетов оригинала: спрайты 100 px на 1 ед., объект моба масштабируется на
+ * «유닛크기»/100 → видимый размер = px спрайта /100 × %/100 ед. ХИТБОКС — BoxCollider 0.44×0.55 ед. на том же
+ * масштабированном объекте (r ≈ 0.25 ед. × %/100); у элиток/боссов BoxCollider 1.66 (r ≈ 0.83 ед. × %/100).
+ * Поле tex не трогать (картинки наши). HP ×0.14, урон ×0.55 к оригиналу (наш баланс урона).
+ */
+function mob(id: string, tex: string, px: number, pct: number, speed: number, hp: number, dmg: number, xp: number, drop: number, kami: boolean, boss = false): EnemyType {
+  return { id, tex, px, pct, size: (px / 100) * (pct / 100) * U * (boss ? 0.6 : 1), /* у спрайтов боссов оригинала много пустых полей, наши текстуры заполняют квадрат */ r: (boss ? 0.83 : 0.25) * (pct / 100) * U, speed, hp, dmg, xp, drop, kami } as EnemyType;
+}
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  // старые типы (сундук-проклятие, свита, мини-волна): размеры по ближайшему мобу оригинала
-  basic: { id: 'basic', tex: 'en_minion',  r: 12, size: 39, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон (75 px × 105%)
-  red:   { id: 'red',   tex: 'en_stinger', r: 12, size: 46, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер (ориг. 61 — ужато, он же элитка-проклятие)
-  small: { id: 'small', tex: 'en_swarm_s', r: 10, size: 24, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
-  white: { id: 'white', tex: 'en_seraph',  r: 14, size: 64, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим (ориг. 135 — ужато)
-  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 99, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик (237 px × 85%)
-  // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
-  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 12, size: 28, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый (46 px × 125%)
-  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 12, size: 42, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний (86 × 100%)
-  w11: { id: 'w11', tex: 'en_swarm_l',     r: 12, size: 48, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой (108 × 90%)
-  w13: { id: 'w13', tex: 'en_interceptor', r: 12, size: 46, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик (125 × 75%)
-  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 57, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей (145 × 80%)
-  w31: { id: 'w31', tex: 'en_scarab',      r: 12, size: 41, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей (99 × 85%)
-  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 50, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина (185 × 55%)
-  w22: { id: 'w22', tex: 'en_oculus',      r: 12, size: 51, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой (206 × 50%)
-  // боссы зоны (HP задаётся в Zone.ts)
-  boss0: { id: 'boss', tex: 'en_citadel',     r: 30, size: 69, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },  // Цитадель
-  boss1: { id: 'boss', tex: 'en_nemesis',     r: 32, size: 77, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },  // Немезида
-  boss2: { id: 'boss', tex: 'en_apostle',     r: 34, size: 83, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 }, // Апостол
-  boss3: { id: 'boss', tex: 'en_apostle_red', r: 36, size: 91, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 }, // Апостол (финал, багровый)
+  // старые типы (сундук-проклятие, свита, мини-волна) — по ближайшему мобу оригинала
+  basic: mob('basic', 'en_minion',  75, 105, 32, 14, 6, 3, 0.12, true),   // Миньон (7)
+  red:   mob('red',   'en_stinger', 100, 125, 29, 42, 9, 4, 0.35, true),  // Стингер (8)
+  small: mob('small', 'en_swarm_s', 46, 125, 34, 8, 5, 3, 0.12, false),   // Рой малый (1)
+  white: mob('white', 'en_seraph',  230, 120, 18, 95, 12, 5, 0.4, false), // Серафим (33)
+  big:   mob('big',   'en_assault', 237, 85, 30, 650, 18, 10, 1, true),   // Штурмовик/Трупер (24)
+  // мобы волн зоны 1 (Dictionary_UnitStat): px спрайта, «유닛크기», «이동속도», особая способность 1
+  w1:  mob('w1',  'en_swarm_s',     46, 125, 34, 14, 6, 3, 0.12, false), // Рой малый
+  w6:  mob('w6',  'en_swarm_m',     86, 100, 32, 28, 8, 4, 0.15, false), // Рой средний
+  w11: mob('w11', 'en_swarm_l',     108, 90, 32, 42, 11, 5, 0.2, false), // Рой большой
+  w13: mob('w13', 'en_interceptor', 125, 75, 32, 42, 22, 5, 0.2, true),  // Перехватчик
+  w16: mob('w16', 'en_hive',        145, 80, 28, 70, 11, 6, 0.25, false), // Улей
+  w31: mob('w31', 'en_scarab',      99, 85, 29, 21, 16, 5, 0.15, true),   // Скарабей
+  w21: mob('w21', 'en_mine',        185, 55, 30, 56, 27, 8, 0.3, true),   // Мина
+  w22: mob('w22', 'en_oculus',      206, 50, 30, 56, 27, 8, 0.3, true),   // Вой (Howling)
+  // боссы зоны (HP задаётся в Zone.ts); спрайт босса 512 px на холсте (видимо ~511)
+  boss0: mob('boss', 'en_citadel',     511, 105, 14, 1, 22, 0, 0, false, true), // Цитадель (41)
+  boss1: mob('boss', 'en_nemesis',     511, 110, 9, 1, 28, 0, 0, false, true),  // Немезида (42)
+  boss2: mob('boss', 'en_apostle',     511, 115, 9, 1, 34, 0, 0, false, true),  // Апостол (43)
+  boss3: mob('boss', 'en_apostle_red', 511, 120, 9, 1, 40, 0, 0, false, true),  // финал (размер Амадея 44 — оценка)
 };
 
 export class Enemy {
@@ -56,6 +78,8 @@ export class Enemy {
   sc = 1;
   elite = false;
   cursed = false;
+  /** занимает место в пуле обычных мобов (POOL) */
+  pooled = false;
   /** «масса» для расталкивания: обычный 1, элитка 4, босс 50 */
   mass = 1;
   type!: EnemyType;
@@ -68,11 +92,10 @@ let nextId = 1;
 
 /**
  * Спавн как в оригинале (замер из памяти Magic Survival, зона 1, research/source_findings.md):
- * волна = один тип моба на 30 с, по кругу; каждые delay с создаётся num мобов; живых не больше ALIVE_CAP.
+ * волна = один тип моба на 30 с, по кругу; каждые delay с создаётся num мобов (ограничение — пул, см. POOL).
  * Рост статов мобов — проценты к базе по стадии зоны (сколько боссов убито) и времени.
  */
 export const ORIG = {
-  aliveCap: 300,
   /** типы волн до первого босса (0:00, 0:30, 1:00 …), затем цикл после каждого босса */
   firstCycle: ['w1', 'w6', 'w11', 'w13', 'w16', 'w31'],
   cycle: ['w6', 'w11', 'w13', 'w16', 'w31', 'w21'],
@@ -91,9 +114,16 @@ export const ORIG = {
   atkAfter: [90, 160, 230, 300],
 };
 
-/** 1 единица мира оригинала в наших единицах: камера оригинала видит 6.69 ед. по ширине (orthographicSize 7.25, 19.5:9) */
-export const ORIG_UNIT = VIEW_W / 6.69;
-const U = ORIG_UNIT;
+/**
+ * Пул обычных мобов как в оригинале (C_Battle_Manager.Create_UnitEnemy, корутина):
+ * всего AllEnemyNum = 450 объектов (List_BattleUnitEnemy_Empty — свободные). За тик (раз в ApplyEnemyCreateDelay)
+ * счётчик c идёт от 0 до EnemyCreateNum; моб создаётся, только если свободных > 30; шаг счётчика
+ *   свободных ≥ 201: 1 (создаются все num);
+ *   свободных < 201: (450 + 120) / clamp(свободных − 30, 1, 450) — чем меньше свободных, тем реже (≥1 моб за тик).
+ * Живых обычных максимум 420, при > 249 живых поток резко редеет — на замере держалось ~150–310.
+ * Первый тик — через ApplyEnemyStatDelay + 0.5 с.
+ */
+const POOL = { all: 450, keepFree: 30, slowFree: 201, slowAdd: 120 };
 
 /**
  * Удаление/спавн как в оригинале (сцена: объект мага → DestroyArea, C_Battle_Manager.Create_UnitEnemy):
@@ -102,6 +132,14 @@ const U = ORIG_UNIT;
  * x = cos a · U(6.5, 11.5) · m, y = sin a · U(7.5, 12.5) · m, m = U(1, 1.2) — в том числе впереди бегущего мага.
  */
 const AREA = { killX: 12.25 * U, killY: 13.4 * U, killFar: 33 * U };
+
+/**
+ * «Взрыв» моба-камикадзе (особая способность 1: C_Battle_EnemyUnit.Unit_Attack → AllyUnit.Unit_Damage(атака моба)
+ * → Unit_Destroy; в Play_Unit_Death при IsDestroy нет ни опыта, ни сферы, ни счётчика убийств).
+ * Анимация смерти — DeathMotion 21 (кольцо из осколков 1.81 ед. × «제거 모션 크기» 70–85%, 4 кадра 0.06/0.05/0.04/0.03 с),
+ * у оригинала окрашена цветом моба; у нас — тёмно-красное штриховое кольцо. Урона по площади нет — бьёт только касание.
+ */
+const KAMI = { ring: 1.81 * 0.75 * U, life: 0.18, tint: 0x8a1a1a };
 
 /**
  * Элитки (Create_UnitEnemySpecial: усиленная версия моба текущей волны, крупный коллайдер 1.66 ед.).
@@ -121,14 +159,31 @@ export class Enemies {
   private free: Enemy[] = [];
   grid = new Grid<Enemy>();
   aliveCount = 0;
-  private spawnAcc = 0;
+  /** занято объектов пула обычных мобов (не элитки, не боссы) — как 450 − свободных в оригинале */
+  poolUsed = 0;
+  private spawnAcc = 0.5;
   /** счётчик убийств до следующей сферы маны */
   private orbKills = 0;
   private nextElite = ELITE.first;
   /** переиспользуемый буфер соседей для расталкивания (без аллокаций в цикле) */
   private nb: Enemy[] = [];
 
-  constructor(private scene: Phaser.Scene) {}
+  constructor(private scene: Phaser.Scene) {
+    // текстура «взрыва» камикадзе: кольцо из рваных штрихов (как кадры DeathMotion 21 оригинала)
+    if (!scene.textures.exists('kami_ring')) {
+      const g = scene.make.graphics({ x: 0, y: 0 }, false), c = 64, R0 = 54;
+      for (let i = 0; i < 46; i++) {
+        const a = (i / 46) * Math.PI * 2 + Math.sin(i * 7.3) * 0.05, len = 0.06 + 0.07 * Math.abs(Math.sin(i * 3.1));
+        g.lineStyle(3 + 3 * Math.abs(Math.sin(i * 1.7)), 0xffffff, 1);
+        g.beginPath(); g.arc(c, c, R0 - 4 * Math.abs(Math.sin(i * 2.3)), a, a + len); g.strokePath();
+      }
+      for (let i = 0; i < 14; i++) { // осколки внутри кольца
+        const a = i * 2.39, d = R0 * (0.55 + 0.3 * Math.abs(Math.sin(i * 5.1)));
+        g.fillStyle(0xffffff, 1); g.fillCircle(c + Math.cos(a) * d, c + Math.sin(a) * d, 2 + (i % 3));
+      }
+      g.generateTexture('kami_ring', 128, 128); g.destroy();
+    }
+  }
 
   /** Проценты роста статов мобов (как Z_Database.EnemyUnitVar_*RatioU в оригинале) */
   growth(): { hp: number; spd: number; atk: number } {
@@ -146,7 +201,8 @@ export class Enemies {
 
   spawn(type: EnemyType, x: number, y: number, elite = false, fixedHp = 0, wave = false) {
     const boss = type.id === 'boss';
-    if (this.aliveCount >= (wave ? ORIG.aliveCap : MAX_ENEMIES) && !elite && !boss) return null;
+    const regular = !elite && !boss;
+    if (regular && (this.poolUsed >= POOL.all || this.aliveCount >= MAX_ENEMIES)) return null;
     let e = this.free.pop();
     if (!e) {
       e = new Enemy();
@@ -155,15 +211,18 @@ export class Enemies {
     }
     e.id = nextId++;
     e.type = type; e.x = x; e.y = y; e.alive = true;
-    e.elite = elite; e.cursed = false;
+    e.elite = elite; e.cursed = false; e.pooled = regular;
+    if (regular) this.poolUsed++;
     const scale = elite ? ELITE.scale : 1;
-    e.r = elite ? Math.max(ELITE.r, type.r * scale) : type.r;
+    // элитка: BoxCollider 1.66 ед. на объекте с масштабом «유닛크기» (Obj_UnitEnemySpecial)
+    e.r = elite ? 0.83 * (type.pct / 100) * U : type.r;
     e.mass = boss ? 50 : elite ? 4 : 1;
     const s = W.stats;
     const g = this.growth();
     e.maxHp = e.hp = type.hp * (1 + g.hp / 100) * (1 - s.enemyHpRed) * (elite ? ELITE.hp * (1 - s.eliteHpRed) : 1);
     if (fixedHp) e.maxHp = e.hp = fixedHp * (1 - s.enemyHpRed);
-    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (1 - s.enemySlow) * (boss ? 1 : 1 + g.spd / 100);
+    // скорость — формула оригинала от целого S = round(«이동속도» × (1 + рост%) × (1 − замедление врагов))
+    e.speed = origSpeed(Math.round(type.speed * (boss ? 1 : 1 + g.spd / 100) * (1 - s.enemySlow)));
     e.dmg = type.dmg * (1 + g.atk / 100) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0; e.freezeT = 0; e.slowT = 0; e.slowK = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
@@ -217,9 +276,14 @@ export class Enemies {
       const [num, delay] = this.waveRate();
       this.spawnAcc += delay;
       const type = this.waveType();
-      for (let i = 0; i < num && this.aliveCount < ORIG.aliveCap; i++) {
+      // цикл Create_UnitEnemy: шаг счётчика растёт, когда свободных в пуле мало (см. POOL)
+      for (let c = 0; c < num;) {
+        const free = POOL.all - this.poolUsed;
+        if (free <= POOL.keepFree) break;
+        const inc = free >= POOL.slowFree ? 1 : (POOL.all + POOL.slowAdd) / Math.min(POOL.all, Math.max(1, free - POOL.keepFree));
+        c += Math.min(num, Math.max(1, inc));
         const p = this.spawnPoint();
-        this.spawn(type, p.x, p.y, false, 0, true);
+        if (!this.spawn(type, p.x, p.y, false, 0, true)) break;
       }
     }
     // элитки: группа усиленных мобов текущей волны (оценка времени — см. ELITE); во время босса не идут
@@ -234,6 +298,7 @@ export class Enemies {
   /** Тихо убрать моба (ушёл далеко за экран): без опыта, сферы, счётчика убийств — как Unit_Destroy_Simple */
   private despawn(e: Enemy) {
     e.alive = false;
+    if (e.pooled) { e.pooled = false; this.poolUsed--; }
     e.img.setVisible(false);
     if (e.ring) e.ring.setVisible(false);
     this.free.push(e);
@@ -257,7 +322,7 @@ export class Enemies {
 
       // ушёл далеко за экран: обычный — тихо удаляется (спавнер создаст новых вокруг мага, в т.ч. впереди),
       // элитка — на ±33 ед.; босса и «проклятых» не удаляем, а переносим к магу (на них держатся Zone/Pickups)
-      if (!e.elite && !boss ? (adx >= AREA.killX + e.r || ady >= AREA.killY + e.r) : (adx >= AREA.killFar || ady >= AREA.killFar)) {
+      if (!e.elite && !boss ? (adx >= AREA.killX - e.r || ady >= AREA.killY - e.r) : (adx >= AREA.killFar || ady >= AREA.killFar)) {
         if (boss || e.cursed) { const p = this.spawnPoint(); e.x = p.x; e.y = p.y; }
         else { this.despawn(e); continue; }
         dx = P.x - e.x; dy = P.y - e.y;
@@ -306,6 +371,12 @@ export class Enemies {
         P.pushX += nx * over * wp; P.pushY += ny * over * wp;
         e.x -= nx * over * (1 - wp); e.y -= ny * over * (1 - wp);
         P.hurt(e.dmg);
+        // камикадзе (особая способность 1): ударил — и погиб с «взрывом», без награды
+        if (e.type.kami && !boss) {
+          W.fx.burst(e.x, e.y, KAMI.ring * 0.5, KAMI.tint, KAMI.life, 'kami_ring');
+          this.despawn(e);
+          continue;
+        }
       }
 
       if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) this.baseTint(e); }
@@ -348,6 +419,7 @@ export class Enemies {
   kill(e: Enemy) {
     if (!e.alive) return;
     e.alive = false;
+    if (e.pooled) { e.pooled = false; this.poolUsed--; }
     e.img.setVisible(false);
     if (e.ring) e.ring.setVisible(false);
     this.free.push(e);

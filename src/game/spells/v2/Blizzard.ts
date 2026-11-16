@@ -5,7 +5,7 @@ import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, ringDamage } from './_skyfx';
-import { RING_K, ensureDarkTex, freezeOnly, quarterRot } from './_darkfx';
+import { RING_K, ensureInkBlizzard, freezeOnly } from './_inkfx';
 
 /** радиус разрыва одной льдинки */
 const R0 = 22;
@@ -37,11 +37,11 @@ class Blizzard extends DataSpell {
 
   destroy() { this.fx.destroy(); this.later.clear(); }
 
-  /** тёмные приглушённые тона (тинт поверх тёмных пиксельных текстур _darkfx) */
-  private get color() { return this.hasProp(508) ? 0xc8784a : this.hasProp(507) ? 0xe0e8ee : 0xc4ced8; }
+  /** тинт поверх штриховых текстур _inkfx: лёд — без тинта, Пожар — тёплый */
+  private get color() { return this.hasProp(508) ? 0xffb080 : 0xffffff; }
 
   update(dt: number) {
-    ensureDarkTex();
+    ensureInkBlizzard();
     this.fx.update(dt);
     this.later.update(dt);
 
@@ -71,7 +71,7 @@ class Blizzard extends DataSpell {
     } else { this.stormT = 0; this.slowAcc = 0; }
   }
 
-  /** Одна льдинка: тёмная пиксельная игла падает по косой (без меток на земле) */
+  /** Одна льдинка: тёмная игла со светлыми кромками падает по косой (без меток на земле) */
   private shard() {
     const P = W.player, size = this.sizeMul;
     const star = this.hasProp(507);
@@ -81,9 +81,9 @@ class Blizzard extends DataSpell {
     const fall = star ? 0.75 : 0.28, L = 220;
     const vx = (Math.cos(FALL_A) * L) / fall, vy = (Math.sin(FALL_A) * L) / fall;
     const tint = this.color;
-    this.fx.spawn(star ? 'dk_icestar' : 'dk_icicle', {
-      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 1.8 : 30 * Math.sqrt(size), life: fall, a0: 1, a1: 1,
-      rot: star ? 0 : FALL_A, tint, add: false, depth: DEPTH.top,
+    this.fx.spawn(star ? 'ink_icestar' : 'ink_needle', {
+      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 1.8 : 40 * Math.sqrt(size), life: fall, a0: 1, a1: 1,
+      rot: star ? Math.random() * 6.28 : FALL_A, spin: star ? 3 : 0, tint, add: star, depth: DEPTH.top,
     });
     const dmg = this.dmg;
     this.later.add(fall, () => this.burstAt(x, y, r, dmg));
@@ -117,16 +117,13 @@ class Blizzard extends DataSpell {
       ringDamage(x, y, 0, r, dmg, 20, src, cb);
       this.later.add(0.1, () => ringDamage(x, y, r, r * 1.5, dmg, 20, src, cb));
       this.later.add(0.2, () => ringDamage(x, y, r * 1.5, r * 2, dmg, 20, src, cb));
-      // пиксельное кольцо рывками под каждый тик расширения
-      this.fx.spawn('dk_ring', { x, y, w: r * RING_K, life: 0.1, a0: 0.8, a1: 0.8, tint: 0x6a86a0, add: false });
-      this.fx.spawn('dk_ring', { x, y, w: r * 1.5 * RING_K, life: 0.1, delay: 0.1, a0: 0.7, a1: 0.7, tint: 0x6a86a0, add: false });
-      this.fx.spawn('dk_ring', { x, y, w: r * 2 * RING_K, life: 0.2, delay: 0.2, a0: 0.6, a1: 0, tint: 0x6a86a0, add: false });
+      // кольцо холода расходится под тики расширения (r → 2r)
+      this.fx.spawn('ink_ring', { x, y, w: r * RING_K, w1: r * 2 * RING_K, life: 0.3, a0: 0.85, a1: 0, hold: true, tint: 0xcfeaff });
     } else if (cb) ringDamage(x, y, 0, r, dmg, 20, src, cb);
     else areaDamage(x, y, r, dmg, 20, src);
-    // разрыв: маленький венец тёмных шипов в 2 «кадра» (малый → полный, держится и гаснет)
-    const rot = quarterRot();
-    this.fx.spawn('dk_frost', { x, y, w: r * 1.3, life: 0.05, a0: 1, a1: 1, tint, rot, add: false });
-    this.fx.spawn('dk_frost', { x, y, w: r * 2.2, life: 0.22, delay: 0.05, a0: 0.95, a1: 0, hold: true, tint, rot, add: false });
+    // разрыв: маленький штриховой венец осколков быстро раскрывается и гаснет
+    const rot = Math.random() * Math.PI * 2;
+    this.fx.spawn((Math.random() * 2) | 0 ? 'ink_frost1' : 'ink_frost0', { x, y, w: r * 1.0, w1: r * 2.2, life: 0.3, a0: 1, a1: 0, hold: true, tint, rot });
   }
 }
 

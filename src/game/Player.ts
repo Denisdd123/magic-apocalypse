@@ -1,16 +1,21 @@
 import Phaser from 'phaser';
-import { DEPTH, PLAYER, xpForLevel } from '../config';
+import { DEPTH, ORIG_U, PLAYER, xpForLevel } from '../config';
 import { W } from './World';
 import type { Pose } from '../textures';
 
-/** Высота фигуры мага в игровых единицах (крупнее замера оригинала — на телефоне был слишком мелким) */
-const MAGE_H = 31;
+/**
+ * Высота фигуры мага — как в оригинале: спрайт AUnit1Motion (100 px/ед., объект мага масштаб 1)
+ * видимая фигура 23×59 px → 0.59 ед. → ≈33.5 наших.
+ */
+const MAGE_H = 0.59 * ORIG_U;
 const MAGE_K = MAGE_H / 88; // холст позы 96px, фигура 88px
+/** смещения тени/полоски здоровья были подобраны под фигуру 31 ед. — масштабируем вместе с ней */
+const OFF = MAGE_H / 31;
 
 export class Player {
   x = 0; y = 0; r = PLAYER.radius;
-  /** Твёрдое тело мага для толкания с мобами (оригинал: BoxCollider 0.21×0.5 ед. → ~9 наших) */
-  bodyR = 9;
+  /** Твёрдое тело мага для толкания с мобами (оригинал: BoxCollider 0.21×0.5 ед. → средняя полуширина ≈0.18 ед.) */
+  bodyR = 0.18 * ORIG_U;
   /** Толчок от мобов, накопленный за кадр (Enemies.update); применяется в move() с ограничением */
   pushX = 0; pushY = 0;
   hp = PLAYER.hp;
@@ -83,8 +88,8 @@ export class Player {
     this.animT += dt * (this.moving ? 9 : 4);
     const fr = Math.floor(this.animT) % 3;
     if (fr !== this.frame || pose !== this.pose) { this.frame = fr; this.pose = pose; this.img.setTexture(`mage_${pose}_${fr}`); }
-    this.img.setPosition(this.x, this.y - 5.4);
-    this.shadow.setPosition(this.x, this.y + 8.5);
+    this.img.setPosition(this.x, this.y - 5.4 * OFF);
+    this.shadow.setPosition(this.x, this.y + 8.5 * OFF);
     this.follow.x = this.x; this.follow.y = this.y;
     this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
     // руна неуязвимости: маг становится белым (как в оригинале); иначе мигание при неуязвимости
@@ -93,8 +98,8 @@ export class Player {
     if (this.hurtT > PLAYER.hurtCooldown - 0.1) this.img.setTintFill(0xffffff); // удар — белая вспышка, как в оригинале
     else if (white) this.img.setTintFill(0xffffff);
     else this.img.clearTint();
-    this.hpBg.setPosition(this.x, this.y + 12.5);
-    this.hpBar.setPosition(this.x - 10, this.y + 12.5).setSize(20 * Math.max(0, this.hp / s.maxHp), 2.6);
+    this.hpBg.setPosition(this.x, this.y + 12.5 * OFF);
+    this.hpBar.setPosition(this.x - 10, this.y + 12.5 * OFF).setSize(20 * Math.max(0, this.hp / s.maxHp), 2.6);
   }
 
   hurt(amount: number) {
