@@ -59,15 +59,16 @@ export class Player {
     if (this.invulnT > 0) this.invulnT -= dt;
     const s = W.stats;
     if (s.regen > 0) this.heal(s.maxHp * s.regen * dt);
-    // «живой» маг: плащ колышется (4 кадра), лёгкое покачивание; в движении чуть быстрее
-    // 8 направлений (5 поз, влево = зеркало вправо) + дрожание подола 3 кадра
+    // 8 направлений: вверх/вниз — узкая поза, диагонали — наклон ~22°, вбок — ~39° (влево = зеркало вправо),
+    // в каждой позе 3 кадра дрожания подола (textures.ts → witchPose: шляпа, мантия, посох)
     let pose: Pose = 'idle';
     if (this.moving) {
       const ax = Math.abs(this.faceX), ay = Math.abs(this.faceY);
       pose = ay > 0.92 ? 'vert' : ax > 0.92 ? 'side' : 'diag';
       if (ax > 0.38) this.img.setFlipX(this.faceX < 0);
     }
-    this.animT += dt * (this.moving ? 7 : 4);
+    // дрожание подола: на бегу ~0.11 с на кадр (как в оригинале), стоя — медленнее
+    this.animT += dt * (this.moving ? 9 : 4);
     const fr = Math.floor(this.animT) % 3;
     if (fr !== this.frame || pose !== this.pose) { this.frame = fr; this.pose = pose; this.img.setTexture(`mage_${pose}_${fr}`); }
     this.img.setPosition(this.x, this.y - 5.4);

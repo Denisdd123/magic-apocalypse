@@ -43,6 +43,15 @@ export class Stats {
   spellCdr: Record<string, number> = {};   // доп. сокращение перезарядки (усиление заклинания)
   enhanced: Record<string, number> = {};   // сколько раз заклинание усилено
 
+  // ---- артефакты оригинала ----
+  artifactCdr = 0;   // сокращение перезарядки артефактов (Шестерёнки, Стимпанк), доля
+  /** Доп. шанс крита конкретного заклинания (Сюрикен), доля. todo: учесть в DataSpell/Enemies.damage */
+  spellCrit: Record<string, number> = {};
+  /** Параметры механик артефактов, которым нужен хук в чужом коде (урон/убийство/снаряды/UI).
+   *  Ключ — ID эффекта оригинала (строкой, напр. '116' = крит при первом ударе) или имя; значение — число из таблицы.
+   *  Список ключей и смысл — в Artifacts.ts (TODO_FX). Пока никем не читаются. */
+  artFx: Record<string, number> = {};
+
   get atk() { return BASE_ATK * (1 + this.atkPct); }
   get maxHp() { return PLAYER.hp * (1 + this.hpPct); }
   get sizeMul() { return 1 + this.size; }

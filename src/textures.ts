@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
-// Вся графика рисуется кодом при запуске — никаких чужих файлов.
-// Стиль: оливковая земля с «каракулями», чёрные чернильные клубки-враги, белые светящиеся заклинания.
+// Процедурная графика (рисуется кодом при запуске) + подготовка картинок 2.0 для мира (makeWorldV2).
+// Стиль: оливковая земля с «каракулями», чёрные силуэты-враги, белые светящиеся заклинания.
 
 type G = Phaser.GameObjects.Graphics;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -72,33 +72,175 @@ const v = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
  * наклон оси / вытянутость: стоит 2°/2.2, вверх-вниз 1°/3.2, диагональ ~22°/2.3, вбок ~40°/2.4 (короче и шире, не «огурец»).
  */
 export const POSES = {
-  idle: { rot: 0,    nx: 1.45, trail: 0,    ny: 0.9  },   // широкий треугольник
-  vert: { rot: 0,    nx: 1.05, trail: 0,    ny: 0.95 },   // узкий, плащ поджат
-  diag: { rot: 0.25, nx: 1.2,  trail: 0.12, ny: 0.88 },   // ~22°
-  side: { rot: 0.42, nx: 1.3,  trail: 0.28, ny: 0.85 },   // ~39°
+  idle: { rot: 0,    nx: 1.35, trail: 0,    ny: 0.9  },   // широкий треугольник
+  vert: { rot: 0,    nx: 1.0,  trail: 0,    ny: 0.95 },   // узкий, плащ поджат
+  diag: { rot: 0.25, nx: 1.15, trail: 0.12, ny: 0.88 },   // ~22°
+  side: { rot: 0.42, nx: 1.25, trail: 0.28, ny: 0.85 },   // ~39°, короче и шире (не «огурец»)
 };
 export type Pose = keyof typeof POSES;
 
 /**
- * Маг в позе (холст 96x96, фигура 32x44 ед. ×2, центр фигуры в (48,52)).
- * Чистый чёрный силуэт как в оригинале; f — кадр дрожания подола.
+ * Маг в позе (холст 96x96, фигура 32x44 ед. ×2, центр фигуры в (48,52)). Смотрит вправо (влево — flipX).
+ * Чёрный силуэт как в оригинале: остроконечная шляпа с широкими полями (кончик заламывается назад на бегу),
+ * мантия с рваным подолом, рукав и посох с бледным кристаллом. f — кадр дрожания подола (0..2).
+ * Посох наклоняется вдвое меньше корпуса — так бег вбок читается, а фигура не «падает».
  */
 function witchPose(g: G, f: number, pose: Pose, color = 0x0b0b0d) {
   const { rot, nx, trail, ny } = POSES[pose];
   const sw = Math.sin((f / 3) * Math.PI * 2), sw2 = Math.cos((f / 3) * Math.PI * 2);
   const c = Math.cos(rot), si = Math.sin(rot);
+  const c2 = Math.cos(rot * 0.45), s2 = Math.sin(rot * 0.45);
+  // корпус: ниже плеч фигура шире (nx), подол уносит назад (trail)
   const P = (x: number, y: number) => {
     let dx = (x - 16) * (y > 18 ? nx : 1);
-    if (y > 28) dx -= (y - 28) * trail * 1.6;          // подол уносит назад
+    if (y > 28) dx -= (y - 28) * trail * 1.6;
     const dy = (y - 26) * ny;
     return v(48 + (dx * c - dy * si) * 2, 52 + (dx * si + dy * c) * 2);
   };
+  // посох и кисть: свой (меньший) наклон, без расширения
+  const Q = (x: number, y: number) => {
+    const dx = x - 16, dy = (y - 26) * ny;
+    return v(48 + (dx * c2 - dy * s2) * 2, 52 + (dx * s2 + dy * c2) * 2);
+  };
+  const sx = 16 + 7.6 * nx; // x посоха
+  // посох (позади рукава)
+  g.lineStyle(3, color, 1);
+  g.lineBetween(Q(sx + 0.4, 6.5).x, Q(sx + 0.4, 6.5).y, Q(sx - 0.6, 44).x, Q(sx - 0.6, 44).y);
+  g.fillStyle(0xaee3ff, 1); // бледный кристалл навершия
+  g.fillPoints([Q(sx + 0.4, 4.2), Q(sx + 1.5, 6.6), Q(sx + 0.4, 9), Q(sx - 0.7, 6.6)], true);
   g.fillStyle(color, 1);
-  g.fillPoints([P(11.5, 17), P(20.5, 17), P(18.5, 7), P(20 + sw * 0.4, 2.5), P(23.5 + sw * 0.6, 3.5), P(17.5, 1.5), P(15, 7)], true);
-  g.fillPoints([P(8.3, 17.6), P(16, 16), P(23.7, 17.6), P(16, 19.2)], true);
+  // мантия
   const k = 1 + trail;
-  const hem = [P(9 + sw2 * 0.7 * k, 41), P(11, 39 + sw * 0.9 * k), P(12.8, 42.5 + sw2 * 0.5 * k), P(14.5, 40 - sw * 0.9 * k), P(16, 43), P(17.5, 40 + sw * 0.9 * k), P(19.2, 42.5 - sw2 * 0.5 * k), P(21, 39 - sw * 0.9 * k), P(23 - sw2 * 0.7 * k, 41)];
-  g.fillPoints([P(16, 15), P(18.8, 19), P(20.8, 26), P(22.3 + sw * 0.4, 33), ...hem.reverse(), P(9.7 - sw * 0.4, 33), P(11.2, 26), P(13.2, 19)], true);
+  const hem = [P(8.6 + sw2 * 0.7 * k, 41), P(10.6, 39 + sw * 0.9 * k), P(12.6, 42.6 + sw2 * 0.5 * k), P(14.4, 40 - sw * 0.9 * k), P(16, 43.2), P(17.6, 40 + sw * 0.9 * k), P(19.4, 42.6 - sw2 * 0.5 * k), P(21.4, 39 - sw * 0.9 * k), P(23.4 - sw2 * 0.7 * k, 41)];
+  g.fillPoints([P(16, 17), P(18.4, 19.2), P(19.8, 21.4), P(21.2, 27), P(22.8 + sw * 0.4, 34), ...hem.reverse(), P(9.2 - sw * 0.4, 34), P(10.8, 27), P(12.2, 21.4), P(13.6, 19.2)], true);
+  // рукав к посоху
+  g.fillPoints([P(18.4, 20.2), P(20.2, 21.2), Q(sx + 0.6, 24.7), Q(sx + 0.2, 27.1), P(19.6, 25)], true);
+  // шляпа: поля + конус
+  g.fillPoints([P(8, 18.1), P(11, 16.7), P(16, 16.1), P(21, 16.7), P(24, 18.1), P(21, 19.3), P(16, 19.7), P(11, 19.3)], true);
+  const tip = 18.6 - trail * 5 + sw * 0.4;
+  g.fillPoints([P(11.9, 17), P(20.1, 17), P(18.6, 11.5), P(17.6, 7), P(tip, 0.8 + trail * 2), P(15.8, 6.6), P(14.4, 11.5)], true);
+}
+
+// ---------------- Графика 2.0 для мира (public/v2/world) ----------------
+
+type Core = [number, number, number, number]; // x, y (в координатах исходника 256), радиус, цвет
+
+/**
+ * Мобы 2.0 — чёрные силуэты (альфа по инверсии, поэтому светлое «ядро» стало дыркой).
+ * Подкладываем под картинку мягкое свечение — сквозь дырку снова светится ядро, как в оригинале.
+ * Картинка обрезается по содержимому в квадрат — size в ENEMY_TYPES = видимый размер.
+ * Ключ результата: 'en_<имя>'. Если исходника нет — процедурная клякса.
+ */
+const MOBS_V2: Record<string, { src: string; core?: Core[] }> = {
+  swarm_s: { src: 'mob_swarm_s', core: [[138, 135, 9, 0xff8a3a], [108, 135, 9, 0xff8a3a]] },
+  swarm_m: { src: 'mob_swarm_m', core: [[111, 124, 22, 0xff4a1a]] },
+  swarm_l: { src: 'mob_swarm_l', core: [[127, 157, 22, 0xffb04a]] },
+  minion: { src: 'mob_minion', core: [[134, 133, 22, 0xfff0c0], [152, 106, 11, 0xfff0c0], [112, 106, 11, 0xfff0c0]] },
+  stinger: { src: 'mob_stinger', core: [[128, 128, 30, 0xff2a3a]] },
+  interceptor: { src: 'mob_interceptor', core: [[129, 116, 16, 0xffb02a]] },
+  hive: { src: 'mob_hive', core: [[127, 103, 16, 0xe8e2c8], [74, 93, 10, 0xe8e2c8]] },
+  scarab: { src: 'mob_scarab', core: [[126, 137, 28, 0xe8f0ff]] },
+  mine: { src: 'mob_mine', core: [[128, 130, 30, 0xfff4d6]] },
+  oculus: { src: 'mob_oculus', core: [[128, 128, 34, 0xff3040]] },
+  seraph: { src: 'mob_seraph', core: [[130, 120, 24, 0xffffff]] },
+  assault: { src: 'mob_assault', core: [[129, 125, 36, 0xff2a3a]] },
+  citadel: { src: 'boss_citadel', core: [[184, 149, 13, 0xff2a3a]] },
+  nemesis: { src: 'boss_nemesis', core: [[141, 134, 30, 0xd040ff], [107, 145, 8, 0xd040ff], [157, 51, 8, 0xd040ff]] },
+  apostle: { src: 'boss_apostle', core: [[132, 136, 30, 0xffe8a0]] },
+  apostle_red: { src: 'boss_apostle', core: [[132, 136, 30, 0xff2a3a]] },
+};
+
+/** Холст с картинкой из загруженной текстуры (null — нет такой) */
+type Src = HTMLImageElement | HTMLCanvasElement;
+function srcImage(scene: Phaser.Scene, key: string): Src | null {
+  if (!scene.textures.exists(key)) return null;
+  return scene.textures.get(key).getSourceImage() as Src;
+}
+
+/** Рамка содержимого по альфе */
+function alphaBox(img: Src) {
+  const w = img.width, h = img.height;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  return x1 < 0 ? { x0: 0, y0: 0, x1: w, y1: h } : { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+}
+
+function addCanvasTex(scene: Phaser.Scene, key: string, cv: HTMLCanvasElement) {
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  scene.textures.addCanvas(key, cv);
+}
+
+function bakeMob(scene: Phaser.Scene, key: string, src: string, core: Core[] = []) {
+  const img = srcImage(scene, src);
+  if (!img) { make(scene, key, 72, 72, (g) => inkBlob(g, 36, 36, 30)); return; }
+  const b = alphaBox(img);
+  const side = Math.max(b.x1 - b.x0, b.y1 - b.y0) + 6;
+  const ox = (b.x0 + b.x1) / 2 - side / 2, oy = (b.y0 + b.y1) / 2 - side / 2;
+  const cv = document.createElement('canvas'); cv.width = cv.height = Math.ceil(side);
+  const ctx = cv.getContext('2d')!;
+  for (const [x, y, r, col] of core) {
+    const hexc = '#' + col.toString(16).padStart(6, '0');
+    const gr = ctx.createRadialGradient(x - ox, y - oy, 0, x - ox, y - oy, r);
+    gr.addColorStop(0, hexc); gr.addColorStop(0.55, hexc + 'cc'); gr.addColorStop(1, hexc + '00');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(x - ox, y - oy, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.drawImage(img, -ox, -oy);
+  addCanvasTex(scene, key, cv);
+}
+
+/**
+ * Предмет мира 2.0 под старый ключ: квадратная картинка обрезается по центру до пропорции w:h,
+ * в которой её рисует код (сундук 26×23, обелиск 30×46, торговец 34×46) — без сплющивания.
+ */
+function refit(scene: Phaser.Scene, key: string, src: string, aspect: number, glowCol = -1) {
+  const img = srcImage(scene, src);
+  if (!img) return false;
+  const b = alphaBox(img);
+  const cw = b.x1 - b.x0, ch = b.y1 - b.y0;
+  // минимальный прямоугольник нужной пропорции, вмещающий содержимое
+  let w = Math.max(cw, ch * aspect) + 8, h = w / aspect;
+  if (h < ch + 8) { h = ch + 8; w = h * aspect; }
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  const cv = document.createElement('canvas'); cv.width = Math.ceil(w); cv.height = Math.ceil(h);
+  const ctx = cv.getContext('2d')!;
+  if (glowCol >= 0) {
+    const hexc = '#' + glowCol.toString(16).padStart(6, '0');
+    const gr = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) / 2);
+    gr.addColorStop(0, hexc + '66'); gr.addColorStop(1, hexc + '00');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+  }
+  ctx.drawImage(img, w / 2 - cx, h / 2 - cy);
+  addCanvasTex(scene, key, cv);
+  return true;
+}
+
+/** Мобы, боссы и предметы мира из графики 2.0 (вызывается после загрузки картинок) */
+function makeWorldV2(scene: Phaser.Scene) {
+  for (const [k, m] of Object.entries(MOBS_V2)) bakeMob(scene, 'en_' + k, m.src, m.core);
+  // сундук: деревянный 2.0 с тёплым свечением; обелиск и торговец — в пропорции, как их рисует Pickups
+  refit(scene, 'chest', 'chest_wood', 26 / 23, 0xffd36b);
+  refit(scene, 'obelisk', 'obelisk', 30 / 46);
+  refit(scene, 'merchant', 'merchant', 34 / 46);
+  // сфера жизни — сердце 2.0 с мягким зелёно-красным ореолом
+  const heart = srcImage(scene, 'life_heart');
+  if (heart) {
+    const b = alphaBox(heart);
+    const s = Math.max(b.x1 - b.x0, b.y1 - b.y0) * 1.9;
+    const cv = document.createElement('canvas'); cv.width = cv.height = Math.ceil(s);
+    const ctx = cv.getContext('2d')!;
+    const gr = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    gr.addColorStop(0, 'rgba(255,90,90,0.55)'); gr.addColorStop(0.6, 'rgba(120,255,140,0.18)'); gr.addColorStop(1, 'rgba(120,255,140,0)');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, s, s);
+    ctx.drawImage(heart, s / 2 - (b.x0 + b.x1) / 2, s / 2 - (b.y0 + b.y1) / 2);
+    addCanvasTex(scene, 'orb_life', cv);
+  }
 }
 
 /** Череп: купол, челюсть, тёмные глазницы */
@@ -307,6 +449,7 @@ export function makeTextures(scene: Phaser.Scene) {
     g.strokePoints(pts, true);
   });
 
+  makeWorldV2(scene);
   makeIcons(scene);
 }
 

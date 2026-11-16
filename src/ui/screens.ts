@@ -2,13 +2,13 @@ import { PASSIVES, SPELLS } from '../game/SpellBook';
 import { W } from '../game/World';
 import { clearModals, fmtTime, icon } from './ui';
 import { RARITY, SYNERGIES, artifactById } from '../game/Artifacts';
-import { artifactText, synergyHtml } from './chest';
+import { artIcon, artifactText, synergyHtml } from './chest';
 
 function artifactsHtml() {
   if (!W.artifacts.owned.length) return '<div class="empty">Артефактов пока нет.<br>Ищи сундуки — стрелка у края экрана покажет, где он.</div>';
   return W.artifacts.owned.map((id) => {
     const a = artifactById(id);
-    return `<div class="artrow"><span class="ae" style="border-color:${RARITY[a.rarity].color}">${a.emoji}</span><div><b>${a.name}</b><div class="arar" style="color:${RARITY[a.rarity].color}">${RARITY[a.rarity].name}</div><div class="atext">${artifactText(a)}</div></div></div>`;
+    return `<div class="artrow"><span class="ae" style="--rc:${RARITY[a.rarity].color}">${artIcon(a, 'aei')}</span><div><b>${a.name}</b><div class="arar" style="color:${RARITY[a.rarity].color}">${RARITY[a.rarity].name}</div><div class="atext">${artifactText(a)}</div></div></div>`;
   }).join('');
 }
 
@@ -129,12 +129,16 @@ export function showPause(onResume: () => void, onQuit: () => void) {
 export function showDeath(onRetry: () => void, onMenu: () => void) {
   clearModals();
   const m = div('modal dead', `
+    <div class="brand">Magic Apocalypse <span>2.0</span></div>
+    <img class="deadmage" src="${icon('mage_idle_0', 0x5a1a22)}" alt="">
     <h1>Хранитель пал</h1>
     <div class="sub">Разлом · первая зона</div>
-    <div class="stat time">⏱ ${fmtTime(W.time)}</div>
-    <div class="stat kills">☠ ${W.kills}</div>
-    <div class="stat manastat"><i></i>${Math.floor(W.mana)}</div>
-    <div class="stat">Уровень ${W.player.level}</div>
+    <div class="dstats">
+      <div class="ds"><i>⏱</i><b>${fmtTime(W.time)}</b><span>время</span></div>
+      <div class="ds"><i>☠</i><b>${W.kills}</b><span>убито</span></div>
+      <div class="ds"><i class="orbi"></i><b>${Math.floor(W.mana)}</b><span>мана</span></div>
+      <div class="ds"><i>✦</i><b>${W.player.level}</b><span>уровень</span></div>
+    </div>
     <button class="histopen">История боя</button>
     <div class="btns"><button class="retry">Ещё раз</button><button class="menu">В меню</button></div>`);
   m.querySelector('.histopen')!.addEventListener('click', showHistory);

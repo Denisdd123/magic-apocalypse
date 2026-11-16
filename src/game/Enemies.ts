@@ -13,26 +13,29 @@ export interface EnemyType {
 /** Множитель скорости всех врагов (калибровка по видео оригинала) */
 export const ENEMY_SPEED = 0.85;
 
+// tex: 'en_*' — картинки 2.0 (textures.ts → makeWorldV2, один кадр, «дрожание» покачиванием);
+// старые процедурные 'enemy_*' / 'boss_N' (3 кадра tex_0..2) тоже поддерживаются.
+// size — видимый размер силуэта (картинка 2.0 обрезана по содержимому), чуть больше 2r: у тварей лапы и тень.
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },
-  red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },
-  small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },
-  white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },
-  big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },
+  basic: { id: 'basic', tex: 'en_minion',  r: 10, size: 29, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон
+  red:   { id: 'red',   tex: 'en_stinger', r: 11, size: 32, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер
+  small: { id: 'small', tex: 'en_swarm_s', r: 6,  size: 18, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
+  white: { id: 'white', tex: 'en_seraph',  r: 12, size: 35, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим
+  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 62, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик
   // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
-  w1:  { id: 'w1',  tex: 'enemy_basic', r: 9,  size: 24, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
-  w6:  { id: 'w6',  tex: 'enemy_basic', r: 10, size: 27, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
-  w11: { id: 'w11', tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
-  w13: { id: 'w13', tex: 'enemy_red',   r: 10, size: 27, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
-  w16: { id: 'w16', tex: 'enemy_white', r: 12, size: 31, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
-  w31: { id: 'w31', tex: 'enemy_small', r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
-  w21: { id: 'w21', tex: 'enemy_white', r: 12, size: 31, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
-  w22: { id: 'w22', tex: 'enemy_white', r: 13, size: 33, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
+  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 9,  size: 25, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
+  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 10, size: 30, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
+  w11: { id: 'w11', tex: 'en_swarm_l',     r: 11, size: 32, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
+  w13: { id: 'w13', tex: 'en_interceptor', r: 10, size: 31, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
+  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 34, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
+  w31: { id: 'w31', tex: 'en_scarab',      r: 7,  size: 23, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
+  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 35, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
+  w22: { id: 'w22', tex: 'en_oculus',      r: 13, size: 37, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
   // боссы зоны (HP задаётся в Zone.ts)
-  boss0: { id: 'boss', tex: 'boss_0', r: 30, size: 84, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },
-  boss1: { id: 'boss', tex: 'boss_1', r: 32, size: 90, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },
-  boss2: { id: 'boss', tex: 'boss_2', r: 34, size: 96, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 },
-  boss3: { id: 'boss', tex: 'boss_3', r: 36, size: 104, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 },
+  boss0: { id: 'boss', tex: 'en_citadel',     r: 30, size: 86, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },  // Цитадель
+  boss1: { id: 'boss', tex: 'en_nemesis',     r: 32, size: 96, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },  // Немезида
+  boss2: { id: 'boss', tex: 'en_apostle',     r: 34, size: 104, hp: 1, speed: 34, dmg: 34, xp: 0, drop: 0 }, // Апостол
+  boss3: { id: 'boss', tex: 'en_apostle_red', r: 36, size: 114, hp: 1, speed: 36, dmg: 40, xp: 0, drop: 0 }, // Апостол (финал, багровый)
 };
 
 export class Enemy {
@@ -42,7 +45,10 @@ export class Enemy {
   stunT = 0; flashT = 0;
   /** заморозка (стоит, синий), замедление: доля скорости slowK на slowT с */
   freezeT = 0; slowT = 0; slowK = 0;
+  /** кадр «дрожащей линии» (старые 3-кадровые текстуры); -1 — картинка 2.0, дрожание покачиванием */
   frame = 0;
+  /** базовый масштаб картинки (для покачивания) */
+  sc = 1;
   elite = false;
   cursed = false;
   type!: EnemyType;
@@ -113,7 +119,7 @@ export class Enemies {
     let e = this.free.pop();
     if (!e) {
       e = new Enemy();
-      e.img = this.scene.add.image(0, 0, type.tex + '_0').setDepth(DEPTH.enemy);
+      e.img = this.scene.add.image(0, 0, '__DEFAULT').setDepth(DEPTH.enemy);
       this.list.push(e);
     }
     e.id = nextId++;
@@ -129,9 +135,13 @@ export class Enemies {
     e.dmg = type.dmg * (1 + g.atk / 100) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0; e.freezeT = 0; e.slowT = 0; e.slowK = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
-    e.frame = (Math.random() * 3) | 0;
-    e.img.setTexture(type.tex + '_' + e.frame).setVisible(true).setPosition(x, y).clearTint().setRotation(boss ? 0 : Math.random() * 6.28);
+    // отрисовка: картинка 2.0 (один кадр, стоит прямо) или старая 3-кадровая клякса (случайный поворот)
+    const multi = this.scene.textures.exists(type.tex + '_0');
+    e.frame = multi ? (Math.random() * 3) | 0 : -1;
+    e.img.setTexture(multi ? type.tex + '_' + e.frame : type.tex).setVisible(true).setPosition(x, y).clearTint()
+      .setRotation(multi && !boss ? Math.random() * 6.28 : 0).setFlipX(false);
     e.img.setDisplaySize(type.size * scale, type.size * scale);
+    e.sc = e.img.scaleX;
     if (elite) {
       if (!e.ring) e.ring = this.scene.add.image(0, 0, 'elite_ring').setDepth(DEPTH.enemy);
       e.ring.setVisible(true).setDisplaySize(type.size * scale * 1.15, type.size * scale * 1.15);
@@ -246,9 +256,17 @@ export class Enemies {
       if (dx * dx + dy * dy < rr * rr) P.hurt(e.dmg);
 
       if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) { if (e.freezeT > 0) e.img.setTint(0x8fd0ff); else e.img.clearTint(); } }
-      // «дрожащая линия»: кадры сменяются ~8 раз в секунду, у каждого моба со своим сдвигом
-      const fr = Math.floor(W.scene.time.now / 250 + e.id * 0.37) % 3; // ~4 смены в секунду
-      if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
+      if (e.frame >= 0) {
+        // «дрожащая линия» старых текстур: ~4 смены кадра в секунду, у каждого моба со своим сдвигом
+        const fr = Math.floor(W.scene.time.now / 250 + e.id * 0.37) % 3;
+        if (fr !== e.frame) { e.frame = fr; e.img.setTexture(e.type.tex + '_' + fr); }
+      } else {
+        // картинка 2.0: «дыхание» (сжатие/растяжение) и лёгкое покачивание, смотрит в сторону мага
+        const ph = W.scene.time.now * 0.009 + e.id * 1.7;
+        const k = Math.sin(ph) * (e.type.id === 'boss' ? 0.03 : 0.055);
+        e.img.setScale(e.sc * (1 + k), e.sc * (1 - k)).setRotation(Math.sin(ph * 0.5) * 0.07);
+        if (e.freezeT <= 0 && e.stunT <= 0) e.img.setFlipX(dx < 0);
+      }
       e.img.setPosition(e.x, e.y);
       if (e.ring) e.ring.setPosition(e.x, e.y);
     }

@@ -140,16 +140,20 @@ export class GameScene extends Phaser.Scene {
   /** 8 артефактов торговца, цена по редкости, на одном скидка 25% */
   private rollShop(): ShopItem[] {
     // цены из кода оригинала (V_Artifact_Manager): база по редкости × Random(98..108)% × множитель визита
-    const base: Record<string, number> = { common: 220, rare: 260, epic: 360 };
+    // база: Обычный 220, Редкий 260, Героический 360, Особый 520 (RARITY[r].price); легендарных у торговца нет
     const visitMul = [1, 1.25, 1.6, 2.2, 2.8, 3.5, 3.75][Math.min(this.merchantVisits++, 6)];
     const pool = ARTIFACTS.filter((a) => a.rarity !== 'legend' && !W.artifacts.has(a.id));
     const out: ShopItem[] = [];
     while (out.length < 8 && pool.length) {
-      const total = pool.reduce((t, a) => t + RARITY[a.rarity].weight, 0);
+      // сначала редкость по весу, затем равновероятно внутри неё (иначе перекос в многочисленные редкости)
+      const rars = [...new Set(pool.map((x) => x.rarity))];
+      const total = rars.reduce((t, r) => t + RARITY[r].weight, 0);
       let r = Math.random() * total;
-      const a = pool.find((x) => (r -= RARITY[x.rarity].weight) <= 0) ?? pool[pool.length - 1];
+      const rar = rars.find((x) => (r -= RARITY[x].weight) <= 0) ?? rars[rars.length - 1];
+      const inR = pool.filter((x) => x.rarity === rar);
+      const a = inR[(Math.random() * inR.length) | 0];
       pool.splice(pool.indexOf(a), 1);
-      out.push({ a, price: Math.round(base[a.rarity] * visitMul * (0.98 + Math.random() * 0.1) * (1 - W.stats.shopDiscount)), discount: false, sold: false });
+      out.push({ a, price: Math.round(RARITY[a.rarity].price * visitMul * (0.98 + Math.random() * 0.1) * (1 - W.stats.shopDiscount)), discount: false, sold: false });
     }
     const d = out[(Math.random() * out.length) | 0];
     if (d) { d.discount = true; d.price = Math.round(d.price * 0.75 / 10) * 10; }
@@ -243,6 +247,13 @@ export class GameScene extends Phaser.Scene {
       this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
       const b = W.zone.boss;
       this.hud!.boss(b && b.alive ? b.hp / b.maxHp : null);
+      // откаты утилитарных заклинаний (поля cdLeft/cdTotal/active выставляют сами заклинания)
+      for (const k of ['shield', 'cloak', 'mcircle', 'armageddon']) {
+        const sp = W.book.spells.get(k) as any;
+        if (!sp) { this.hud!.clearCd(k); continue; }
+        const act = typeof sp.active === 'number' ? sp.active > 0 : !!sp.active && k !== 'shield';
+        this.hud!.cd(k, 'spell_' + k, act ? 1 : (sp.cdLeft ?? 0) / Math.max(0.01, sp.cdTotal ?? 1));
+      }
       for (const r of Object.keys(RUNES) as (keyof typeof RUNES)[]) {
         const left = W.pickups.active.get(r);
         if (left !== undefined) this.hud!.cd('rune_' + r, 'rune', 1 - left / (RUNES[r].dur * (1 + W.stats.runeDur)), RUNES[r].tint);

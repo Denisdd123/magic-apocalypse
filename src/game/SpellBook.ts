@@ -216,6 +216,8 @@ export class SpellBook {
     const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell;
     base.fusion = c;
     base.onChange();
+    // разовые общие бонусы слияния (Феникс: +1 воскрешение)
+    for (const m of c.mods) if (m.stat === 'revive' && m.op === 'add') W.stats.revives += m.v;
     const dk = KEY_BY_ID[c.donor.spell];
     const donor = this.spells.get(dk);
     if (donor) { donor.destroy(); this.spells.delete(dk); this.consumed.add(dk); }
