@@ -59,9 +59,9 @@ class Tsunami extends DataSpell {
   private moveWaves(dt: number) {
     for (let i = this.waves.length - 1; i >= 0; i--) {
       const w = this.waves[i];
-      if (w.delay > 0) {
-        w.delay -= dt;
-        if (w.delay > 0) continue;
+      if (!w.img) {
+        // волна с задержкой 0 тоже должна получить картинку (раньше падало)
+        if (w.delay > 0) { w.delay -= dt; if (w.delay > 0) continue; }
         w.img = this.pool.get(TEX, DEPTH.fx, !this.lava).setTint(this.lava ? 0xff7040 : this.freezes ? 0x7fa8d8 : 0xb8c8d0);
       }
       w.t += dt;

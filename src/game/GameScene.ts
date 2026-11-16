@@ -10,6 +10,9 @@ import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
 import { BOLT } from './spells/v2/Bolt';
 import { ART } from '../data/art';
+
+/** картинки, без которых нельзя начинать бой */
+const CRITICAL = /^v2\/(spell_fx|world|spell_icons|passives)\//;
 import { W } from './World';
 import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
 import { showDeath, showPause } from '../ui/screens';
@@ -40,8 +43,14 @@ export class GameScene extends Phaser.Scene {
   constructor() { super('game'); }
 
   preload() {
-    // новая графика 2.0 (art-raw → public/v2, scripts/import_art.py)
-    for (const [k, p] of Object.entries(ART)) this.load.image(k, p);
+    // новая графика 2.0 (art-raw → public/v2, scripts/import_art.py): до меню — только нужное для боя
+    for (const [k, p] of Object.entries(ART)) if (CRITICAL.test(p)) this.load.image(k, p);
+  }
+
+  /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */
+  private loadRest() {
+    for (const [k, p] of Object.entries(ART)) if (!CRITICAL.test(p) && !this.textures.exists(k)) this.load.image(k, p);
+    this.load.start();
   }
 
   create() {
@@ -51,6 +60,7 @@ export class GameScene extends Phaser.Scene {
     this.scale.on('resize', this.fitCamera, this);
     this.fitCamera();
     showMenu(() => this.startRun());
+    this.loadRest();
   }
 
   /** Камера: по ширине всегда видно VIEW_W игровых единиц */

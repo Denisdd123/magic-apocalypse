@@ -58,7 +58,8 @@ export function clearModals() { root().querySelectorAll('.modal').forEach((m) =>
 (function bootProgress() {
   const boot = document.getElementById('boot');
   if (!boot || typeof PerformanceObserver === 'undefined') return;
-  const total = Object.keys(ART).length || 1;
+  // до меню грузятся только картинки для боя (см. CRITICAL в GameScene)
+  const total = Object.values(ART).filter((p) => /^v2\/(spell_fx|world|spell_icons|passives)\//.test(p)).length || 1;
   const seen = new Set<string>();
   const bar = boot.querySelector<HTMLElement>('.boot-bar i');
   const pctEl = boot.querySelector<HTMLElement>('.boot-pct');

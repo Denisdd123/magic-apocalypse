@@ -91,25 +91,56 @@ export class SpellBook {
     return sp;
   }
 
-  update(dt: number) { for (const s of this.spells.values()) s.update(dt); }
+  update(dt: number) {
+    for (const s of this.spells.values()) s.update(dt);
+    if (this.globalCombos.size && (this.globT -= dt) <= 0) { this.globT = 0.5; this.applyGlobal(); }
+  }
 
-  /** Все выбранные свойства (id оригинала) по всем заклинаниям */
+  /** Сверхразум: за каждый уровень заклинаний приумножение +1,5%, размер +0,5%, КД −0,3%. Врата: сила +20% за каждое слияние. */
+  private applyGlobal() {
+    const s = W.stats, g = this.globApplied;
+    let lv = 0;
+    for (const sp of this.spells.values()) lv += sp.level;
+    const want = {
+      amp: this.globalCombos.has(26) ? 0.015 * lv : 0,
+      size: this.globalCombos.has(26) ? 0.005 * lv : 0,
+      cdr: this.globalCombos.has(26) ? Math.min(0.5, 0.003 * lv) : 0,
+      atk: this.globalCombos.has(28) ? 0.2 * this.fusions.size : 0,
+    };
+    s.amp += want.amp - g.amp; s.size += want.size - g.size; s.atkPct += want.atk - g.atk;
+    // КД — мультипликативно: снимаем старое, накладываем новое
+    if (want.cdr !== g.cdr) { s.cdr = 1 - (1 - s.cdr) / (1 - g.cdr) * (1 - want.cdr); }
+    this.globApplied = want;
+  }
+
+  /** Сторона слияния выполнена: свойство выбрано, либо (id 30–39) пассивка на максимуме */
   private hasProp(spellId: number, prop: number) {
+    if (spellId >= 30 && spellId <= 39) {
+      const p = PASSIVES.find((x) => x.id === 'p' + spellId);
+      return !!p && (this.passives.get(p.id) ?? 0) >= p.max;
+    }
     const sp = this.spells.get(KEY_BY_ID[spellId]);
     return !!sp && sp.attrs.has(String(prop));
   }
+  /** слияния, где основа — пассивка (Сверхразум 26, Врата созидания 28): общий эффект, не привязанный к заклинанию */
+  globalCombos = new Set<number>();
+  private globT = 0;
+  private globApplied = { amp: 0, size: 0, cdr: 0, atk: 0 };
 
   /** Слияния, доступные сейчас: оба свойства выбраны, оба заклинания на руках, основа ещё без слияния */
   availableCombos(): ComboData[] {
     return COMBOS.filter((c) => {
-      if (this.fusions.has(c.id)) return false;
-      const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell | undefined;
-      if (!base || base.fusion) return false;
+      if (this.fusions.has(c.id) || !c.base.spell) return false;
+      if (!KEY_BY_ID[c.base.spell]) { if (!PASSIVES.some((p) => p.id === 'p' + c.base.spell)) return false; }
+      else {
+        const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell | undefined;
+        if (!base || base.fusion) return false;
+      }
       return this.hasProp(c.base.spell, c.base.prop) && this.hasProp(c.donor.spell, c.donor.prop);
     });
   }
 
-  comboSlots() { return COMBO_SLOT_LEVELS.filter((l) => W.player.level >= l).length - this.comboSlotsUsed; }
+  comboSlots() { return COMBO_SLOT_LEVELS.filter((l) => W.player.level >= l).length + (this.globalCombos.has(28) ? 2 : 0) - this.comboSlotsUsed; }
 
   buildChoices(n = 3): Choice[] {
     // ячейка слияния (ур. 25/50/75): если есть что сливать — экран слияний вместо обычных карт
@@ -175,12 +206,12 @@ export class SpellBook {
   }
 
   private comboChoice(c: ComboData): Choice {
-    const b = SPELL_BY_ID[c.base.spell], d = SPELL_BY_ID[c.donor.spell];
+    const nm = (id: number) => SPELL_BY_ID[id]?.ours ?? PASSIVES.find((p) => p.id === 'p' + id)?.name ?? '?';
     const num = String(c.id).padStart(2, '0');
     return {
       kind: 'combo', id: 'combo' + c.id, icon: 'combo_' + num + '_' + c.en.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
       title: c.name, level: 0, isNew: false, attr: false, combo: c,
-      lines: [`${b.ours} + ${d.ours}`, ...c.mechanics, ...c.mods.filter((m) => m.op !== 'note').map((m) => m.text)],
+      lines: [`${nm(c.base.spell)} + ${nm(c.donor.spell)}`, ...c.mechanics, ...c.mods.filter((m) => m.op !== 'note').map((m) => m.text)],
     };
   }
 
@@ -213,13 +244,13 @@ export class SpellBook {
   applyCombo(c: ComboData) {
     this.comboSlotsUsed++;
     this.fusions.add(c.id);
-    const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell;
-    base.fusion = c;
-    base.onChange();
+    const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell | undefined;
+    if (base) { base.fusion = c; base.onChange(); }
+    else this.globalCombos.add(c.id);
     // разовые общие бонусы слияния (Феникс: +1 воскрешение)
     for (const m of c.mods) if (m.stat === 'revive' && m.op === 'add') W.stats.revives += m.v;
     const dk = KEY_BY_ID[c.donor.spell];
-    const donor = this.spells.get(dk);
+    const donor = dk ? this.spells.get(dk) : undefined; // донор-пассивка остаётся
     if (donor) { donor.destroy(); this.spells.delete(dk); this.consumed.add(dk); }
   }
 
