@@ -2,7 +2,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { rnd } from './_proj';
+import { aimR, lifeToEdge, rnd } from './_proj';
 
 /** Облако яда / многократный взрыв: расширяется и бьёт hitsMax раз */
 interface Gas { x: number; y: number; t: number; hits: number; hitsMax: number; r: number; dmg: number; step: number; tint: number }
@@ -59,9 +59,10 @@ class Fireball extends DataSpell {
 
   private shootNearest(first: boolean) {
     const P = W.player;
-    const e = W.enemies.nearest(P.x, P.y, 300);
+    // ближайший враг на экране, точно в него (без разброса)
+    const e = W.enemies.nearest(P.x, P.y, aimR());
     if (!e) return;
-    this.shootDir(Math.atan2(e.y - P.y, e.x - P.x) + rnd(-0.08, 0.08), first);
+    this.shootDir(Math.atan2(e.y - P.y, e.x - P.x), first);
   }
 
   private shootDir(a: number, first: boolean) {
@@ -69,7 +70,7 @@ class Fireball extends DataSpell {
     const dmg = this.dmg * k, r = Fireball.R * size;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: 0,
-      r: 7 * size, life: 1.5, tex: 'fx_fireball_proj', size: 24 * size, tint: this.projTint,
+      r: 7 * size, life: lifeToEdge(sp, 1.5), tex: 'fx_fireball_proj', size: 24 * size, tint: this.projTint,
       pierce: Math.round(this.stat('pierce', 0)),
       onHit: (p) => this.explode(p.x, p.y, r, dmg),
       // долетел, ни в кого не попав — взрыв в конце пути

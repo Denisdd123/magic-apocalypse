@@ -3,10 +3,10 @@ import type { Enemy } from '../../Enemies';
 import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { faceVel, ROT, rnd } from './_proj';
+import { aimR, faceVel, lifeToEdge, ROT, rnd } from './_proj';
 
 /**
- * #13 Электрический удар → «Разряд». Короткие ломаные разряды из мага в случайные стороны, пробивают всех.
+ * #13 Электрический удар → «Разряд». Ломаные разряды из мага в случайные стороны (летят до края экрана), пробивают всех.
  * Свойства: 470 Цепная молния (от цели перескакивает 1–3 раза), 471 Высокая производительность (взрыв при исчезновении,
  * рост размера идёт в урон), 472 Сверхпроводимость (по очереди в ближайших врагов, ×3 урон, ×2 размер — моды).
  * Слияния (основа): 22 Буйство электричества, 34 Сердце грозы, 47 Дыхание молнии, 63 Дисчардж.
@@ -26,8 +26,10 @@ class Eshock extends DataSpell {
       let a = q.a;
       const P = W.player;
       if (q.target) {
-        if (!q.target.alive) continue;
-        a = Math.atan2(q.target.y - P.y, q.target.x - P.x);
+        // цель погибла — не теряем выстрел, берём ближайшего на экране
+        const t = q.target.alive ? q.target : W.enemies.nearest(P.x, P.y, aimR());
+        if (!t) continue;
+        a = Math.atan2(t.y - P.y, t.x - P.x);
       }
       this.shock(P.x, P.y, a, q.front);
     }
@@ -44,7 +46,7 @@ class Eshock extends DataSpell {
       const t0 = w * 0.14;
       if (this.hasProp(472)) {
         // Сверхпроводимость: по очереди в ближайших
-        const ts = W.enemies.nearestN(P.x, P.y, n, 240);
+        const ts = W.enemies.nearestN(P.x, P.y, n, aimR());
         for (let i = 0; i < n; i++) {
           const e = ts.length ? ts[i % ts.length] : null;
           this.queue.push({ delay: t0 + i * 0.06, a: Math.random() * Math.PI * 2, target: e, front: false });
@@ -72,7 +74,8 @@ class Eshock extends DataSpell {
     const chain = this.hasProp(470) && !this.hasCombo(22);
     W.projectiles.fire({
       src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
-      r: 6 * size, life: Eshock.LIFE * this.rangeK, tex: 'fx_eshock_proj', size: 34 * size,
+      // без предела длины: разряд пролетает весь экран (Буйство — ещё дальше)
+      r: 6 * size, life: lifeToEdge(sp) * this.rangeK, tex: 'fx_eshock_proj', size: 34 * size,
       tint: this.tintFor(), pierce: Infinity, knock: 12,
       rotateToVel: false, update: faceVel(ROT.eshock),
       data: { chained: false },

@@ -43,11 +43,11 @@ export class Zone {
     const b = W.enemies.spawn(type, P.x, P.y - 200, false, ZONE.bossHp[idx]);
     if (!b) return;
     this.boss = b;
-    // свита: кольцо мобов с красным ядром
-    const n = 26 + idx * 8;
+    // свита: кольцо мобов волны босса (в оригинале во время босса идёт волна «마인/하울링» и т.п.)
+    const n = 26 + idx * 8, et = W.enemies.waveType();
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2, d = 230 + Math.random() * 40;
-      W.enemies.spawn(idx >= 2 ? ENEMY_TYPES.white : ENEMY_TYPES.red, P.x + Math.cos(a) * d, P.y + Math.sin(a) * d);
+      W.enemies.spawn(et, P.x + Math.cos(a) * d, P.y + Math.sin(a) * d);
     }
   }
 

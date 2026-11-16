@@ -20,7 +20,7 @@ const s = size();
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game',
-  backgroundColor: '#7a8c55',
+  backgroundColor: '#24261c',
   scale: { mode: Phaser.Scale.NONE, width: s.w, height: s.h, zoom: 1 / dpr() },
   render: { antialias: true, powerPreference: 'high-performance' },
   fps: { target: 60 },

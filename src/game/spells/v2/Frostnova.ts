@@ -3,7 +3,8 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { Later, SkyFx, freezeCrust, ringDamage } from './_skyfx';
+import { Later, SkyFx, ringDamage } from './_skyfx';
+import { RING_K, ensureDarkTex, freezeOnly, quarterRot } from './_darkfx';
 
 /** базовый радиус взрыва вокруг мага */
 const R0 = 70;
@@ -18,12 +19,14 @@ const R0 = 70;
 class Frostnova extends DataSpell {
   private fx = new SkyFx();
   private later = new Later();
-  private freezeCb = (e: Enemy) => freezeCrust(this.fx, e, this.durSec);
+  // заморозка без корки на мобе: подсветку даёт Enemies.freeze
+  private freezeCb = (e: Enemy) => freezeOnly(e, this.durSec);
   private stunCb = (e: Enemy) => W.enemies.stun(e, this.durSec);
 
   destroy() { this.fx.destroy(); this.later.clear(); }
 
   update(dt: number) {
+    ensureDarkTex();
     this.fx.update(dt);
     this.later.update(dt);
     if (this.readyData(dt)) this.cast();
@@ -63,10 +66,14 @@ class Frostnova extends DataSpell {
 
   private nova(x: number, y: number, R: number, dmg: number, onPlayer: boolean) {
     const quake = this.hasProp(400);
-    const tint = quake ? 0xc0a080 : 0xd8ecff;
+    // землетрясение — тот же венец, но грязно-бурый
+    const tint = quake ? 0xa88c6c : 0xffffff;
     const follow = onPlayer ? W.player : undefined;
-    this.fx.spawn('fx_frostnova_ring', { x, y, w: R * 0.6, w1: R * 2.3, life: 0.4, a0: 1, a1: 0, tint, follow, rot: Math.random() * 6.28 });
-    this.fx.spawn('blast', { x, y, w: R * 0.5, w1: R * 1.8, life: 0.25, a0: 0.5, a1: 0, tint, follow });
+    // венец тёмных пиксельных шипов раскрывается рывком в 3 «кадра» (без плавного роста), потом держится и гаснет
+    const rot = quarterRot();
+    this.fx.spawn('dk_frost', { x, y, w: R * 1.1, life: 0.05, a0: 1, a1: 1, tint, follow, rot, add: false });
+    this.fx.spawn('dk_frost', { x, y, w: R * 1.75, life: 0.05, delay: 0.05, a0: 1, a1: 1, tint, follow, rot, add: false });
+    this.fx.spawn('dk_frost', { x, y, w: R * 2.3, life: 0.45, delay: 0.1, a0: 1, a1: 0, hold: true, tint, follow, rot, add: false });
 
     if (quake) {
       // Землетрясение: трещины в земле, оглушение вместо заморозки; 31 — ещё и отбрасывание
@@ -81,9 +88,10 @@ class Frostnova extends DataSpell {
       const ri = R;
       W.enemies.grid.query(x, y, R * 1.5, (e) => {
         const dx = e.x - x, dy = e.y - y;
-        if (dx * dx + dy * dy > ri * ri) freezeCrust(this.fx, e, this.durSec);
+        if (dx * dx + dy * dy > ri * ri) freezeOnly(e, this.durSec);
       });
-      this.fx.spawn('ring', { x, y, w: R * 2, w1: R * 3.2, life: 0.45, a0: 0.5, a1: 0, tint: 0x9fd0ff, follow });
+      // внешнее кольцо холода: пиксельное, ставится сразу на 1.5R (рывком), гаснет
+      this.fx.spawn('dk_ring', { x, y, w: R * 1.5 * RING_K, life: 0.35, delay: 0.1, a0: 0.75, a1: 0, hold: true, tint: 0x5a7896, add: false, follow });
     }
   }
 }

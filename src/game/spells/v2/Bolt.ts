@@ -4,7 +4,25 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { faceVel, ROT, rnd } from './_proj';
+import { aimR, faceVel, lifeToEdge, ROT, rnd } from './_proj';
+
+/** Своя текстура иглы: тёмное лезвие + один белый блик на острие (без ореола и «осколков») */
+const NEEDLE = 'v2_star_needle';
+function ensureNeedle() {
+  if (W.scene.textures.exists(NEEDLE)) return;
+  const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+  // хвост-тень
+  g.fillStyle(0x1c1826, 0.55); g.fillTriangle(0, 4, 22, 1, 22, 7);
+  // тело иглы: тёмный фиолетово-серый
+  g.fillStyle(0x3e3858, 1); g.fillTriangle(6, 4, 30, 2, 30, 6);
+  g.fillTriangle(30, 2, 30, 6, 38, 4);
+  // холодная сердцевина
+  g.fillStyle(0x8f88b4, 1); g.fillRect(14, 3, 20, 2);
+  // блик на острие: маленький белый крестик
+  g.fillStyle(0xffffff, 1); g.fillRect(33, 3, 4, 2); g.fillRect(34, 2, 2, 4);
+  g.generateTexture(NEEDLE, 40, 8);
+  g.destroy();
+}
 
 /**
  * #1 Магическая пуля → «Звёздная игла». ОБРАЗЕЦ для остальных заклинаний на DataSpell:
@@ -73,21 +91,27 @@ class Bolt extends DataSpell {
     let dirs: number[];
     if (this.hasProp(366)) dirs = [Math.random() * Math.PI * 2];
     else {
-      const targets = W.enemies.nearestN(x, y, this.hasProp(364) ? 3 : 1, 260);
+      // как в оригинале: точно в ближайших врагов на экране, без разброса и короткого предела
+      const targets = W.enemies.nearestN(x, y, this.hasProp(364) ? 3 : 1, aimR());
       if (!targets.length) return;
-      dirs = targets.map((e) => Math.atan2(e.y - y, e.x - x) + (Math.random() - 0.5) * 0.08);
+      dirs = targets.map((e) => Math.atan2(e.y - y, e.x - x));
     }
     const arrow = this.hasProp(362);
     const speed = 320 * spd;
+    // дальность — до края экрана и дальше (без короткого предела)
+    const life = lifeToEdge(speed);
+    if (!blast) ensureNeedle();
     for (const a of dirs) {
-      W.projectiles.fire({
+      const p = W.projectiles.fire({
         src: this.def.id, x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-        dmg, r: 4 * size, life: arrow ? 0.6 : 1.0,
-        tex: blast ? 'fx_bolt_proj' : 'bolt', size: (blast ? 30 : 16) * size, tint: this.tint,
+        dmg, r: 4 * size, life,
+        tex: blast ? 'fx_bolt_proj' : NEEDLE, size: (blast ? 30 : 16) * size, tint: this.tint,
         rotateToVel: !blast, update: blast ? faceVel(ROT.tipLeft) : undefined,
         pierce: arrow ? Infinity : 0, knock: 30,
-        onHit: this.hasProp(363) ? (p) => this.firecracker(p.x, p.y, dmg * 0.5) : undefined,
+        onHit: this.hasProp(363) ? (q) => this.firecracker(q.x, q.y, dmg * 0.5) : undefined,
       });
+      // обычная игла — без ADD-свечения (темнее, без пересвета)
+      if (!blast) p.img.setBlendMode(Phaser.BlendModes.NORMAL);
     }
   }
 
@@ -114,7 +138,7 @@ class Bolt extends DataSpell {
     const size = this.sizeMul, sp = 300 * this.speedMul;
     const e = Math.random() < 0.5 ? W.enemies.randomVisible() : null;
     const a = e ? Math.atan2(e.y - y, e.x - x) : Math.random() * Math.PI * 2;
-    const dist = e ? Math.max(20, Math.min(240, Math.hypot(e.x - x, e.y - y))) : rnd(60, 180);
+    const dist = e ? Math.max(20, Math.min(aimR(), Math.hypot(e.x - x, e.y - y))) : rnd(60, 180);
     const dmg = this.dmg;
     W.projectiles.fire({
       src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: 0, r: 1, life: dist / sp,
@@ -124,8 +148,8 @@ class Bolt extends DataSpell {
         const k = 1 + ((Math.random() * 9) | 0);
         const r = 18 * size * (1 + 0.15 * k);
         areaDamage(p.x, p.y, r, dmg * k, 20, this.def.id);
-        W.fx.burst(p.x, p.y, r, 0xffb070, 0.4, 'fx_bolt_hit');
-        W.fx.burst(p.x, p.y, r * 1.3, 0xff7ad9, 0.55, 'blast');
+        // без звезды-«разбитого стекла»: одна приглушённая вспышка
+        W.fx.burst(p.x, p.y, r * 1.2, 0xb0607a, 0.45, 'blast');
         W.fx.sparks(p.x, p.y, 2 + (k >> 1), 0xffc070, 110);
       },
     });

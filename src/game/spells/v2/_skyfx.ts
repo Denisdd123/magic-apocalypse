@@ -136,13 +136,10 @@ export class Later {
 }
 
 /** Заморозить врага и надеть на него корку льда (fx_frost_crust). Элитки и боссы не мёрзнут. */
-export function freezeCrust(fx: SkyFx, e: Enemy, sec: number) {
+/** Заморозка: по отзыву пользователя корку льда не рисуем — моб просто подсвечивается синим (Enemies.freeze) */
+export function freezeCrust(_fx: SkyFx, e: Enemy, sec: number) {
   if (!e.alive || e.elite || e.type.id === 'boss') return;
-  const had = e.freezeT > 0;
   W.enemies.freeze(e, sec);
-  if (!had && fx.crusts < 70) {
-    fx.spawn('fx_frost_crust', { x: e.x, y: e.y, w: e.r * 2.8, life: sec + 0.1, a0: 0.85, a1: 0.85, add: false, depth: DEPTH.enemy + 0.1, frozen: e, rot: Math.random() * 6.28 });
-  }
 }
 
 /** Случайная точка в видимой области (с отступом) — переиспользуемый объект */

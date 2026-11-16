@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { makeMobArt } from './game/mobArt';
 
 // Процедурная графика (рисуется кодом при запуске) + подготовка картинок 2.0 для мира (makeWorldV2).
 // Стиль: оливковая земля с «каракулями», чёрные силуэты-враги, белые светящиеся заклинания.
@@ -241,6 +242,8 @@ function makeWorldV2(scene: Phaser.Scene) {
     ctx.drawImage(heart, s / 2 - (b.x0 + b.x1) / 2, s / 2 - (b.y0 + b.y1) / 2);
     addCanvasTex(scene, 'orb_life', cv);
   }
+  // мобы: поверх картинок 2.0 — новые плоские силуэты без ног/глаз, 3 кадра (src/game/mobArt.ts)
+  makeMobArt(scene);
 }
 
 /** Череп: купол, челюсть, тёмные глазницы */
@@ -271,30 +274,151 @@ function star4(g: G, cx: number, cy: number, r: number, w: number) {
   g.fillTriangle(cx, cy - w, cx, cy + w, cx + r, cy);
 }
 
-export function makeTextures(scene: Phaser.Scene) {
-  // --- Земля (бесшовная плитка 512x512) ---
-  make(scene, 'ground', 512, 512, (g) => {
-    g.fillStyle(0x7a8c55, 1);
-    g.fillRect(0, 0, 512, 512);
-    const patch = (x: number, y: number, color: number, alpha: number, size: number) => {
-      for (let i = 0; i < 26; i++) {
-        const px = x + rnd(-size, size), py = y + rnd(-size * 0.6, size * 0.6);
-        const a = rnd(0, Math.PI);
-        const l = rnd(4, 11);
-        g.lineStyle(rnd(1.5, 3), color, alpha);
-        for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) {
-          g.lineBetween(px + ox, py + oy, px + ox + Math.cos(a) * l, py + oy + Math.sin(a) * l);
-        }
-      }
+/** Размер «арт-пикселя» земли в ед. мира и масштаб плитки: текстура рисуется в 2× (GROUND_TEX_SCALE),
+ *  чтобы при зуме камеры ~2 (iPhone) 1 тексель ≈ 1 пиксель экрана — без мыла и без «ползания» пикселей. */
+export const GROUND_TILE_SCALE = 0.5;
+
+/**
+ * Земля 2.0: тёмная приглушённая плитка 512×512 ед. мира, рисуется попиксельно (ImageData).
+ * Слои: многооктавный периодический шум → 6 тонов с упорядоченным дизерингом (чёткие края),
+ * пятна мха и сухой земли, трещины с подсветкой, камешки, пучки сухой травы, редкие кости, тёмные крошки.
+ * Всё заворачивается по модулю 512 — шов не виден. Генератор с фиксированным зерном — карта одинаковая.
+ */
+function makeGround(scene: Phaser.Scene) {
+  if (scene.textures.exists('ground')) return;
+  const S = 512;
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d')!;
+  const img = ctx.createImageData(S, S);
+  const d = img.data;
+  let seed = 0x5eed1337;
+  const rand = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const ri = (a: number, b: number) => Math.floor(a + rand() * (b - a + 1));
+
+  // периодический value-noise: cells×cells узлов, сглаженная билинейная интерполяция с заворотом
+  const noise = (cells: number) => {
+    const v = new Float32Array(cells * cells);
+    for (let i = 0; i < v.length; i++) v[i] = rand();
+    const k = cells / S;
+    return (x: number, y: number) => {
+      const fx = x * k, fy = y * k;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      let tx = fx - x0, ty = fy - y0;
+      tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+      const x1 = (x0 + 1) % cells, y1 = (y0 + 1) % cells;
+      const a = v[y0 * cells + x0], b = v[y0 * cells + x1], c = v[y1 * cells + x0], e = v[y1 * cells + x1];
+      return (a + (b - a) * tx) * (1 - ty) + (c + (e - c) * tx) * ty;
     };
-    for (let i = 0; i < 34; i++) patch(rnd(0, 512), rnd(0, 512), 0x667846, 0.55, rnd(14, 30));
-    for (let i = 0; i < 14; i++) patch(rnd(0, 512), rnd(0, 512), 0x8a9c64, 0.45, rnd(10, 22));
-  });
+  };
+  const n4 = noise(4), n16 = noise(16), n64 = noise(64), n128 = noise(128), nMoss = noise(8), nDirt = noise(8);
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  // 6 тонов яркости (тёмная оливково-серая земля, средняя ≈ 48 из 255 — мобы-кляксы остаются видны)
+  const TONES = [30, 36, 42, 48, 55, 62];
+
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const bay = (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.5);
+      const h = n4(x, y) * 0.42 + n16(x, y) * 0.3 + n64(x, y) * 0.18 + n128(x, y) * 0.1 + bay * 0.07;
+      let t = Math.floor(((h - 0.28) / 0.44) * TONES.length);
+      if (rand() < 0.05) t += rand() < 0.5 ? -1 : 1; // редкая зернистость
+      t = t < 0 ? 0 : t >= TONES.length ? TONES.length - 1 : t;
+      const L = TONES[t];
+      // оттенок участка: мох (зеленее) / сухая земля (бурее) / камень (серо-оливковый)
+      const m = nMoss(x, y) + bay * 0.08, dr = nDirt(x, y) + bay * 0.08;
+      let r = L * 0.98, g = L * 1.04, b = L * 0.8;
+      if (m > 0.62) { r = L * 0.86; g = L * 1.12; b = L * 0.7; }
+      else if (dr > 0.64) { r = L * 1.1; g = L * 0.96; b = L * 0.78; }
+      const o = (y * S + x) * 4;
+      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+    }
+  }
+
+  const W = (v: number) => ((v % S) + S) % S;
+  const put = (x: number, y: number, r: number, g: number, b: number) => {
+    const o = (W(y) * S + W(x)) * 4; d[o] = r; d[o + 1] = g; d[o + 2] = b;
+  };
+  const lumAt = (x: number, y: number) => d[(W(y) * S + W(x)) * 4 + 1];
+
+  // трещины: случайное блуждание, тёмная линия + светлая кромка снизу, иногда ветвятся
+  const crack = (x: number, y: number, len: number, dir: number, depth: number) => {
+    for (let i = 0; i < len; i++) {
+      dir += (rand() - 0.5) * 0.7;
+      x += Math.cos(dir); y += Math.sin(dir);
+      const px = Math.round(x), py = Math.round(y);
+      put(px, py, 15, 16, 12);
+      if (lumAt(px, py + 1) > 20) put(px, py + 1, 66, 68, 52);
+      if (depth < 2 && rand() < 0.04) crack(x, y, len * 0.4, dir + (rand() < 0.5 ? 1 : -1) * (0.6 + rand() * 0.6), depth + 1);
+    }
+  };
+  for (let i = 0; i < 26; i++) crack(rand() * S, rand() * S, ri(18, 60), rand() * Math.PI * 2, 0);
+
+  // камешки: овал 1–3 ед., блик слева сверху, тень справа снизу
+  for (let i = 0; i < 170; i++) {
+    const cx = ri(0, S - 1), cy = ri(0, S - 1), rx = ri(1, 3), ry = Math.max(1, rx - ri(0, 1));
+    const base = ri(56, 70);
+    for (let yy = -ry - 1; yy <= ry + 1; yy++) for (let xx = -rx - 1; xx <= rx + 1; xx++) {
+      const q = (xx * xx) / (rx * rx + 0.5) + (yy * yy) / (ry * ry + 0.5);
+      if (q <= 1) {
+        const hl = xx + yy < -rx * 0.6 ? 16 : xx + yy > rx * 0.8 ? -12 : 0;
+        put(cx + xx, cy + yy, base + hl, base + hl, base - 7 + hl);
+      } else if (q <= 1.9 && yy >= 0 && xx >= 0) put(cx + xx, cy + yy, 18, 19, 15);
+    }
+  }
+
+  // пучки сухой травы: 3–5 травинок 2–5 ед., тёмно-зелёные с более светлым кончиком
+  for (let i = 0; i < 260; i++) {
+    const cx = ri(0, S - 1), cy = ri(0, S - 1), n = ri(3, 5);
+    const dry = rand() < 0.35;
+    for (let k = 0; k < n; k++) {
+      const bx = cx + ri(-2, 2), hgt = ri(2, 5), lean = rand() < 0.5 ? -1 : 1;
+      for (let j = 0; j < hgt; j++) {
+        const px = bx + (j >= hgt - 2 && rand() < 0.6 ? lean : 0);
+        const tip = j === hgt - 1;
+        if (dry) put(px, cy - j, tip ? 78 : 60, tip ? 70 : 56, tip ? 46 : 38);
+        else put(px, cy - j, tip ? 58 : 40, tip ? 76 : 56, tip ? 38 : 28);
+      }
+    }
+    put(cx, cy + 1, 20, 22, 16); // тень у корня
+  }
+
+  // редкие кости: короткая палочка с утолщениями на концах
+  for (let i = 0; i < 14; i++) {
+    const cx = ri(0, S - 1), cy = ri(0, S - 1), len = ri(4, 7), dx = rand() < 0.5 ? 1 : -1, dy = rand() < 0.5 ? 0 : 1;
+    for (let j = 0; j <= len; j++) {
+      const px = cx + j * dx, py = cy + Math.round(j * dy * 0.5);
+      put(px, py, 96, 92, 80); put(px, py + 1, 18, 18, 14);
+      if (j === 0 || j === len) { put(px, py - 1, 104, 100, 86); put(px + dx, py - 1, 88, 84, 72); }
+    }
+  }
+
+  // тёмные крошки и ямки
+  for (let i = 0; i < 900; i++) {
+    const x = ri(0, S - 1), y = ri(0, S - 1);
+    put(x, y, 20, 21, 16);
+    if (rand() < 0.3) put(x + 1, y, 24, 25, 19);
+  }
+
+  ctx.putImageData(img, 0, 0);
+  // увеличиваем в 2× без сглаживания: при tileScale 0.5 и зуме ~2 — тексель ≈ пиксель экрана
+  const big = document.createElement('canvas'); big.width = S * 2; big.height = S * 2;
+  const bctx = big.getContext('2d')!;
+  bctx.imageSmoothingEnabled = false;
+  bctx.drawImage(cv, 0, 0, S * 2, S * 2);
+  scene.textures.addCanvas('ground', big);
+}
+
+export function makeTextures(scene: Phaser.Scene) {
+  // --- Земля: тёмная пиксельная плитка (см. makeGround) ---
+  makeGround(scene);
 
   // --- Маг ---
   for (let f = 0; f < 4; f++) {
     make(scene, 'player_' + f, 64, 88, (g) => witch(g, 2, 0x0d0d10, f, 0x7fe3ff));
-    if (f < 3) for (const p of Object.keys(POSES) as Pose[]) make(scene, `mage_${p}_${f}`, 96, 96, (g) => witchPose(g, f, p));
+    if (f < 3) for (const p of Object.keys(POSES) as Pose[]) make(scene, `mage_${p}_${f}`, 96, 96, (g) => {
+      // светлая кромка (8 смещённых копий), чтобы тёмный маг читался на тёмной карте
+      for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; g.save(); g.translateCanvas(Math.round(Math.cos(a) * 4), Math.round(Math.sin(a) * 4)); witchPose(g, f, p, 0xcfc8b8); g.restore(); }
+      witchPose(g, f, p);
+    });
     make(scene, 'mirage_' + f, 64, 88, (g) => witch(g, 2, 0xffffff, f));
   }
   make(scene, 'shadow', 64, 24, (g) => { g.fillStyle(0x000000, 0.28); g.fillEllipse(32, 12, 60, 20); g.fillStyle(0x000000, 0.25); g.fillEllipse(32, 12, 40, 12); });

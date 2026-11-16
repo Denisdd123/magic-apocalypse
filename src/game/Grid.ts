@@ -23,6 +23,30 @@ export class Grid<T extends GridItem> {
     arr.push(item);
   }
 
+  /**
+   * Без замыканий (для горячего цикла физики): кладёт в out до max живых объектов, чей круг
+   * пересекается с кругом (x,y,r). Возвращает их число. out переиспользуется вызывающим.
+   */
+  near(x: number, y: number, r: number, out: T[], max: number): number {
+    const pad = r + 40;
+    const x0 = Math.floor((x - pad) / GRID_CELL), x1 = Math.floor((x + pad) / GRID_CELL);
+    const y0 = Math.floor((y - pad) / GRID_CELL), y1 = Math.floor((y + pad) / GRID_CELL);
+    let n = 0;
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const arr = this.cells.get(this.key(cx, cy));
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) {
+          const it = arr[i];
+          if (!it.alive) continue;
+          const dx = it.x - x, dy = it.y - y, rr = r + it.r;
+          if (dx * dx + dy * dy < rr * rr) { out[n++] = it; if (n >= max) return n; }
+        }
+      }
+    }
+    return n;
+  }
+
   /** Вызывает cb для каждого живого объекта, чей круг пересекается с кругом (x,y,r). cb вернул true — стоп. */
   query(x: number, y: number, r: number, cb: (item: T) => boolean | void) {
     const pad = r + 40; // учёт радиуса самих врагов

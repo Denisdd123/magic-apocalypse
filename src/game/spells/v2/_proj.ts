@@ -1,4 +1,6 @@
+import type { Enemy } from '../../Enemies';
 import type { Projectile } from '../../Projectiles';
+import { W } from '../../World';
 
 /**
  * Общие мелочи для снарядных заклинаний v2 (Fireball, Spirit, Eshock, Ebolt, Bolt).
@@ -30,3 +32,29 @@ export const ROT = {
 
 /** Случайное число в [a, b) */
 export const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+
+/**
+ * Дальность наведения «как в оригинале»: вся видимая область (полудиагональ экрана от мага) + запас.
+ * Заклинания целятся в ближайшего врага на экране, без короткого предела.
+ */
+export function aimR(pad = 30): number {
+  const v = W.scene.cameras.main.worldView;
+  return Math.hypot(v.width, v.height) * 0.5 + pad;
+}
+
+/** Время жизни снаряда, чтобы он долетел до края экрана (и чуть дальше) при скорости sp */
+export function lifeToEdge(sp: number, min = 0.3): number {
+  return Math.max(min, (aimR(60)) / Math.max(1, sp));
+}
+
+/**
+ * Удержание цели: если прежняя цель жива и в пределах экрана — оставляем её (без «дёрганья» между врагами),
+ * иначе берём ближайшего к точке (x, y).
+ */
+export function keepTarget(cur: Enemy | null, x: number, y: number): Enemy | null {
+  if (cur && cur.alive) {
+    const P = W.player, R = aimR();
+    if ((cur.x - P.x) ** 2 + (cur.y - P.y) ** 2 <= R * R) return cur;
+  }
+  return W.enemies.nearest(x, y, aimR());
+}

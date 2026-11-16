@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEPTH, LOOT, MAX_ENEMIES } from '../config';
+import { DEPTH, LOOT, MAX_ENEMIES, VIEW_W } from '../config';
 import { Grid } from './Grid';
 import { W } from './World';
 
@@ -13,24 +13,27 @@ export interface EnemyType {
 /** Множитель скорости всех врагов (калибровка по видео оригинала) */
 export const ENEMY_SPEED = 0.85;
 
-// tex: 'en_*' — картинки 2.0 (textures.ts → makeWorldV2, один кадр, «дрожание» покачиванием);
-// старые процедурные 'enemy_*' / 'boss_N' (3 кадра tex_0..2) тоже поддерживаются.
-// size — видимый размер силуэта (картинка 2.0 обрезана по содержимому), чуть больше 2r: у тварей лапы и тень.
+// tex: 'en_*' — картинки мобов (mobArt.ts: кадры en_<имя>_0.._2); старые процедурные тоже поддерживаются.
+// РАЗМЕРЫ — по оригиналу (research/orig_sprites + Dictionary_UnitStat «유닛크기»): видимый размер =
+// размер спрайта оригинала, px × «유닛크기»/100 × (наш маг 31 ед. / маг оригинала 63 px) ≈ px × %/100 × 0.49.
+// ХИТБОКС — в оригинале у всех обычных мобов одинаковый BoxCollider 0.44×0.55 ед. (префаб Obj_UnitEnemy,
+// размер мага 0.21×0.5) → r ≈ 0.25 ед. × 49 ≈ 12 у всех; разный только рисунок.
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  basic: { id: 'basic', tex: 'en_minion',  r: 10, size: 23, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон
-  red:   { id: 'red',   tex: 'en_stinger', r: 11, size: 26, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер
-  small: { id: 'small', tex: 'en_swarm_s', r: 6,  size: 14, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
-  white: { id: 'white', tex: 'en_seraph',  r: 12, size: 28, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим
-  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 50, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик
+  // старые типы (сундук-проклятие, свита, мини-волна): размеры по ближайшему мобу оригинала
+  basic: { id: 'basic', tex: 'en_minion',  r: 12, size: 39, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },  // Миньон (75 px × 105%)
+  red:   { id: 'red',   tex: 'en_stinger', r: 12, size: 46, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },  // Стингер (ориг. 61 — ужато, он же элитка-проклятие)
+  small: { id: 'small', tex: 'en_swarm_s', r: 10, size: 24, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },  // мелочь роя
+  white: { id: 'white', tex: 'en_seraph',  r: 14, size: 64, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },  // Серафим (ориг. 135 — ужато)
+  big:   { id: 'big',   tex: 'en_assault', r: 22, size: 99, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },  // Штурмовик (237 px × 85%)
   // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
-  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 9,  size: 20, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
-  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 10, size: 24, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
-  w11: { id: 'w11', tex: 'en_swarm_l',     r: 11, size: 26, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
-  w13: { id: 'w13', tex: 'en_interceptor', r: 10, size: 25, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
-  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 27, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
-  w31: { id: 'w31', tex: 'en_scarab',      r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
-  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 28, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
-  w22: { id: 'w22', tex: 'en_oculus',      r: 13, size: 30, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
+  w1:  { id: 'w1',  tex: 'en_swarm_s',     r: 12, size: 28, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый (46 px × 125%)
+  w6:  { id: 'w6',  tex: 'en_swarm_m',     r: 12, size: 42, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний (86 × 100%)
+  w11: { id: 'w11', tex: 'en_swarm_l',     r: 12, size: 48, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой (108 × 90%)
+  w13: { id: 'w13', tex: 'en_interceptor', r: 12, size: 46, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик (125 × 75%)
+  w16: { id: 'w16', tex: 'en_hive',        r: 12, size: 57, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей (145 × 80%)
+  w31: { id: 'w31', tex: 'en_scarab',      r: 12, size: 41, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей (99 × 85%)
+  w21: { id: 'w21', tex: 'en_mine',        r: 12, size: 50, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина (185 × 55%)
+  w22: { id: 'w22', tex: 'en_oculus',      r: 12, size: 51, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой (206 × 50%)
   // боссы зоны (HP задаётся в Zone.ts)
   boss0: { id: 'boss', tex: 'en_citadel',     r: 30, size: 69, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },  // Цитадель
   boss1: { id: 'boss', tex: 'en_nemesis',     r: 32, size: 77, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },  // Немезида
@@ -43,6 +46,8 @@ export class Enemy {
   hp = 1; maxHp = 1; speed = 30; dmg = 5; xp = 1;
   kx = 0; ky = 0;          // отбрасывание
   stunT = 0; flashT = 0;
+  /** текущая вспышка — от крита (красная), её не перебивает обычная */
+  flashCrit = false;
   /** заморозка (стоит, синий), замедление: доля скорости slowK на slowT с */
   freezeT = 0; slowT = 0; slowK = 0;
   /** кадр «дрожащей линии» (старые 3-кадровые текстуры); -1 — картинка 2.0, дрожание покачиванием */
@@ -51,6 +56,8 @@ export class Enemy {
   sc = 1;
   elite = false;
   cursed = false;
+  /** «масса» для расталкивания: обычный 1, элитка 4, босс 50 */
+  mass = 1;
   type!: EnemyType;
   img!: Phaser.GameObjects.Image;
   ring?: Phaser.GameObjects.Image;
@@ -84,6 +91,29 @@ export const ORIG = {
   atkAfter: [90, 160, 230, 300],
 };
 
+/** 1 единица мира оригинала в наших единицах: камера оригинала видит 6.69 ед. по ширине (orthographicSize 7.25, 19.5:9) */
+export const ORIG_UNIT = VIEW_W / 6.69;
+const U = ORIG_UNIT;
+
+/**
+ * Удаление/спавн как в оригинале (сцена: объект мага → DestroyArea, C_Battle_Manager.Create_UnitEnemy):
+ * обычный моб тихо удаляется (без опыта/сферы/счётчика), когда |dx| ≥ 12.25 ед. или |dy| ≥ 13.4 ед. от мага
+ * (прямоугольник, стены C_DestroyArea_A); элитки — на ±33 ед. (C_DestroyArea_B). Новые — на эллипсе вокруг мага:
+ * x = cos a · U(6.5, 11.5) · m, y = sin a · U(7.5, 12.5) · m, m = U(1, 1.2) — в том числе впереди бегущего мага.
+ */
+const AREA = { killX: 12.25 * U, killY: 13.4 * U, killFar: 33 * U };
+
+/**
+ * Элитки (Create_UnitEnemySpecial: усиленная версия моба текущей волны, крупный коллайдер 1.66 ед.).
+ * Точные задержки в оригинале задаются в EnemyLevelUp и не сняты — время/число ОЦЕНОЧНО по видео
+ * (первые элитки ~2:00 группой, research/screens/13_boss/overview_02.jpg). HP-множитель Special в коде = 1.0,
+ * т.е. элитка не «стена HP» — берём ×4 к мобу волны (оценка).
+ */
+/** Вспышки урона и подсветка заморозки (setTintFill по почти чёрному телу; цвета приглушены) */
+const FLASH = { hit: 0xb8b4ac, hitT: 0.035, crit: 0xc0392b, critT: 0.07, alpha: 0.8, freeze: 0x5b86b0, freezeAlpha: 0.85 };
+
+export const ELITE = { first: 120, every: 60, group: 3, hp: 4, scale: 1.5, r: 28 };
+
 const step = (t: number, from: number) => Math.max(0, Math.floor((t - from) / 30));
 
 export class Enemies {
@@ -94,8 +124,9 @@ export class Enemies {
   private spawnAcc = 0;
   /** счётчик убийств до следующей сферы маны */
   private orbKills = 0;
-  private nextElite = 60;
-  private nextSwarm = 150;
+  private nextElite = ELITE.first;
+  /** переиспользуемый буфер соседей для расталкивания (без аллокаций в цикле) */
+  private nb: Enemy[] = [];
 
   constructor(private scene: Phaser.Scene) {}
 
@@ -125,20 +156,21 @@ export class Enemies {
     e.id = nextId++;
     e.type = type; e.x = x; e.y = y; e.alive = true;
     e.elite = elite; e.cursed = false;
-    const scale = elite ? 1.7 : 1;
-    e.r = type.r * scale;
+    const scale = elite ? ELITE.scale : 1;
+    e.r = elite ? Math.max(ELITE.r, type.r * scale) : type.r;
+    e.mass = boss ? 50 : elite ? 4 : 1;
     const s = W.stats;
     const g = this.growth();
-    e.maxHp = e.hp = type.hp * (1 + g.hp / 100) * (1 - s.enemyHpRed) * (elite ? 18 * (1 - s.eliteHpRed) : 1);
+    e.maxHp = e.hp = type.hp * (1 + g.hp / 100) * (1 - s.enemyHpRed) * (elite ? ELITE.hp * (1 - s.eliteHpRed) : 1);
     if (fixedHp) e.maxHp = e.hp = fixedHp * (1 - s.enemyHpRed);
-    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (elite ? 0.85 : 1) * (1 - s.enemySlow) * (boss ? 1 : 1 + g.spd / 100);
+    e.speed = type.speed * ENEMY_SPEED * (0.9 + Math.random() * 0.2) * (1 - s.enemySlow) * (boss ? 1 : 1 + g.spd / 100);
     e.dmg = type.dmg * (1 + g.atk / 100) * (elite ? 1.5 : 1);
     e.xp = type.xp; e.kx = e.ky = 0; e.flashT = 0; e.freezeT = 0; e.slowT = 0; e.slowK = 0;
     e.stunT = W.pickups?.timeStop ? (W.pickups.active.get('timestop') ?? 0) : 0;
     // отрисовка: картинка 2.0 (один кадр, стоит прямо) или старая 3-кадровая клякса (случайный поворот)
     const multi = this.scene.textures.exists(type.tex + '_0');
     e.frame = multi ? (Math.random() * 3) | 0 : -1;
-    e.img.setTexture(multi ? type.tex + '_' + e.frame : type.tex).setVisible(true).setPosition(x, y).clearTint()
+    e.img.setTexture(multi ? type.tex + '_' + e.frame : type.tex).setVisible(true).setPosition(x, y).clearTint().setAlpha(1)
       .setRotation(multi && !boss ? Math.random() * 6.28 : 0).setFlipX(false);
     e.img.setDisplaySize(type.size * scale, type.size * scale);
     e.sc = e.img.scaleX;
@@ -150,12 +182,15 @@ export class Enemies {
     return e;
   }
 
-  private spawnPoint(extra = 30) {
-    const v = this.scene.cameras.main.worldView;
-    const R = Math.hypot(v.width, v.height) / 2 + extra;
-    const a = Math.random() * Math.PI * 2;
-    return { x: W.player.x + Math.cos(a) * R, y: W.player.y + Math.sin(a) * R, a };
+  /** Точка спавна как в оригинале: эллипс вокруг мага (см. AREA); за краем экрана, со всех сторон */
+  private spawnPoint() {
+    const a = Math.random() * Math.PI * 2, m = 1 + Math.random() * 0.2;
+    const P = W.player;
+    this.sp.x = P.x + Math.cos(a) * (6.5 + Math.random() * 5) * m * U;
+    this.sp.y = P.y + Math.sin(a) * (7.5 + Math.random() * 5) * m * U;
+    return this.sp;
   }
+  private sp = { x: 0, y: 0 };
 
   /** Тип текущей волны (один на 30 с) */
   waveType(): EnemyType {
@@ -183,25 +218,26 @@ export class Enemies {
       this.spawnAcc += delay;
       const type = this.waveType();
       for (let i = 0; i < num && this.aliveCount < ORIG.aliveCap; i++) {
-        const p = this.spawnPoint(20 + Math.random() * 60);
+        const p = this.spawnPoint();
         this.spawn(type, p.x, p.y, false, 0, true);
       }
     }
-    // элитка раз в минуту
-    if (t >= this.nextElite) {
-      this.nextElite += 60;
-      const p = this.spawnPoint();
-      this.spawn(t > 240 ? ENEMY_TYPES.white : t > 120 ? ENEMY_TYPES.red : ENEMY_TYPES.basic, p.x, p.y, true);
+    // элитки: группа усиленных мобов текущей волны (оценка времени — см. ELITE); во время босса не идут
+    if (t >= this.nextElite && !W.zone.bossFight) {
+      this.nextElite = t + ELITE.every;
+      const type = this.waveType(), p = this.spawnPoint(), px = p.x, py = p.y;
+      const n = ELITE.group + Math.min(W.zone.stage, 3);
+      for (let i = 0; i < n; i++) this.spawn(type, px + (Math.random() - 0.5) * 90, py + (Math.random() - 0.5) * 90, true);
     }
-    // рой мелких с одной стороны
-    if (t >= this.nextSwarm) {
-      this.nextSwarm += 45 + Math.random() * 30;
-      const p = this.spawnPoint(60);
-      const n = 14 + Math.floor(t / 30);
-      for (let i = 0; i < n; i++) {
-        this.spawn(ENEMY_TYPES.small, p.x + (Math.random() - 0.5) * 70, p.y + (Math.random() - 0.5) * 70);
-      }
-    }
+  }
+
+  /** Тихо убрать моба (ушёл далеко за экран): без опыта, сферы, счётчика убийств — как Unit_Destroy_Simple */
+  private despawn(e: Enemy) {
+    e.alive = false;
+    e.img.setVisible(false);
+    if (e.ring) e.ring.setVisible(false);
+    this.free.push(e);
+    this.aliveCount--;
   }
 
   update(dt: number) {
@@ -210,22 +246,25 @@ export class Enemies {
     g.clear();
     for (const e of this.list) if (e.alive) g.insert(e);
 
-    const view = this.scene.cameras.main.worldView;
-    const farR = Math.hypot(view.width, view.height) * 0.75;
+    const nb = this.nb;
+    const bodyR = P.bodyR;
 
     for (const e of this.list) {
       if (!e.alive) continue;
       let dx = P.x - e.x, dy = P.y - e.y;
-      const d = Math.hypot(dx, dy) || 1;
+      const adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+      const boss = e.type.id === 'boss';
 
-      // слишком далеко — переносим на противоположную сторону (как в жанре)
-      if (d > farR) {
-        e.x = P.x + (dx / d) * farR * 0.9;
-        e.y = P.y + (dy / d) * farR * 0.9;
-        continue;
+      // ушёл далеко за экран: обычный — тихо удаляется (спавнер создаст новых вокруг мага, в т.ч. впереди),
+      // элитка — на ±33 ед.; босса и «проклятых» не удаляем, а переносим к магу (на них держатся Zone/Pickups)
+      if (!e.elite && !boss ? (adx >= AREA.killX + e.r || ady >= AREA.killY + e.r) : (adx >= AREA.killFar || ady >= AREA.killFar)) {
+        if (boss || e.cursed) { const p = this.spawnPoint(); e.x = p.x; e.y = p.y; }
+        else { this.despawn(e); continue; }
+        dx = P.x - e.x; dy = P.y - e.y;
       }
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
 
-      if (e.freezeT > 0) { e.freezeT -= dt; if (e.freezeT <= 0 && e.flashT <= 0) e.img.clearTint(); }
+      if (e.freezeT > 0) { e.freezeT -= dt; if (e.freezeT <= 0 && e.flashT <= 0) this.baseTint(e); }
       else if (e.stunT > 0) e.stunT -= dt;
       else {
         let sp = e.speed;
@@ -239,23 +278,37 @@ export class Enemies {
         e.kx *= 0.86; e.ky *= 0.86;
         if (Math.abs(e.kx) + Math.abs(e.ky) < 2) e.kx = e.ky = 0;
       }
-      // расталкивание соседей (ограничено, чтобы было быстро)
-      let n = 0;
-      g.query(e.x, e.y, e.r * 0.9, (o) => {
-        if (o === e) return;
-        const ox = e.x - o.x, oy = e.y - o.y;
-        const od = Math.hypot(ox, oy) || 0.01;
-        const push = (e.r + o.r - od) * 0.5;
-        if (push > 0) { e.x += (ox / od) * push * 0.6; e.y += (oy / od) * push * 0.6; }
-        return ++n > 5;
-      });
+      // физика как в оригинале (у мобов и мага Rigidbody mass 1, drag 1000, твёрдые коллайдеры):
+      // перекрывшиеся тела расходятся пропорционально массам — толпа не слипается в точку.
+      // Каждая пара встречается дважды (от e и от o), поэтому за проход снимаем половину перекрытия.
+      const n = this.grid.near(e.x, e.y, e.r, nb, 8);
+      for (let i = 0; i < n; i++) {
+        const o = nb[i];
+        if (o === e) continue;
+        let ox = e.x - o.x, oy = e.y - o.y;
+        let od2 = ox * ox + oy * oy;
+        if (od2 < 0.0001) { ox = Math.cos(e.id); oy = Math.sin(e.id); od2 = 1; } // совпали — разводим по «случайной» оси
+        const od = Math.sqrt(od2), over = (e.r + o.r - od) * 0.5;
+        if (over <= 0) continue;
+        const k = over / od, we = o.mass / (e.mass + o.mass), wo = 1 - we;
+        e.x += ox * k * we; e.y += oy * k * we;
+        o.x -= ox * k * wo; o.y -= oy * k * wo;
+      }
 
-      // контакт с магом
+      // маг и моб тоже твёрдые: моб упирается, маг получает толчок (накопится и применится в Player.move,
+      // ограничен скоростью мага) — сквозь толпу не пройти без сопротивления
       dx = P.x - e.x; dy = P.y - e.y;
-      const rr = e.r + P.r;
-      if (dx * dx + dy * dy < rr * rr) P.hurt(e.dmg);
+      const rr = e.r + bodyR, d2 = dx * dx + dy * dy;
+      if (d2 < rr * rr) {
+        const pd = Math.sqrt(d2) || 0.01, over = rr - pd;
+        const wp = boss ? 1 : e.elite ? 0.8 : 0.5; // доля перекрытия, которую «отдаёт» маг (массы 1:1 у обычных)
+        const nx = dx / pd, ny = dy / pd;
+        P.pushX += nx * over * wp; P.pushY += ny * over * wp;
+        e.x -= nx * over * (1 - wp); e.y -= ny * over * (1 - wp);
+        P.hurt(e.dmg);
+      }
 
-      if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) { if (e.freezeT > 0) e.img.setTint(0x8fd0ff); else e.img.clearTint(); } }
+      if (e.flashT > 0) { e.flashT -= dt; if (e.flashT <= 0) this.baseTint(e); }
       if (e.frame >= 0) {
         // «дрожащая линия» старых текстур: ~4 смены кадра в секунду, у каждого моба со своим сдвигом
         const fr = Math.floor(W.scene.time.now / 250 + e.id * 0.37) % 3;
@@ -283,8 +336,10 @@ export class Enemies {
     if (s.highHpBonus && e.hp > e.maxHp * 0.75) amount *= 1 + s.highHpBonus;
     if (src) W.dmgBy.set(src, (W.dmgBy.get(src) ?? 0) + Math.min(amount, e.hp));
     e.hp -= amount;
-    if (e.flashT <= 0) e.img.setTintFill(0x6a2a30); // мягкая тёмно-красная вспышка вместо белой
-    e.flashT = 0.06;
+    // вспышка урона (тела мобов почти чёрные — поэтому заливка setTintFill, приглушённая альфой):
+    // обычный удар — очень короткая неяркая светлая, крит — красная и чуть дольше; крит не перебивается обычным
+    if (crit) { e.img.setTintFill(FLASH.crit).setAlpha(FLASH.alpha); e.flashT = FLASH.critT; e.flashCrit = true; }
+    else if (e.flashT <= 0 || !e.flashCrit) { e.img.setTintFill(FLASH.hit).setAlpha(FLASH.alpha); e.flashT = Math.max(e.flashT, FLASH.hitT); e.flashCrit = false; }
     if (kx || ky) { const k = e.type.id === 'boss' ? 0 : e.elite || e.type.id === 'big' ? 0.25 : 1; e.kx += kx * k; e.ky += ky * k; }
     if (e.hp <= 0) { this.kill(e); return true; }
     return false;
@@ -322,7 +377,13 @@ export class Enemies {
   freeze(e: Enemy, sec: number) {
     if (!e.alive || e.elite || e.type.id === 'boss') return;
     e.freezeT = Math.max(e.freezeT, sec);
-    e.img.setTint(0x8fd0ff);
+    if (e.flashT <= 0) this.baseTint(e);
+  }
+
+  /** Обычный вид моба: без заливки; замороженный — просто подсвечен приглушённым синим (без эффектов) */
+  private baseTint(e: Enemy) {
+    if (e.freezeT > 0) e.img.setTintFill(FLASH.freeze).setAlpha(FLASH.freezeAlpha);
+    else e.img.clearTint().setAlpha(1);
   }
   stun(e: Enemy, sec: number) { if (e.alive && e.type.id !== 'boss') e.stunT = Math.max(e.stunT, sec); }
   slow(e: Enemy, k: number, sec: number) { if (!e.alive) return; e.slowK = Math.max(e.slowT > 0 ? e.slowK : 0, k); e.slowT = Math.max(e.slowT, sec); }

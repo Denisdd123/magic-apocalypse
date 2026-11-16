@@ -4,12 +4,15 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { SkyFx, freezeCrust } from './_skyfx';
+import { SkyFx } from './_skyfx';
+import { ERING_K, ensureDarkTex, freezeOnly } from './_darkfx';
 
 /** базовый радиус поля вокруг мага */
 const R0 = 55;
-/** картинка кольца: внешний край ≈ 0.85 ширины → множитель диаметра */
+/** картинка огненной волны (427): внешний край ≈ 0.85 ширины → множитель диаметра */
 const RING_K = 2.35;
+/** штрихи поля прыгают по кругу рывками: шаг, с и угол шага */
+const ARC_STEP = 0.07, ARC_ANG = 0.62;
 /** число зарядов в слиянии 20 «Отладка молний» */
 const CHARGES = 6;
 
@@ -23,6 +26,10 @@ const CHARGES = 6;
 class Ezone extends DataSpell {
   private fx = new SkyFx();
   private ring: Phaser.GameObjects.Image | null = null;
+  /** пара коротких штрихов-разрядов поверх кольца */
+  private arc: Phaser.GameObjects.Image | null = null;
+  private arcT = 0;
+  private arcRot = 0;
   private wave: Phaser.GameObjects.Image | null = null;
   private charges: Phaser.GameObjects.Image[] = [];
   private t = 0;
@@ -44,20 +51,24 @@ class Ezone extends DataSpell {
 
   destroy() {
     this.fx.destroy();
-    this.ring?.destroy(); this.wave?.destroy();
+    this.ring?.destroy(); this.arc?.destroy(); this.wave?.destroy();
     this.charges.forEach((c) => c.destroy());
-    this.ring = this.wave = null; this.charges = [];
+    this.ring = this.arc = this.wave = null; this.charges = [];
   }
 
-  private get color() { return this.hasProp(426) ? 0x7ad6c8 : this.hasProp(425) ? 0xe0d0ff : 0xc8b8ff; }
+  /** приглушённые цвета (без неона) */
+  private get color() { return this.hasProp(426) ? 0x6aa89a : this.hasProp(425) ? 0xb0a2d8 : 0x9a8ec8; }
 
   private ensure() {
-    if (!this.ring) this.ring = W.scene.add.image(0, 0, 'fx_ezone_ring').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    ensureDarkTex();
+    // поле: тонкое пиксельное кольцо + пара штрихов (вместо картинки с «отростками»)
+    if (!this.ring) this.ring = W.scene.add.image(0, 0, 'dk_ering').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD);
+    if (!this.arc) this.arc = W.scene.add.image(0, 0, 'dk_earc').setDepth(DEPTH.zone + 0.21).setBlendMode(Phaser.BlendModes.ADD);
     if (!this.wave) this.wave = W.scene.add.image(0, 0, 'fx_ezone_firewave').setDepth(DEPTH.zone + 0.2).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
   }
 
   private hideAll() {
-    this.ring?.setVisible(false); this.wave?.setVisible(false);
+    this.ring?.setVisible(false); this.arc?.setVisible(false); this.wave?.setVisible(false);
     for (const c of this.charges) c.setVisible(false);
   }
 
@@ -78,9 +89,9 @@ class Ezone extends DataSpell {
       if (!this.on) { this.hideAll(); return; }
     } else this.on = true;
 
-    if (this.hasCombo(20)) { this.ring!.setVisible(false); this.wave!.setVisible(false); this.updateCharges(dt); return; }
+    if (this.hasCombo(20)) { this.ring!.setVisible(false); this.arc!.setVisible(false); this.wave!.setVisible(false); this.updateCharges(dt); return; }
     for (const c of this.charges) c.setVisible(false);
-    if (this.hasProp(427)) { this.ring!.setVisible(false); this.updateFire(dt); return; }
+    if (this.hasProp(427)) { this.ring!.setVisible(false); this.arc!.setVisible(false); this.updateFire(dt); return; }
     this.wave!.setVisible(false);
     this.updateField(dt);
   }
@@ -88,10 +99,18 @@ class Ezone extends DataSpell {
   /** Обычное поле: тик урона по всем внутри */
   private updateField(dt: number) {
     const P = W.player, R = R0 * this.sizeMul;
-    this.spin += dt * 0.8;
-    const flick = 0.55 + 0.25 * Math.sin(this.t * 23) * Math.sin(this.t * 7.3);
-    this.ring!.setVisible(true).setPosition(P.x, P.y).setDisplaySize(R * RING_K, R * RING_K)
-      .setRotation(this.spin).setAlpha(flick).setTint(this.color);
+    const col = this.color, D = R * ERING_K;
+    // кольцо стоит на месте (тусклое); штрихи прыгают по кругу рывками — кажется, что ток бежит
+    this.arcT -= dt;
+    if (this.arcT <= 0) {
+      this.arcT += ARC_STEP;
+      if (this.arcT < 0) this.arcT = ARC_STEP;
+      this.arcRot += ARC_ANG + Math.random() * 0.5;
+      this.arc!.setAlpha(Math.random() < 0.2 ? 0.45 : 0.9);
+      this.ring!.setAlpha(Math.random() < 0.15 ? 0.3 : 0.48);
+    }
+    this.ring!.setVisible(true).setPosition(P.x, P.y).setDisplaySize(D, D).setTint(col);
+    this.arc!.setVisible(true).setPosition(P.x, P.y).setDisplaySize(D, D).setRotation(this.arcRot).setTint(col);
 
     this.tickT -= dt;
     if (this.tickT > 0) return;
@@ -147,14 +166,14 @@ class Ezone extends DataSpell {
     this.hitSet.add(e.id);
     const P = W.player, dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
     W.enemies.damage(e, this.curDmg, (dx / d) * 50, (dy / d) * 50, this.def.id);
-    if (this.hasCombo(36)) freezeCrust(this.fx, e, 0.5);
+    if (this.hasCombo(36)) freezeOnly(e, 0.5);
   };
 
   /** 20 Отладка молний: поле в виде зарядов, кружащих вокруг мага; бьют касанием без интервала тика */
   private updateCharges(dt: number) {
     const P = W.player, R = R0 * this.sizeMul;
     while (this.charges.length < CHARGES) {
-      this.charges.push(W.scene.add.image(0, 0, 'fx_ezone_ring').setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD));
+      this.charges.push(W.scene.add.image(0, 0, 'dk_ering').setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD));
     }
     this.spin += dt * 5 * this.speedMul;
     const cr = R * 0.3, orbit = R * 0.8;
@@ -162,8 +181,9 @@ class Ezone extends DataSpell {
     for (let i = 0; i < this.charges.length; i++) {
       const a = this.spin + (i * Math.PI * 2) / this.charges.length;
       const x = P.x + Math.cos(a) * orbit, y = P.y + Math.sin(a) * orbit;
-      this.charges[i].setVisible(true).setPosition(x, y).setDisplaySize(cr * RING_K, cr * RING_K)
-        .setRotation(-this.t * 9).setAlpha(0.75 + 0.25 * Math.sin(this.t * 31 + i)).setTint(this.color);
+      // заряд — маленькое пиксельное кольцо; поворот рывками по 90° (сетка не плывёт)
+      this.charges[i].setVisible(true).setPosition(x, y).setDisplaySize(cr * ERING_K, cr * ERING_K)
+        .setRotation((((this.t * 14) | 0) + i) * (Math.PI / 2)).setAlpha(0.8).setTint(this.color);
       W.enemies.grid.query(x, y, cr, this.onCharge);
     }
   }

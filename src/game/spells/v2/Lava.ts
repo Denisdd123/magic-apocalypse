@@ -5,9 +5,14 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
+import { LAVA_D, ensureDarkTex } from './_darkfx';
 
-/** fx_lava_pool: круглая лужа, видимый диаметр ≈ 203 px из 256; fx_lava_wave — дуга (выпуклостью вниз) */
-const POOL_TEX = 'fx_lava_pool', POOL_D = 203;
+/**
+ * Лужа — пиксельная магма из _darkfx в 2 кадрах (dk_lava0/1): тёмная корка, тлеющие трещины, пузыри.
+ * Кадры меняются рывком раз в FRAME_SEC. fx_lava_wave — дуга фронта (выпуклостью вниз) для C56.
+ */
+const POOL_TEX = ['dk_lava0', 'dk_lava1'], POOL_D = LAVA_D;
+const FRAME_SEC = 0.32;
 const WAVE_TEX = 'fx_lava_wave', WAVE_D = 153;
 
 interface Pool {
@@ -38,6 +43,7 @@ class Lava extends DataSpell {
   }
 
   update(dt: number) {
+    ensureDarkTex();
     this.clock += dt;
     // КД идёт только когда луж нет (оригинал: «5 с после окончания»)
     if (!this.pools.length && this.readyData(dt)) this.cast();
@@ -58,11 +64,12 @@ class Lava extends DataSpell {
       }
       p.x += p.vx * dt; p.y += p.vy * dt;
       if (this.hasCombo(21)) p.r = p.r0 * (1 + p.t * 0.3); // Доменная печь: растёт
-      // картинка: проявляется, дышит, гаснет
+      // картинка: проявляется, гаснет; кадр корки меняется рывком (без «дыхания» — не песок)
       const k = p.t / p.life;
-      const a = k < 0.08 ? k / 0.08 : k > 0.85 ? (1 - k) / 0.15 : 1;
-      const s = ((p.r * 2) / POOL_D) * (0.97 + 0.03 * Math.sin(this.clock * 4 + i));
-      p.img.setPosition(p.x, p.y).setScale(s).setAlpha(a * 0.92);
+      const a = k < 0.06 ? k / 0.06 : k > 0.88 ? (1 - k) / 0.12 : 1;
+      const tex = POOL_TEX[((p.t / FRAME_SEC) | 0) & 1];
+      if (p.img.texture.key !== tex) p.img.setTexture(tex);
+      p.img.setPosition(p.x, p.y).setScale((p.r * 2) / POOL_D).setAlpha(a * 0.95);
       if (p.front) {
         const ang = Math.atan2(p.vy, p.vx);
         p.front.setPosition(p.x + Math.cos(ang) * p.r * 0.7, p.y + Math.sin(ang) * p.r * 0.7)
@@ -104,9 +111,11 @@ class Lava extends DataSpell {
   }
 
   private spawn(x: number, y: number, vx: number, vy: number, r: number, life: number, moving: boolean) {
-    const img = this.pool.get(POOL_TEX, DEPTH.zone, false).setPosition(x, y).setAlpha(0);
-    if (this.hasProp(533)) img.setTint(0xffb0a0);
-    const front = moving ? this.pool.get(WAVE_TEX, DEPTH.zone).setAlpha(0) : null;
+    // поворот кратен 90° — у разных луж разный рисунок трещин, пиксели не плывут
+    const img = this.pool.get(POOL_TEX[0], DEPTH.zone, false).setPosition(x, y).setAlpha(0)
+      .setRotation(((Math.random() * 4) | 0) * (Math.PI / 2));
+    if (this.hasProp(533)) img.setTint(0xffc4b4); // Плавление: корка чуть краснее
+    const front = moving ? this.pool.get(WAVE_TEX, DEPTH.zone).setAlpha(0).setTint(0xb06040) : null;
     this.pools.push({ x, y, vx, vy, r0: r, r, t: 0, life, img, front });
   }
 
@@ -131,7 +140,7 @@ class Lava extends DataSpell {
     this.bDmg = d;
     W.enemies.grid.query(p.x, p.y, p.r * 0.9, this.onBurn);
     if (this.melt.size > 600) this.melt.clear();
-    if (Math.random() < 0.5) W.fx.sparks(p.x + (Math.random() - 0.5) * p.r, p.y + (Math.random() - 0.5) * p.r, 2, 0xff5a2a, 40);
+    if (Math.random() < 0.35) W.fx.sparks(p.x + (Math.random() - 0.5) * p.r, p.y + (Math.random() - 0.5) * p.r, 1, 0xa8461a, 30);
   }
 }
 

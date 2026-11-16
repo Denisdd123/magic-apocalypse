@@ -2,7 +2,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { rnd } from './_proj';
+import { aimR, rnd } from './_proj';
 
 /**
  * #16 Энергетическая пуля → «Сгустки силы». Залп пробивающих сгустков в ближайших врагов, летят недалеко (длительность 0.6 с).
@@ -48,11 +48,11 @@ class Ebolt extends DataSpell {
       // Вспышка: четыре стороны разом, сгустки веером в каждой
       for (let i = 0; i < n; i++) this.queue.push({ delay: 0, a: a0 + ((i % 4) * Math.PI) / 2 + rnd(-0.25, 0.25) });
     } else {
-      const ts = W.enemies.nearestN(P.x, P.y, n, 220);
+      const ts = W.enemies.nearestN(P.x, P.y, n, aimR()); // ближайшие на экране
       if (!ts.length) { this.cd = 0.2; return; } // нет целей — ждём (не тратим залп впустую)
       for (let i = 0; i < n; i++) {
         const e = ts[i % ts.length];
-        const spread = i < ts.length ? 0.06 : 0.45;
+        const spread = i < ts.length ? 0 : 0.2; // точно в цель; лишние сгустки — узким веером
         this.queue.push({ delay: i * 0.025, a: Math.atan2(e.y - P.y, e.x - P.x) + rnd(-spread, spread) });
       }
     }

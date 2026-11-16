@@ -4,6 +4,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { aimR, keepTarget } from './_proj';
 import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
 
 /** fx_cyclone / fx_cyclone_void: круглые спирали, видимый диаметр ≈ 210 px из 256 */
@@ -15,6 +16,8 @@ interface Wind {
   mode: Mode; x: number; y: number; vx: number; vy: number;
   t: number; life: number; delay: number; r0: number; r: number;
   ang: number; shotT: number; gate: HitGate;
+  /** удерживаемая цель (не перескакивает между врагами каждый кадр) */
+  tgt: Enemy | null;
   img: Phaser.GameObjects.Image | null;
 }
 
@@ -60,7 +63,7 @@ class Cyclone extends DataSpell {
       const k = w.t / w.life;
       switch (w.mode) {
         case 'seek': { // ползёт к ближайшему врагу
-          const e = W.enemies.nearest(w.x, w.y, 300);
+          const e = w.tgt = keepTarget(w.tgt, w.x, w.y);
           if (e) this.steer(w, e.x, e.y, 55, dt);
           w.r = this.hasProp(462) ? w.r0 * (1.3 - 0.8 * k) : w.r0 * Math.min(4, 1 + grow * w.t);
           if (this.hasProp(462)) this.shoot(w, dt);
@@ -76,7 +79,7 @@ class Cyclone extends DataSpell {
           w.r = w.r0 * (2.4 - 1.4 * k);
           break;
         case 'neutron': { // C14: один, быстро расширяется, скорость падает
-          const e = W.enemies.nearest(w.x, w.y, 300);
+          const e = w.tgt = keepTarget(w.tgt, w.x, w.y);
           if (e) this.steer(w, e.x, e.y, 90 * (1 - k), dt);
           w.r = w.r0 * (1 + 2.5 * k);
           break;
@@ -148,7 +151,7 @@ class Cyclone extends DataSpell {
   private add(mode: Mode, x: number, y: number, vx: number, vy: number, r0: number, life: number, delay = 0, ang = 0) {
     const w = this.spare.pop() ?? { gate: new HitGate() } as Wind;
     w.gate.clear();
-    Object.assign(w, { mode, x, y, vx, vy, t: 0, life, delay, r0, r: r0, ang, shotT: 0.15, img: null });
+    Object.assign(w, { mode, x, y, vx, vy, t: 0, life, delay, r0, r: r0, ang, shotT: 0.15, img: null, tgt: null });
     if (delay <= 0) {
       w.delay = 0;
       w.img = this.pool.get(this.texFor(mode), DEPTH.zone, mode !== 'void' && mode !== 'hole' && mode !== 'orbit').setAlpha(0);
@@ -179,9 +182,13 @@ class Cyclone extends DataSpell {
       for (let i = 0; i < n; i++) { const p = randomViewPoint(40); this.add('void', p.x, p.y, 0, 0, r0, life, i * 0.2); }
       return;
     }
+    // каждый вихрь сразу берёт свою цель — ближайших врагов на экране по очереди (нет врагов — случайная сторона)
+    const ts = W.enemies.nearestN(P.x, P.y, n, aimR());
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
+      const e = ts.length ? ts[i % ts.length] : null;
+      const a = e ? Math.atan2(e.y - P.y, e.x - P.x) : Math.random() * Math.PI * 2;
       this.add('seek', P.x + Math.cos(a) * 12, P.y + Math.sin(a) * 12, Math.cos(a) * 40, Math.sin(a) * 40, r0, life);
+      this.winds[this.winds.length - 1].tgt = e;
     }
   }
 }

@@ -4,6 +4,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { aimR } from './_proj';
 import { HitGate, ImgPool, forSegment, viewHalfDiag } from './_zoneKit';
 
 /** Картинка fx_ray_beam: луч горизонтальный, видимая часть x 9..197, ось y≈133, толщина ≈18 px */
@@ -17,7 +18,7 @@ interface Beam {
 }
 
 /**
- * #18 Таинственный луч → «Луч бездны». Луч из мага до края экрана, пробивает всё, медленно вращается.
+ * #18 Таинственный луч → «Луч бездны». Луч из мага до края экрана в ближайшего врага, пробивает всё; до свойств неподвижен.
  * Лучи выходят по одному с интервалом (stat interval). Урон одному врагу — один раз за луч
  * (EM-излучение — раз в 0.5 с, Плазменный луч — раз в 0.25 с); ворота урона общие для заклинания.
  * Свойства: 515 Отражение (второй луч назад), 516 Разрушительный (быстрое вращение), 517 Электромагнитное
@@ -32,6 +33,7 @@ class Ray extends DataSpell {
   private queue: number[] = [];   // задержки до выхода следующих лучей
   private volleys: number[] = []; // C30: задержки залпов
   private plasmaN = 0;            // C16: сколько постоянных лучей сейчас
+  private aimIdx = 0;             // номер луча в текущем залпе (в какого по близости врага целиться)
   // параметры текущего удара (без замыканий в цикле)
   private hDmg = 0; private hEvery = 0; private hUx = 0; private hUy = 0;
   private onHit = (e: Enemy) => {
@@ -92,10 +94,12 @@ class Ray extends DataSpell {
       if (this.hasCombo(30)) {
         for (let v = 0; v < 5; v++) this.volleys.push(v * 0.3);
       } else if (this.hasCombo(38) || this.hasCombo(58)) {
+        this.aimIdx = 0;
         this.queue.push(0);
       } else {
         // лучи по одному: интервал появления (у Отражения −50%)
         const gap = this.stat('interval', 0.25);
+        this.aimIdx = 0;
         const k = this.hasProp(517) ? 1 + Math.floor(Math.random() * n) : n; // EM: от 1 до числа лучей
         for (let i = 0; i < k; i++) this.queue.push(i * gap);
       }
@@ -156,7 +160,12 @@ class Ray extends DataSpell {
   /** обычный выстрел одного луча */
   private fireOne() {
     const life = this.durSec;
-    const ang = Math.random() * Math.PI * 2;
+    // наведение: каждый следующий луч залпа — в следующего по близости врага на экране; врагов нет — случайно
+    const P = W.player;
+    const ts = W.enemies.nearestN(P.x, P.y, this.aimIdx + 1, aimR());
+    const e = ts.length ? ts[Math.min(this.aimIdx, ts.length - 1)] : null;
+    this.aimIdx++;
+    const ang = e ? Math.atan2(e.y - P.y, e.x - P.x) : Math.random() * Math.PI * 2;
     if (this.hasCombo(38)) {
       // все лучи разом в хаотичных направлениях, без вращения
       const n = this.count;
@@ -164,13 +173,14 @@ class Ray extends DataSpell {
       return;
     }
     if (this.hasCombo(58)) { this.spawn(ang, 0, life, false, 6); return; }
-    if (this.hasProp(517)) { this.spawn(ang, 0, life, false); return; }
+    if (this.hasProp(517)) { this.spawn(Math.random() * Math.PI * 2, 0, life, false); return; } // EM: случайные стороны
     const both = this.hasProp(515) && !this.hasCombo(30);
     this.spawn(ang, 0, life, both);
   }
 
   private spawn(ang: number, spinOverride: number, life: number, both: boolean, spinAbs = 0) {
-    let spin = spinAbs || (this.hasProp(516) ? 3.2 : 0.6);
+    // до свойств луч статичен (не крутится); вращается только у «Разрушительного» и в слияниях
+    let spin = spinAbs || (this.hasProp(516) ? 3.2 : 0);
     if (spinOverride) spin = spinOverride;
     if (this.hasProp(517) && !this.hasCombo(16)) spin = 0;
     if (this.hasCombo(38) || this.hasCombo(30)) spin = 0;

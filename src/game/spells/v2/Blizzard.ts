@@ -4,7 +4,8 @@ import type { Enemy } from '../../Enemies';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { Later, SkyFx, freezeCrust, ringDamage } from './_skyfx';
+import { Later, SkyFx, ringDamage } from './_skyfx';
+import { RING_K, ensureDarkTex, freezeOnly, quarterRot } from './_darkfx';
 
 /** радиус разрыва одной льдинки */
 const R0 = 22;
@@ -19,7 +20,7 @@ const FALL_A = (70 * Math.PI) / 180;
 
 /**
  * #17 Метель → «Ледяная буря». Раз в КД начинается метель: count ледяных осколков с интервалом падают
- * вокруг мага (короткий телеграф — круг на земле), разрыв, шанс заморозки (W.enemies.freeze).
+ * вокруг мага (без меток на земле), разрыв, шанс заморозки (W.enemies.freeze).
  * Свойства: 506 Лютый холод (пока идёт метель — все враги −3%/с скорости), 507 Падающая звезда (крупные медленные звёзды),
  * 508 Пожар (каждый осколок взрывается 2 раза, −10% мощности, без заморозки).
  * Слияния (основа): 12 Поджог эфира, 15 Зимний шторм, 51 Бытие.
@@ -31,13 +32,16 @@ class Blizzard extends DataSpell {
   private next = 0;
   private stormT = 0;
   private slowAcc = 0;
-  private freezeCb = (e: Enemy) => { if (Math.random() < FREEZE_CHANCE) freezeCrust(this.fx, e, this.durSec); };
+  // заморозка без корки на мобе: подсветку даёт Enemies.freeze
+  private freezeCb = (e: Enemy) => { if (Math.random() < FREEZE_CHANCE) freezeOnly(e, this.durSec); };
 
   destroy() { this.fx.destroy(); this.later.clear(); }
 
-  private get color() { return this.hasProp(508) ? 0xff7a3a : this.hasProp(507) ? 0xe8f4ff : 0xbfdcff; }
+  /** тёмные приглушённые тона (тинт поверх тёмных пиксельных текстур _darkfx) */
+  private get color() { return this.hasProp(508) ? 0xc8784a : this.hasProp(507) ? 0xe0e8ee : 0xc4ced8; }
 
   update(dt: number) {
+    ensureDarkTex();
     this.fx.update(dt);
     this.later.update(dt);
 
@@ -67,7 +71,7 @@ class Blizzard extends DataSpell {
     } else { this.stormT = 0; this.slowAcc = 0; }
   }
 
-  /** Одна льдинка: падает по косой, на земле — круг-телеграф */
+  /** Одна льдинка: тёмная пиксельная игла падает по косой (без меток на земле) */
   private shard() {
     const P = W.player, size = this.sizeMul;
     const star = this.hasProp(507);
@@ -77,10 +81,9 @@ class Blizzard extends DataSpell {
     const fall = star ? 0.75 : 0.28, L = 220;
     const vx = (Math.cos(FALL_A) * L) / fall, vy = (Math.sin(FALL_A) * L) / fall;
     const tint = this.color;
-    this.fx.spawn('ring', { x, y, w: r * 2.2, w1: r * 1.6, a0: 0.15, a1: 0.5, life: fall, tint });
-    this.fx.spawn(star ? 'fx_blizzard_star' : 'fx_blizzard_shard', {
-      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 3 : 38 * Math.sqrt(size), life: fall, a0: 0.95, a1: 0.95,
-      rot: FALL_A - Math.PI / 4, tint: this.hasProp(508) ? tint : 0xffffff, depth: DEPTH.top,
+    this.fx.spawn(star ? 'dk_icestar' : 'dk_icicle', {
+      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 1.8 : 30 * Math.sqrt(size), life: fall, a0: 1, a1: 1,
+      rot: star ? 0 : FALL_A, tint, add: false, depth: DEPTH.top,
     });
     const dmg = this.dmg;
     this.later.add(fall, () => this.burstAt(x, y, r, dmg));
@@ -114,11 +117,16 @@ class Blizzard extends DataSpell {
       ringDamage(x, y, 0, r, dmg, 20, src, cb);
       this.later.add(0.1, () => ringDamage(x, y, r, r * 1.5, dmg, 20, src, cb));
       this.later.add(0.2, () => ringDamage(x, y, r * 1.5, r * 2, dmg, 20, src, cb));
-      this.fx.spawn('ring', { x, y, w: r * 1.5, w1: r * 4.4, life: 0.35, a0: 0.9, a1: 0, tint });
+      // пиксельное кольцо рывками под каждый тик расширения
+      this.fx.spawn('dk_ring', { x, y, w: r * RING_K, life: 0.1, a0: 0.8, a1: 0.8, tint: 0x6a86a0, add: false });
+      this.fx.spawn('dk_ring', { x, y, w: r * 1.5 * RING_K, life: 0.1, delay: 0.1, a0: 0.7, a1: 0.7, tint: 0x6a86a0, add: false });
+      this.fx.spawn('dk_ring', { x, y, w: r * 2 * RING_K, life: 0.2, delay: 0.2, a0: 0.6, a1: 0, tint: 0x6a86a0, add: false });
     } else if (cb) ringDamage(x, y, 0, r, dmg, 20, src, cb);
     else areaDamage(x, y, r, dmg, 20, src);
-    this.fx.spawn('fx_frostnova_ring', { x, y, w: r * 0.8, w1: r * 2.4, life: 0.3, a0: 0.9, a1: 0, tint, rot: Math.random() * 6.28 });
-    this.fx.spawn('blast', { x, y, w: r * 0.6, w1: r * 1.6, life: 0.2, a0: 0.8, a1: 0, tint });
+    // разрыв: маленький венец тёмных шипов в 2 «кадра» (малый → полный, держится и гаснет)
+    const rot = quarterRot();
+    this.fx.spawn('dk_frost', { x, y, w: r * 1.3, life: 0.05, a0: 1, a1: 1, tint, rot, add: false });
+    this.fx.spawn('dk_frost', { x, y, w: r * 2.2, life: 0.22, delay: 0.05, a0: 0.95, a1: 0, hold: true, tint, rot, add: false });
   }
 }
 

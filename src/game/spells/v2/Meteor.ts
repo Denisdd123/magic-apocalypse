@@ -4,6 +4,7 @@ import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, randomInView } from './_skyfx';
+import { RING_K, ensureDarkTex, quarterRot } from './_darkfx';
 
 /** базовый радиус взрыва метеорита */
 const R0 = 42;
@@ -30,6 +31,7 @@ class Meteor extends DataSpell {
   destroy() { this.fx.destroy(); this.later.clear(); this.craters = []; }
 
   update(dt: number) {
+    ensureDarkTex();
     this.fx.update(dt);
     this.later.update(dt);
     this.updateCraters(dt);
@@ -86,36 +88,47 @@ class Meteor extends DataSpell {
     }
   }
 
-  /** Падение: телеграф (растущая тень и тусклый круг) → камень сверху → взрыв. instant — извержение без падения. */
+  /**
+   * Падение: телеграф (растущая тень и тусклое пиксельное кольцо) → тёмная «звезда» с узким следом
+   * сверху → разлёт обломков и выжженный кратер. Не огненный шар: тёмный камень, багровая кромка,
+   * бледное ядро (текстуры _darkfx). instant — извержение без падения.
+   */
   private drop(x: number, y: number, R: number, dmg: number, delay: number, instant: boolean, crater = instant) {
     if (instant) {
       const tele = 0.25;
-      this.fx.spawn('ring', { x, y, w: R * 1.2, w1: R * 2.2, a0: 0.2, a1: 0.7, life: tele, delay, tint: 0xff5a2a });
+      this.fx.spawn('dk_ring', { x, y, w: R * 0.6 * RING_K, w1: R * RING_K, a0: 0.3, a1: 0.85, life: tele, delay, tint: 0x8a3a1e, add: false, depth: DEPTH.zone + 0.1 });
       this.later.add(delay + tele, () => this.land(x, y, R, dmg, crater));
       return;
     }
     const fall = R > R0 * 2 ? FALL * 1.4 : FALL;
     const H = 240, dx = H * 0.35;
     this.fx.spawn('shadow', { x, y, w: R * 0.5, w1: R * 2, h: R * 0.25, h1: R * 0.8, a0: 0.25, a1: 0.85, life: fall, delay, add: false, depth: DEPTH.zone });
-    this.fx.spawn('ring', { x, y, w: R * 2.2, a0: 0.15, a1: 0.45, life: fall, delay, tint: 0xb83a20 });
+    this.fx.spawn('dk_ring', { x, y, w: R * RING_K, a0: 0.1, a1: 0.45, life: fall, delay, tint: 0x6a2418, add: false, depth: DEPTH.zone + 0.1 });
     const vx = dx / fall, vy = H / fall, rot = Math.atan2(vy, vx);
-    this.fx.spawn('blast', { x: x - dx, y: y - H, vx, vy, w: R * 1.5, life: fall, delay, a0: 0.7, a1: 0.9, tint: 0xff4a18 });
-    this.fx.spawn('fx_meteor_rock', { x: x - dx, y: y - H, vx, vy, w: R * 1.2, life: fall, delay, a0: 1, a1: 1, add: false, rot, spin: 2.5, depth: DEPTH.top });
+    // след: «голова» картинки (правый край) совпадает с камнем
+    this.fx.spawn('dk_streak', { x: x - dx, y: y - H, vx, vy, w: R * 2.2, h: R * 0.42, life: fall, delay, a0: 0.9, a1: 0.9, add: false, rot, ox: 0.92, oy: 0.5, depth: DEPTH.top });
+    this.fx.spawn('dk_star', { x: x - dx, y: y - H, vx, vy, w: R * 0.8, life: fall, delay, a0: 1, a1: 1, add: false, rot: quarterRot(), depth: DEPTH.top + 0.01 });
     this.later.add(delay + fall, () => this.land(x, y, R, dmg, crater));
   }
 
   private land(x: number, y: number, R: number, dmg: number, crater: boolean) {
     areaDamage(x, y, R, dmg, 80, this.def.id);
-    this.fx.spawn('fx_meteor_impact', { x, y, w: R * 1.2, w1: R * 2.6, life: 0.45, a0: 1, a1: 0, rot: Math.random() * 6.28 });
-    this.fx.spawn('fx_thunder_scorch', { x, y, w: R * 2.2, life: crater ? 3 : 1.6, a0: 0.9, a1: 0, hold: true, add: false, depth: DEPTH.zone, tint: 0x3a2018, rot: Math.random() * 6.28 });
-    W.fx.sparks(x, y, R > 60 ? 12 : 6, 0xff7a3a, 130);
+    // короткая тусклая вспышка-кольцо + разлёт обломков в 2 «кадра» (малый → большой, без плавности)
+    this.fx.spawn('dk_ring', { x, y, w: R * 0.5 * RING_K, w1: R * 1.1 * RING_K, life: 0.18, a0: 0.8, a1: 0, tint: 0x9a4a22 });
+    const rb = quarterRot();
+    this.fx.spawn('dk_burst', { x, y, w: R * 1.5, life: 0.08, a0: 1, a1: 1, add: false, rot: rb });
+    this.fx.spawn('dk_burst', { x, y, w: R * 2.4, life: 0.3, delay: 0.08, a0: 1, a1: 0, hold: true, add: false, rot: rb });
+    const rc = quarterRot();
+    this.fx.spawn('dk_crater', { x, y, w: R * 2, life: crater ? 3 : 1.6, a0: 0.95, a1: 0, hold: true, add: false, depth: DEPTH.zone, rot: rc });
+    W.fx.sparks(x, y, R > 60 ? 10 : 5, 0x9a4420, 120);
     if (R > 70) W.scene.cameras.main.shake(140, 0.005);
     if (crater) {
       // кратер: 25% урона каждые 0.5 с в течение 3 с
       const c = this.freeCr.pop() ?? ({} as Crater);
       c.x = x; c.y = y; c.r = R; c.dmg = dmg * 0.25; c.t = 3; c.next = 0.5;
       this.craters.push(c);
-      this.fx.spawn('fx_meteor_impact', { x, y, w: R * 2, life: 3, a0: 0.55, a1: 0, hold: true, add: true, depth: DEPTH.zone + 0.1, tint: 0x9a3010, spin: 0.3 });
+      // тлеющие трещины активного кратера: тусклое ADD поверх той же картинки
+      this.fx.spawn('dk_crater', { x, y, w: R * 2, life: 3, a0: 0.5, a1: 0, hold: true, add: true, depth: DEPTH.zone + 0.1, tint: 0x7a2a12, rot: rc });
     }
   }
 

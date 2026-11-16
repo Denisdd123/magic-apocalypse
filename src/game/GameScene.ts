@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { DEPTH, VIEW_W } from '../config';
-import { makeTextures } from '../textures';
+import { makeTextures, GROUND_TILE_SCALE } from '../textures';
 import { Stats } from './Stats';
 import { Player } from './Player';
 import { Enemies } from './Enemies';
@@ -56,7 +56,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     makeTextures(this);
     initUi(this.textures);
-    this.ground = this.add.tileSprite(0, 0, 10, 10, 'ground').setOrigin(0, 0).setDepth(DEPTH.ground);
+    this.ground = this.add.tileSprite(0, 0, 10, 10, 'ground').setOrigin(0, 0).setDepth(DEPTH.ground).setTileScale(GROUND_TILE_SCALE);
     this.scale.on('resize', this.fitCamera, this);
     this.fitCamera();
     showMenu(() => this.startRun());
@@ -98,11 +98,8 @@ export class GameScene extends Phaser.Scene {
     W.pickups.onChest = () => { this.pendingChests++; };
     W.pickups.onRune = (r) => toast(`<b style="color:#${RUNES[r].tint.toString(16).padStart(6, '0')}">${RUNES[r].name}</b><br>${RUNES[r].text}`, 2000);
     W.artifacts.onSynergy = (syn) => toast(`Синергия активирована!<br><b>${syn.emoji} ${syn.name}</b><br>${syn.text.join('<br>')}`, 3200);
-    // стартовые сферы рядом, чтобы быстро взять первые уровни
-    for (let i = 0; i < 7; i++) {
-      const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 130;
-      W.orbs.drop(Math.cos(a) * d, Math.sin(a) * d, 's', 1);
-    }
+    // стартовые кристаллы вокруг мага и кристаллы на плитках поля — как в оригинале (Orbs.startField)
+    W.orbs.startField();
     this.cameras.main.startFollow(W.player.follow, false, 1, 1);
     this.hud = new Hud(() => this.openPause());
     this.joy = new Joystick(document.getElementById('game')!);
@@ -227,7 +224,8 @@ export class GameScene extends Phaser.Scene {
     const v = cam.worldView;
     // земля всегда под камерой
     this.ground.setPosition(v.x - 2, v.y - 2).setSize(v.width + 4, v.height + 4);
-    this.ground.tilePositionX = v.x; this.ground.tilePositionY = v.y;
+    // tilePosition — в пикселях текстуры (она в 2× плотнее мира), поэтому делим на масштаб плитки
+    this.ground.tilePositionX = v.x / GROUND_TILE_SCALE; this.ground.tilePositionY = v.y / GROUND_TILE_SCALE;
 
     if (!this.running || this.paused) return;
     const dt = Math.min(deltaMs / 1000, 1 / 20);
@@ -246,9 +244,9 @@ export class GameScene extends Phaser.Scene {
     W.artifacts.update(dt);
     W.fx.update(dt);
     document.body.classList.toggle('fury', W.pickups.active.has('fury') || W.zone.bossFight);
-    // пол меняет цвет по ходу зоны: трава → красная → тёмная
+    // пол меняет цвет по ходу зоны: тёмный мох → запёкшаяся кровь → холодный пепел (земля уже тёмная, тинт лишь сдвигает оттенок)
     const st = Math.min(W.zone.stage, 2);
-    if (st !== this.stageTint) { this.stageTint = st; if (st === 0) this.ground.clearTint(); else this.ground.setTint(st === 1 ? 0xe0a08c : 0x8c8f99); }
+    if (st !== this.stageTint) { this.stageTint = st; if (st === 0) this.ground.clearTint(); else this.ground.setTint(st === 1 ? 0xff9282 : 0xa4adc6); }
 
     this.hudT -= dt;
     if (this.hudT <= 0) {

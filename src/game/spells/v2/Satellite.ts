@@ -8,8 +8,8 @@ import { SkyFx, freezeCrust } from './_skyfx';
 
 interface Sat { img: Phaser.GameObjects.Image; hits: Map<number, number>; ring: number; frost: boolean; x: number; y: number }
 
-/** базовая скорость вращения, рад/с */
-const SPIN = 2.4;
+/** базовая скорость вращения, рад/с — по видео оригинала ≈ 1 оборот за 6 с (~58°/с) */
+const SPIN = 1.05;
 /** базовый радиус сферы */
 const ORB_R = 8;
 

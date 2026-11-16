@@ -30,6 +30,10 @@ export class Stats {
   orbRate = 0;       // сферы маны чаще (Завод маны)
   shopDiscount = 0;  // скидка у торговца
   extraCardChance = 0; // шанс 4-й карточки, %
+  /** Исследование «Поддержка» (278): стартовых кристаллов маны больше на долю (0.1…0.6) — AllyUnitVar_StartManaBallCreateNumRatio */
+  startOrbs = 0;
+  /** Исследование «Удача» (279): предметы на поле появляются чаще на долю — AllyUnitVar_FieldItemCreateRatio */
+  fieldItemRate = 0;
 
   // по врагам
   enemyHpRed = 0;    // снижение макс. HP всех врагов

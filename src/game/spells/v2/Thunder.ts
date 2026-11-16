@@ -3,6 +3,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { aimR } from './_proj';
 import { Later, SkyFx, randomInView, ringDamage } from './_skyfx';
 
 /** базовый радиус взрыва молнии у земли (игровые единицы) */
@@ -42,7 +43,7 @@ class Thunder extends DataSpell {
 
     // 418 Суд: все молнии сливаются в одну, +20% размера за каждую
     if (this.hasProp(418)) {
-      const t = W.enemies.nearest(P.x, P.y, 300);
+      const t = W.enemies.nearest(P.x, P.y, aimR());
       if (!t) return;
       R *= 1 + 0.2 * n;
       this.strike(t.x, t.y, R, dmg, 0, 'judg');
@@ -68,7 +69,7 @@ class Thunder extends DataSpell {
       const r = wrath ? R * 1.8 : R;
       if (this.hasCombo(13)) {
         // 13 Орбитальная бомбардировка: молнии быстро сыплются вокруг выбранной точки
-        const t = W.enemies.nearest(P.x, P.y, 300);
+        const t = W.enemies.nearest(P.x, P.y, aimR());
         const cx = t ? t.x : P.x, cy = t ? t.y : P.y;
         for (let j = 0; j < n; j++) {
           const a = Math.random() * Math.PI * 2, d = Math.random() * 45 * size;
@@ -84,7 +85,7 @@ class Thunder extends DataSpell {
     }
 
     // база: ближайшие враги; 416 — каждая молния бьёт 1–3 раза подряд
-    const targets = W.enemies.nearestN(P.x, P.y, n, 300);
+    const targets = W.enemies.nearestN(P.x, P.y, n, aimR());
     targets.forEach((e, j) => {
       const reps = this.hasProp(416) ? 1 + ((Math.random() * 3) | 0) : 1;
       for (let k = 0; k < reps; k++) {

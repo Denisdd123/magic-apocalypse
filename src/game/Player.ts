@@ -9,6 +9,10 @@ const MAGE_K = MAGE_H / 88; // холст позы 96px, фигура 88px
 
 export class Player {
   x = 0; y = 0; r = PLAYER.radius;
+  /** Твёрдое тело мага для толкания с мобами (оригинал: BoxCollider 0.21×0.5 ед. → ~9 наших) */
+  bodyR = 9;
+  /** Толчок от мобов, накопленный за кадр (Enemies.update); применяется в move() с ограничением */
+  pushX = 0; pushY = 0;
   hp = PLAYER.hp;
   level = 1; xp = 0;
   pendingLevels = 0;
@@ -43,6 +47,14 @@ export class Player {
   get xpNeed() { return xpForLevel(this.level); }
 
   move(dx: number, dy: number, dt: number) {
+    // толчки толпы: мобы и маг одной массы (оригинал: Rigidbody mass 1), поэтому маг, влезая в толпу,
+    // упирается и замедляется. Толчок за кадр не больше скорости мага — толпа не «выстреливает» им.
+    if (this.pushX || this.pushY) {
+      const pl = Math.hypot(this.pushX, this.pushY), lim = W.stats.moveSpeed * 1.1 * dt;
+      const k = pl > lim ? lim / pl : 1;
+      this.x += this.pushX * k; this.y += this.pushY * k;
+      this.pushX = this.pushY = 0;
+    }
     const len = Math.hypot(dx, dy);
     this.moving = len > 0.05;
     if (this.moving) {
