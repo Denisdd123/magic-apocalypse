@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEPTH } from '../config';
+import { DEPTH, LOOT } from '../config';
 import { ENEMY_TYPES } from './Enemies';
 import { W } from './World';
 
@@ -30,7 +30,9 @@ export class Pickups {
   items: Item[] = [];
   active = new Map<RuneType, number>(); // руна -> оставшееся время
   cursedLeft = 0;
-  private chestT = 120;  // первый сундук ~2:00, дальше раз в ~2.5 мин (видео полной зоны: ~5 сундуков за 12 мин)
+  /** сундуки — по убийствам, как в оригинале (LOOT.chestKills); во время босса счёт стоит */
+  private chestKills = 0;
+  private chestIdx = 0;
   private runeT = 100;  // первая руна примерно на 1:40
   onChest: (() => void) | null = null;
   onRune: ((r: RuneType) => void) | null = null;
@@ -73,7 +75,19 @@ export class Pickups {
     }
   }
 
-  private randomRune(): RuneType {
+  /** Вызывается на каждое убийство */
+  onKill() {
+    if (W.zone.bossFight) return;
+    this.chestKills++;
+    const tab = LOOT.chestKills, i = this.chestIdx;
+    const need = (i < tab.length ? tab[i] : tab[tab.length - 1] + 50000 * (i - tab.length + 1)) / (1 + W.stats.chestRate);
+    if (this.chestKills >= Math.round(need)) {
+      this.chestIdx++;
+      const p = this.around(60, 110); this.chest(p.x, p.y);
+    }
+  }
+
+  randomRune(): RuneType {
     const types = Object.keys(RUNES) as RuneType[];
     const total = types.reduce((s, t) => s + RUNES[t].weight, 0);
     let r = Math.random() * total;
@@ -83,11 +97,6 @@ export class Pickups {
   update(dt: number) {
     const P = W.player, s = W.stats;
     // появление
-    this.chestT -= dt;
-    if (this.chestT <= 0) {
-      this.chestT = 150 / (1 + s.chestRate);
-      const p = this.around(220, 320); this.chest(p.x, p.y);
-    }
     this.runeT -= dt;
     if (this.runeT <= 0) {
       this.runeT = 120 + Math.random() * 60; // руны — редкость: раз в 2–3 минуты

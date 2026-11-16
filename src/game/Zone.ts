@@ -59,7 +59,7 @@ export class Zone {
     // поле усыпано кристаллами
     for (let i = 0; i < 36; i++) {
       const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 230;
-      W.orbs.drop(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, i % 6 ? 'm' : 'l', i % 6 ? 3 : 15);
+      W.orbs.drop(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, i % 6 ? 'm' : 'l');
     }
     W.orbs.drop(e.x + 12, e.y, 'life', 0);
     W.fx.burst(e.x, e.y, 160, 0xff3040, 0.7);

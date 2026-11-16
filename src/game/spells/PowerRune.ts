@@ -62,7 +62,7 @@ class PowerRune extends Spell {
     if (this.has('synthesis')) {
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2, d = this.r * 0.7;
-        W.orbs.drop(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d, i === 0 ? 'life' : 'm', 6);
+        W.orbs.drop(this.x + Math.cos(a) * d, this.y + Math.sin(a) * d, i === 0 ? 'life' : 'm');
       }
     }
   }

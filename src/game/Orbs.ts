@@ -1,10 +1,19 @@
 import Phaser from 'phaser';
 import { DEPTH, MAX_ORBS } from '../config';
+
+/** Опыт со сферы, как в оригинале: от «стоимости» текущего уровня, с уровнем чуть падает */
+export function orbXp(kind: OrbKind): number {
+  const P = W.player, mc = P.xpNeed;
+  const mul = Math.min(1, Math.max(0.01, (100 - 0.75 * P.level) / 100));
+  const base = kind === 's' ? 0.008 * mc + 8 : kind === 'm' ? 0.01 * mc + 10 : 0.03 * mc + 50;
+  return base * mul;
+}
 import { W } from './World';
 
 export type OrbKind = 's' | 'm' | 'l' | 'life';
 
 interface Orb {
+  /** value — сколько сфер слилось в одну (при переполнении) */
   x: number; y: number; kind: OrbKind; value: number;
   alive: boolean; magnet: boolean; v: number;
   img: Phaser.GameObjects.Image;
@@ -23,11 +32,11 @@ export class Orbs {
   private fieldT = 0;
   constructor(private scene: Phaser.Scene) {}
 
-  drop(x: number, y: number, kind: OrbKind, value: number) {
+  drop(x: number, y: number, kind: OrbKind, value = 1) {
     // слишком много сфер — добавляем ценность к случайной существующей (без потерь опыта)
     if (this.count >= MAX_ORBS && kind !== 'life') {
       const o = this.list[(Math.random() * this.list.length) | 0];
-      if (o && o.alive && o.kind !== 'life') { o.value += value; return; }
+      if (o && o.alive && o.kind === kind) { o.value += value; return; }
     }
     let o = this.free.pop();
     if (!o) {
@@ -80,6 +89,10 @@ export class Orbs {
     this.free.push(o);
     this.count--;
     if (o.kind === 'life') W.player.heal(W.stats.maxHp * 0.2 * (1 + W.stats.lifeOrbHeal));
-    else { W.mana += o.value; W.player.gainXp(o.value); }
+    else {
+      // мана-валюта (торговец): малая/средняя +1, большая +5; опыт — по формуле оригинала
+      W.mana += (o.kind === 'l' ? 5 : 1) * o.value;
+      W.player.gainXp(orbXp(o.kind) * o.value);
+    }
   }
 }

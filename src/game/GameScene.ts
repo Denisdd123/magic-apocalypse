@@ -131,7 +131,8 @@ export class GameScene extends Phaser.Scene {
 
   /** 8 артефактов торговца, цена по редкости, на одном скидка 25% */
   private rollShop(): ShopItem[] {
-    const base: Record<string, number> = { common: 450, rare: 700, epic: 1000 };
+    // мана-валюта как в оригинале (+1 со сферы, +5 с большой) — к 5:25 обычно 200–300; цены — оценка
+    const base: Record<string, number> = { common: 150, rare: 230, epic: 330 };
     const pool = ARTIFACTS.filter((a) => a.rarity !== 'legend' && !W.artifacts.has(a.id));
     const out: ShopItem[] = [];
     while (out.length < 8 && pool.length) {
@@ -183,7 +184,7 @@ export class GameScene extends Phaser.Scene {
     this.pendingChests--;
     this.inModal = true; this.paused = true; this.joy?.release();
     const choices = W.artifacts.roll(3);
-    if (!choices.length) { W.orbs.drop(W.player.x, W.player.y, 'l', 30); this.inModal = false; this.paused = false; return; }
+    if (!choices.length) { W.orbs.drop(W.player.x, W.player.y, 'l'); this.inModal = false; this.paused = false; return; }
     showChest(choices, (a) => {
       W.artifacts.add(a.id);
       this.inModal = false; this.paused = false;

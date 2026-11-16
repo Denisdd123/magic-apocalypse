@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { DEPTH, MAX_ENEMIES } from '../config';
+import { DEPTH, LOOT, MAX_ENEMIES } from '../config';
 import { Grid } from './Grid';
 import { W } from './World';
 
 export interface EnemyType {
   id: string; tex: string; r: number; size: number;
   hp: number; speed: number; dmg: number; xp: number;
-  /** шанс выпадения кристалла при смерти (в оригинале кристаллы падают редко, основная мана лежит на поле) */
+  /** xp — опыт сразу за убийство («마나량» моба в оригинале); drop не используется */
   drop: number;
 }
 
@@ -14,20 +14,20 @@ export interface EnemyType {
 export const ENEMY_SPEED = 0.85;
 
 export const ENEMY_TYPES: Record<string, EnemyType> = {
-  basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 1, drop: 0.12 },
-  red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 3, drop: 0.35 },
-  small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 1, drop: 0.12 },
-  white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 4, drop: 0.4 },
-  big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 20, drop: 1 },
+  basic: { id: 'basic', tex: 'enemy_basic', r: 10, size: 26, hp: 14, speed: 33, dmg: 6, xp: 3, drop: 0.12 },
+  red:   { id: 'red',   tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 38, dmg: 9, xp: 4, drop: 0.35 },
+  small: { id: 'small', tex: 'enemy_small', r: 6,  size: 16, hp: 8,  speed: 66, dmg: 5, xp: 3, drop: 0.12 },
+  white: { id: 'white', tex: 'enemy_white', r: 12, size: 31, hp: 95, speed: 42, dmg: 12, xp: 5, drop: 0.4 },
+  big:   { id: 'big',   tex: 'enemy_big',   r: 22, size: 56, hp: 650, speed: 25, dmg: 18, xp: 10, drop: 1 },
   // Мобы волн оригинала (Dictionary_UnitStat): HP ×0.14, урон ×0.55, скорость ×0.97 к оригиналу (наш масштаб)
-  w1:  { id: 'w1',  tex: 'enemy_basic', r: 9,  size: 24, hp: 14, speed: 33, dmg: 6,  xp: 1, drop: 0.12 }, // Рой малый
-  w6:  { id: 'w6',  tex: 'enemy_basic', r: 10, size: 27, hp: 28, speed: 31, dmg: 8,  xp: 1, drop: 0.15 }, // Рой средний
-  w11: { id: 'w11', tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 31, dmg: 11, xp: 2, drop: 0.2 },  // Рой большой
-  w13: { id: 'w13', tex: 'enemy_red',   r: 10, size: 27, hp: 42, speed: 31, dmg: 22, xp: 2, drop: 0.2 },  // Перехватчик
-  w16: { id: 'w16', tex: 'enemy_white', r: 12, size: 31, hp: 70, speed: 27, dmg: 11, xp: 3, drop: 0.25 }, // Улей
-  w31: { id: 'w31', tex: 'enemy_small', r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 1, drop: 0.15 }, // Скарабей
-  w21: { id: 'w21', tex: 'enemy_white', r: 12, size: 31, hp: 56, speed: 29, dmg: 27, xp: 3, drop: 0.3 },  // Мина
-  w22: { id: 'w22', tex: 'enemy_white', r: 13, size: 33, hp: 56, speed: 29, dmg: 27, xp: 3, drop: 0.3 },  // Вой
+  w1:  { id: 'w1',  tex: 'enemy_basic', r: 9,  size: 24, hp: 14, speed: 33, dmg: 6,  xp: 3, drop: 0.12 }, // Рой малый
+  w6:  { id: 'w6',  tex: 'enemy_basic', r: 10, size: 27, hp: 28, speed: 31, dmg: 8,  xp: 4, drop: 0.15 }, // Рой средний
+  w11: { id: 'w11', tex: 'enemy_red',   r: 11, size: 29, hp: 42, speed: 31, dmg: 11, xp: 5, drop: 0.2 },  // Рой большой
+  w13: { id: 'w13', tex: 'enemy_red',   r: 10, size: 27, hp: 42, speed: 31, dmg: 22, xp: 5, drop: 0.2 },  // Перехватчик
+  w16: { id: 'w16', tex: 'enemy_white', r: 12, size: 31, hp: 70, speed: 27, dmg: 11, xp: 6, drop: 0.25 }, // Улей
+  w31: { id: 'w31', tex: 'enemy_small', r: 7,  size: 18, hp: 21, speed: 28, dmg: 16, xp: 5, drop: 0.15 }, // Скарабей
+  w21: { id: 'w21', tex: 'enemy_white', r: 12, size: 31, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Мина
+  w22: { id: 'w22', tex: 'enemy_white', r: 13, size: 33, hp: 56, speed: 29, dmg: 27, xp: 8, drop: 0.3 },  // Вой
   // боссы зоны (HP задаётся в Zone.ts)
   boss0: { id: 'boss', tex: 'boss_0', r: 30, size: 84, hp: 1, speed: 30, dmg: 22, xp: 0, drop: 0 },
   boss1: { id: 'boss', tex: 'boss_1', r: 32, size: 90, hp: 1, speed: 32, dmg: 28, xp: 0, drop: 0 },
@@ -84,6 +84,8 @@ export class Enemies {
   grid = new Grid<Enemy>();
   aliveCount = 0;
   private spawnAcc = 0;
+  /** счётчик убийств до следующей сферы маны */
+  private orbKills = 0;
   private nextElite = 60;
   private nextSwarm = 150;
 
@@ -270,16 +272,22 @@ export class Enemies {
     this.free.push(e);
     this.aliveCount--;
     W.kills++;
+    W.pickups.onKill();
+    // опыт даёт само убийство (оригинал: ManaGain(«마나량» моба)); элитка — 10, босс — 500
+    W.player.gainXp(e.type.id === 'boss' ? 500 : e.elite ? 10 : e.xp);
     if (e.type.id === 'boss') { W.zone.bossDied(e); return; }
     if (e.cursed) W.pickups.cursedKilled(e.x, e.y);
     if (e.elite) {
-      W.orbs.drop(e.x, e.y, 'l', 25);
-      W.orbs.drop(e.x + 10, e.y, 'life', 0);
+      // элитка роняет одно из: средняя сфера / большая / сфера жизни / руна
+      const r = (Math.random() * 4) | 0;
+      if (r === 3) W.pickups.rune(W.pickups.randomRune(), e.x, e.y);
+      else W.orbs.drop(e.x, e.y, r === 0 ? 'm' : r === 1 ? 'l' : 'life');
       W.fx.burst(e.x, e.y, 60, 0xff2d8a, 0.5);
-    } else {
-      const xp = e.xp;
-      if (Math.random() < e.type.drop) W.orbs.drop(e.x, e.y, xp >= 15 ? 'l' : xp >= 3 ? 'm' : 's', xp);
-      if (Math.random() < 0.006) W.orbs.drop(e.x + 6, e.y, 'life', 0);
+    }
+    // сфера маны — не по шансу, а за каждые 20 убийств (общий счётчик)
+    if (++this.orbKills >= LOOT.orbEveryKills) {
+      this.orbKills = 0;
+      W.orbs.drop(e.x, e.y, Math.random() < LOOT.smallOrbChance ? 's' : 'm');
     }
   }
 
