@@ -67,12 +67,15 @@ function witch(g: G, s: number, color: number, f = 0, accent = -1) {
 
 const v = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
 
-/** Позы мага по направлению движения (видео оригинала 1_mag/m8_pozy.png) */
+/**
+ * Позы мага по направлению движения — замер спрайтов оригинала (AUnit1Motion1..21, research/orig_videos/mage_motion.md):
+ * наклон оси / вытянутость: стоит 2°/2.2, вверх-вниз 1°/3.2, диагональ ~22°/2.3, вбок ~40°/2.4 (короче и шире, не «огурец»).
+ */
 export const POSES = {
-  idle: { rot: 0, nx: 1.12, trail: 0 },          // стоит: широкий треугольник
-  vert: { rot: 0, nx: 0.78, trail: 0 },          // вверх/вниз: узкий, плащ поджат
-  diag: { rot: 0.42, nx: 0.95, trail: 0.22 },    // диагональ: наклон ~25°
-  side: { rot: 0.85, nx: 0.9, trail: 0.42 },     // вбок: наклон ~50°, плащ хвостом назад
+  idle: { rot: 0,    nx: 1.45, trail: 0,    ny: 0.9  },   // широкий треугольник
+  vert: { rot: 0,    nx: 1.05, trail: 0,    ny: 0.95 },   // узкий, плащ поджат
+  diag: { rot: 0.25, nx: 1.2,  trail: 0.12, ny: 0.88 },   // ~22°
+  side: { rot: 0.42, nx: 1.3,  trail: 0.28, ny: 0.85 },   // ~39°
 };
 export type Pose = keyof typeof POSES;
 
@@ -81,13 +84,13 @@ export type Pose = keyof typeof POSES;
  * Чистый чёрный силуэт как в оригинале; f — кадр дрожания подола.
  */
 function witchPose(g: G, f: number, pose: Pose, color = 0x0b0b0d) {
-  const { rot, nx, trail } = POSES[pose];
+  const { rot, nx, trail, ny } = POSES[pose];
   const sw = Math.sin((f / 3) * Math.PI * 2), sw2 = Math.cos((f / 3) * Math.PI * 2);
   const c = Math.cos(rot), si = Math.sin(rot);
   const P = (x: number, y: number) => {
     let dx = (x - 16) * (y > 18 ? nx : 1);
     if (y > 28) dx -= (y - 28) * trail * 1.6;          // подол уносит назад
-    const dy = y - 26;
+    const dy = (y - 26) * ny;
     return v(48 + (dx * c - dy * si) * 2, 52 + (dx * si + dy * c) * 2);
   };
   g.fillStyle(color, 1);
