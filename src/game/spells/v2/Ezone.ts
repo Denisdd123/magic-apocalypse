@@ -7,8 +7,8 @@ import { DataSpell, defFromData } from '../DataSpell';
 import { SkyFx } from './_skyfx';
 import { EARC_TEX, EBALL_K, ERING_K, ensureInkEzone, freezeOnly } from './_inkfx';
 
-/** базовый радиус поля вокруг мага */
-const R0 = 55;
+/** базовый радиус поля вокруг мага: по видео оригинала (08_electric_zone_lv1) кольцо ≈255 px из 540 = 3.16 ед. в диаметре → R ≈ 1.58 ед. ≈ 90 px (было 55) */
+const R0 = 88;
 /** картинка огненной волны (427): внешний край ≈ 0.85 ширины → множитель диаметра */
 const RING_K = 2.35;
 /** штрихи поля прыгают по кругу рывками: шаг, с и угол шага */

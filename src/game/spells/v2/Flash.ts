@@ -4,16 +4,12 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { ImgPool, faceAngle, forSegment, randomViewPoint, viewHalfDiag } from './_zoneKit';
+import { faceAngle, forSegment, randomViewPoint, viewHalfDiag } from './_zoneKit';
 
-/** fx_flash_slash: разрез по диагонали картинки (9,172)→(230,47): наклон −0.515 рад, длина ≈254 px */
-const SLASH = 'fx_flash_slash', SLASH_ROT = 0.515, SLASH_LEN = 254;
-const PIECES = 4;
 
 interface Strip {
   x: number; y: number; ang: number; halfLen: number; halfW: number;
   t: number; life: number; delay: number; done: boolean; tint: number;
-  imgs: Phaser.GameObjects.Image[];
 }
 
 /**
@@ -25,14 +21,11 @@ interface Strip {
  */
 class Flash extends DataSpell {
   private strips: Strip[] = [];
-  private pool = new ImgPool();
   private g: Phaser.GameObjects.Graphics | null = null;
   private stack = 0; // Когти дьявола / Безумие: накопленные активации
 
   destroy() {
-    for (const s of this.strips) for (const i of s.imgs) this.pool.put(i);
     this.strips.length = 0;
-    this.pool.destroy();
     this.g?.destroy(); this.g = null;
   }
 
@@ -47,7 +40,7 @@ class Flash extends DataSpell {
 
   update(dt: number) {
     if (this.readyData(dt)) this.cast();
-    if (!this.g) this.g = W.scene.add.graphics().setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD);
+    if (!this.g) this.g = W.scene.add.graphics().setDepth(DEPTH.fx); // обычный бленд: чёткая линия без ореола
     const g = this.g;
     g.clear();
     for (let i = this.strips.length - 1; i >= 0; i--) {
@@ -56,7 +49,6 @@ class Flash extends DataSpell {
       if (!s.done) { s.done = true; this.strike(s); }
       s.t += dt;
       if (s.t >= s.life) {
-        for (const im of s.imgs) this.pool.put(im);
         this.strips[i] = this.strips[this.strips.length - 1]; this.strips.pop();
         continue;
       }
@@ -104,9 +96,7 @@ class Flash extends DataSpell {
   }
 
   private add(x: number, y: number, ang: number, halfLen: number, halfW: number, delay: number, tint: number) {
-    const imgs: Phaser.GameObjects.Image[] = [];
-    for (let i = 0; i < PIECES; i++) imgs.push(this.pool.get(SLASH, DEPTH.fx).setTint(tint).setAlpha(0));
-    this.strips.push({ x, y, ang, halfLen, halfW, t: 0, life: this.hasCombo(7) ? 0.3 : 0.45, delay, done: false, tint, imgs });
+    this.strips.push({ x, y, ang, halfLen, halfW, t: 0, life: this.hasCombo(7) ? 0.3 : 0.45, delay, done: false, tint });
   }
 
   private sDmg = 0; private sCore = 0; private sOnlyCore = false; private sUx = 0; private sUy = 0;
@@ -129,35 +119,32 @@ class Flash extends DataSpell {
     forSegment(s.x - ux * s.halfLen, s.y - uy * s.halfLen, ux, uy, s.halfLen * 2, s.halfW, this.onHit);
   }
 
+  /**
+   * Вид: чёткая тонкая белая линия-разрез (без полос, ореолов и показа ширины/радиуса) + короткая вспышка света
+   * (острая звёздочка) в точке удара. Линия появляется мгновенно и быстро гаснет.
+   */
   private draw(g: Phaser.GameObjects.Graphics, s: Strip) {
     const k = s.t / s.life;
-    const grow = Math.min(1, k / 0.15);         // быстро раскрывается
-    const a = k < 0.15 ? 1 : 1 - (k - 0.15) / 0.85;
+    const a = k < 0.12 ? 1 : Math.max(0, 1 - (k - 0.12) / 0.6);
+    if (a <= 0) return;
     const ux = Math.cos(s.ang), uy = Math.sin(s.ang), nx = -uy, ny = ux;
-    const L = s.halfLen, w = s.halfW * grow * (1 - k * 0.5);
-    // широкая полупрозрачная полоса + яркая сердцевина
-    g.fillStyle(s.tint, 0.18 * a);
-    g.fillPoints(this.quad(s.x, s.y, ux, uy, nx, ny, L, w), true);
-    g.fillStyle(0xffffff, 0.75 * a);
-    const cw = Math.max(1.2, s.halfW * (this.hasProp(542) ? this.coreK : 0.08) * grow);
-    g.fillPoints(this.quad(s.x, s.y, ux, uy, nx, ny, L, cw), true);
-    // рваные мазки разреза вдоль полосы
-    const step = (L * 2) / PIECES;
-    for (let i = 0; i < s.imgs.length; i++) {
-      const d = -L + step * (i + 0.5);
-      const sc = (step * 1.35) / SLASH_LEN;
-      s.imgs[i].setPosition(s.x + ux * d, s.y + uy * d).setRotation(s.ang + SLASH_ROT).setScale(sc).setAlpha(a * 0.9);
+    const L = s.halfLen;
+    const x0 = s.x - ux * L, y0 = s.y - uy * L, x1 = s.x + ux * L, y1 = s.y + uy * L;
+    // основная линия + тонкая «чернильная» вторая, чуть сдвинутая (накаляканность без ореола)
+    g.lineStyle(2.6, 0xffffff, a);
+    g.lineBetween(x0, y0, x1, y1);
+    const off = 1.4;
+    g.lineStyle(1.2, s.tint, 0.7 * a);
+    g.lineBetween(x0 + nx * off, y0 + ny * off, x1 - nx * off * 0.5, y1 - ny * off * 0.5);
+    // короткая вспышка света: звёздочка-штрих, живёт первую треть жизни
+    if (k < 0.35) {
+      const f = k / 0.35, len = (10 + 20 * f) * (1 - f * 0.5), fa = 1 - f;
+      g.lineStyle(2, 0xffffff, fa);
+      for (let q = 0; q < 4; q++) {
+        const an = s.ang + (q * Math.PI) / 4 + f * 0.3, c = Math.cos(an), sn = Math.sin(an);
+        g.lineBetween(s.x - c * len, s.y - sn * len, s.x + c * len, s.y + sn * len);
+      }
     }
-  }
-
-  private pts = [new Phaser.Math.Vector2(), new Phaser.Math.Vector2(), new Phaser.Math.Vector2(), new Phaser.Math.Vector2()];
-  private quad(x: number, y: number, ux: number, uy: number, nx: number, ny: number, L: number, w: number) {
-    const p = this.pts;
-    p[0].set(x - ux * L + nx * w, y - uy * L + ny * w);
-    p[1].set(x + ux * L + nx * w, y + uy * L + ny * w);
-    p[2].set(x + ux * L - nx * w, y + uy * L - ny * w);
-    p[3].set(x - ux * L - nx * w, y - uy * L - ny * w);
-    return p;
   }
 }
 

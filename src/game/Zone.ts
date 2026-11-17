@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+import { DEPTH } from '../config';
 import { ENEMY_TYPES, ORIG_UNIT, type Enemy } from './Enemies';
 import { W } from './World';
 
@@ -26,6 +28,18 @@ export class Zone {
   onMerchantGone: (() => void) | null = null;
 
   get bossFight() { return !!this.boss; }
+  /** Арена босса (оригинал ApplyBossGround_*, Play_BossLimitGround_Damage): круг R=√145 ед. вокруг точки мага на старте босса;
+   *  за R маг упирается в край, за √138 ед. — урон 10% макс. HP раз в 0.8 с. */
+  arena: { x: number; y: number; img: Phaser.GameObjects.Image | null } | null = null;
+  private arenaHurtT = 0;
+  arenaClamp(P: { x: number; y: number }, dt: number) {
+    const a = this.arena; if (!a) return;
+    const R = Math.sqrt(145) * ORIG_UNIT, Rd = Math.sqrt(138) * ORIG_UNIT;
+    const dx = P.x - a.x, dy = P.y - a.y, d = Math.hypot(dx, dy);
+    if (d > R) { P.x = a.x + (dx / d) * R; P.y = a.y + (dy / d) * R; }
+    this.arenaHurtT -= dt;
+    if (d > Rd && this.arenaHurtT <= 0) { this.arenaHurtT = 0.8; W.player.hurt(W.stats.maxHp * 0.1); }
+  }
   /** Таймер стоит во время боя с боссом */
   get timeFrozen() { return !!this.boss; }
 
@@ -44,6 +58,9 @@ export class Zone {
     const b = W.enemies.spawn(type, P.x, P.y - 9.5 * ORIG_UNIT, false, ZONE.bossHp[idx]);
     if (!b) return;
     this.boss = b;
+    const R = Math.sqrt(145) * ORIG_UNIT;
+    const img = W.scene.add.image(P.x, P.y, 'arena_ring').setDepth(DEPTH.ground + 1).setDisplaySize(R * 2, R * 2);
+    this.arena = { x: P.x, y: P.y, img };
     // свиты-кольца в оригинале нет: во время босса просто идёт волна «마인/하울링» обычным спавнером
     // (Enemies.waveType/waveRate при bossFight — 30 мобов за 0.75 с и т.д.)
   }
@@ -52,6 +69,7 @@ export class Zone {
   bossDied(e: Enemy) {
     if (e !== this.boss) return;
     this.boss = null;
+    this.arena?.img?.destroy(); this.arena = null;
     const idx = this.stage++;
     // поле усыпано кристаллами
     for (let i = 0; i < 36; i++) {

@@ -312,23 +312,16 @@ function makeGround(scene: Phaser.Scene) {
     };
   };
   const n4 = noise(4), n16 = noise(16), n64 = noise(64), n128 = noise(128), nMoss = noise(8), nDirt = noise(8);
-  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  // 6 тонов яркости (тёмная оливково-серая земля, средняя ≈ 48 из 255 — мобы-кляксы остаются видны)
-  const TONES = [30, 36, 42, 48, 55, 62];
-
+    // 6 тонов яркости (тёмная оливково-серая земля, средняя ≈ 48 из 255 — мобы-кляксы остаются видны)
+  
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
-      const bay = (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.5);
-      const h = n4(x, y) * 0.42 + n16(x, y) * 0.3 + n64(x, y) * 0.18 + n128(x, y) * 0.1 + bay * 0.07;
-      let t = Math.floor(((h - 0.28) / 0.44) * TONES.length);
-      if (rand() < 0.05) t += rand() < 0.5 ? -1 : 1; // редкая зернистость
-      t = t < 0 ? 0 : t >= TONES.length ? TONES.length - 1 : t;
-      const L = TONES[t];
-      // оттенок участка: мох (зеленее) / сухая земля (бурее) / камень (серо-оливковый)
-      const m = nMoss(x, y) + bay * 0.08, dr = nDirt(x, y) + bay * 0.08;
-      let r = L * 0.98, g = L * 1.04, b = L * 0.8;
-      if (m > 0.62) { r = L * 0.86; g = L * 1.12; b = L * 0.7; }
-      else if (dr > 0.64) { r = L * 1.1; g = L * 0.96; b = L * 0.78; }
+      // 2.2: упрощено — плавный шум без дизеринга и зерна, мягкие пятна мха/сухой земли
+      const h = n4(x, y) * 0.5 + n16(x, y) * 0.32 + n64(x, y) * 0.18;
+      const L = 30 + Math.max(0, Math.min(1, (h - 0.25) / 0.5)) * 26;
+      const m = nMoss(x, y), dr = nDirt(x, y);
+      const wm = Math.max(0, Math.min(1, (m - 0.55) / 0.2)), wd = Math.max(0, Math.min(1, (dr - 0.58) / 0.2));
+      let r = L * (0.98 - 0.12 * wm + 0.12 * wd), g = L * (1.04 + 0.08 * wm - 0.08 * wd), b = L * (0.8 - 0.1 * wm - 0.02 * wd);
       const o = (y * S + x) * 4;
       d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
     }
@@ -351,59 +344,13 @@ function makeGround(scene: Phaser.Scene) {
       if (depth < 2 && rand() < 0.04) crack(x, y, len * 0.4, dir + (rand() < 0.5 ? 1 : -1) * (0.6 + rand() * 0.6), depth + 1);
     }
   };
-  for (let i = 0; i < 26; i++) crack(rand() * S, rand() * S, ri(18, 60), rand() * Math.PI * 2, 0);
-
-  // камешки: овал 1–3 ед., блик слева сверху, тень справа снизу
-  for (let i = 0; i < 170; i++) {
-    const cx = ri(0, S - 1), cy = ri(0, S - 1), rx = ri(1, 3), ry = Math.max(1, rx - ri(0, 1));
-    const base = ri(56, 70);
-    for (let yy = -ry - 1; yy <= ry + 1; yy++) for (let xx = -rx - 1; xx <= rx + 1; xx++) {
-      const q = (xx * xx) / (rx * rx + 0.5) + (yy * yy) / (ry * ry + 0.5);
-      if (q <= 1) {
-        const hl = xx + yy < -rx * 0.6 ? 16 : xx + yy > rx * 0.8 ? -12 : 0;
-        put(cx + xx, cy + yy, base + hl, base + hl, base - 7 + hl);
-      } else if (q <= 1.9 && yy >= 0 && xx >= 0) put(cx + xx, cy + yy, 18, 19, 15);
-    }
-  }
-
-  // пучки сухой травы: 3–5 травинок 2–5 ед., тёмно-зелёные с более светлым кончиком
-  for (let i = 0; i < 260; i++) {
-    const cx = ri(0, S - 1), cy = ri(0, S - 1), n = ri(3, 5);
-    const dry = rand() < 0.35;
-    for (let k = 0; k < n; k++) {
-      const bx = cx + ri(-2, 2), hgt = ri(2, 5), lean = rand() < 0.5 ? -1 : 1;
-      for (let j = 0; j < hgt; j++) {
-        const px = bx + (j >= hgt - 2 && rand() < 0.6 ? lean : 0);
-        const tip = j === hgt - 1;
-        if (dry) put(px, cy - j, tip ? 78 : 60, tip ? 70 : 56, tip ? 46 : 38);
-        else put(px, cy - j, tip ? 58 : 40, tip ? 76 : 56, tip ? 38 : 28);
-      }
-    }
-    put(cx, cy + 1, 20, 22, 16); // тень у корня
-  }
-
-  // редкие кости: короткая палочка с утолщениями на концах
-  for (let i = 0; i < 14; i++) {
-    const cx = ri(0, S - 1), cy = ri(0, S - 1), len = ri(4, 7), dx = rand() < 0.5 ? 1 : -1, dy = rand() < 0.5 ? 0 : 1;
-    for (let j = 0; j <= len; j++) {
-      const px = cx + j * dx, py = cy + Math.round(j * dy * 0.5);
-      put(px, py, 96, 92, 80); put(px, py + 1, 18, 18, 14);
-      if (j === 0 || j === len) { put(px, py - 1, 104, 100, 86); put(px + dx, py - 1, 88, 84, 72); }
-    }
-  }
-
-  // тёмные крошки и ямки
-  for (let i = 0; i < 900; i++) {
-    const x = ri(0, S - 1), y = ri(0, S - 1);
-    put(x, y, 20, 21, 16);
-    if (rand() < 0.3) put(x + 1, y, 24, 25, 19);
-  }
+  for (let i = 0; i < 12; i++) crack(rand() * S, rand() * S, ri(18, 60), rand() * Math.PI * 2, 0);
 
   ctx.putImageData(img, 0, 0);
   // увеличиваем в 2× без сглаживания: при tileScale 0.5 и зуме ~2 — тексель ≈ пиксель экрана
   const big = document.createElement('canvas'); big.width = S * 2; big.height = S * 2;
   const bctx = big.getContext('2d')!;
-  bctx.imageSmoothingEnabled = false;
+  bctx.imageSmoothingEnabled = true; // 2.2: без пиксельности
   bctx.drawImage(cv, 0, 0, S * 2, S * 2);
   scene.textures.addCanvas('ground', big);
 }
@@ -417,7 +364,7 @@ export function makeTextures(scene: Phaser.Scene) {
     make(scene, 'player_' + f, 64, 88, (g) => witch(g, 2, 0x0d0d10, f, 0x7fe3ff));
     if (f < 3) for (const p of Object.keys(POSES) as Pose[]) make(scene, `mage_${p}_${f}`, 96, 96, (g) => {
       // светлая кромка (8 смещённых копий), чтобы тёмный маг читался на тёмной карте
-      for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; g.save(); g.translateCanvas(Math.round(Math.cos(a) * 4), Math.round(Math.sin(a) * 4)); witchPose(g, f, p, 0xcfc8b8); g.restore(); }
+      for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; g.save(); g.translateCanvas(Math.round(Math.cos(a) * 2), Math.round(Math.sin(a) * 2)); witchPose(g, f, p, 0x8c877f); g.restore(); }
       witchPose(g, f, p);
     });
     make(scene, 'mirage_' + f, 64, 88, (g) => witch(g, 2, 0xffffff, f));
@@ -463,6 +410,11 @@ export function makeTextures(scene: Phaser.Scene) {
     });
     make(scene, 'boss_3_' + f, 192, 192, (g) => { thornBranch(g, 96, 96, 94); glow(g, 96, 96, 80, 0xff1a2a, 8, 0.5); inkBlob(g, 96, 96, 70); skull(g, 96, 92, 28, 0xff2a3a); });
   }
+  // арена босса (2.2): тонкий «накаляканный» круг тусклым багрянцем, 3 штриха внахлёст
+  make(scene, 'arena_ring', 512, 512, (g) => {
+    for (let k = 0; k < 3; k++) { g.lineStyle(2.2 - k * 0.5, k ? 0x8a2a32 : 0xb8343f, 0.55 - k * 0.12); g.strokeCircle(256 + rnd(-2, 2), 256 + rnd(-2, 2), 250 - k * 3); }
+    g.lineStyle(10, 0x5e1219, 0.18); g.strokeCircle(256, 256, 246);
+  });
   // череп — полоска здоровья босса в HUD
   make(scene, 'skull_red', 64, 64, (g) => skull(g, 32, 30, 26, 0xff2a3a));
   make(scene, 'skull_dark', 64, 64, (g) => skull(g, 32, 30, 26, 0x3a3a40));
@@ -486,31 +438,32 @@ export function makeTextures(scene: Phaser.Scene) {
   });
 
   make(scene, 'elite_ring', 128, 128, (g) => {
-    g.lineStyle(5, 0xff2d8a, 0.9); g.strokeCircle(64, 64, 58);
-    g.lineStyle(10, 0xff2d8a, 0.25); g.strokeCircle(64, 64, 56);
+    g.lineStyle(5, 0xb8343f, 0.9); g.strokeCircle(64, 64, 58);
+    g.lineStyle(10, 0xb8343f, 0.25); g.strokeCircle(64, 64, 56);
   });
 
   // --- Предметы ---
   // Сферы маны — цвета как у спрайтов оригинала (research/orig_sprites/items Item1/2/3):
   // малая — голубой диск (#23b9f5), средняя — оранжевый (#fbb110), большая — розовое свечение с белым ядром (#fc99ef).
   // Холст ×2 к размеру на экране (Orbs.SIZE), чтобы не мылилось на ретине.
+  // 2.2: «свечки в темноте» — маленькая яркая сердцевина + мягкое приглушённое свечение, затухающее к краям (не неон)
   make(scene, 'orb_s', 32, 32, (g) => {
-    glow(g, 16, 16, 16, 0x23b9f5, 6, 0.8);
-    g.fillStyle(0x1f9fe0, 1); g.fillCircle(16, 16, 10.5);
-    g.fillStyle(0x6fd6ff, 1); g.fillCircle(16, 16, 6);
-    g.fillStyle(0xd8f6ff, 1); g.fillCircle(15, 15, 2.6);
+    glow(g, 16, 16, 16, 0x3f8fb8, 14, 0.42);
+    glow(g, 16, 16, 7, 0x8fd2f0, 6, 0.7);
+    g.fillStyle(0xbfe8ff, 1); g.fillCircle(16, 16, 2.8);
+    g.fillStyle(0xffffff, 1); g.fillCircle(16, 16, 1.5);
   });
   make(scene, 'orb_m', 44, 44, (g) => {
-    glow(g, 22, 22, 22, 0xf59a0c, 7, 0.75);
-    g.fillStyle(0xf08a08, 1); g.fillCircle(22, 22, 12.5);
-    g.fillStyle(0xfbb110, 1); g.fillCircle(22, 22, 9);
-    g.fillStyle(0xffe37a, 1); g.fillCircle(21, 21, 4.2);
+    glow(g, 22, 22, 22, 0xc08a3a, 14, 0.42);
+    glow(g, 22, 22, 9, 0xf2c070, 6, 0.7);
+    g.fillStyle(0xffe2a8, 1); g.fillCircle(22, 22, 3.6);
+    g.fillStyle(0xfffaf0, 1); g.fillCircle(22, 22, 1.9);
   });
   make(scene, 'orb_l', 90, 90, (g) => {
-    glow(g, 45, 45, 45, 0xd860c8, 10, 0.7);
-    glow(g, 45, 45, 22, 0xfc99ef, 6, 0.9);
-    g.fillStyle(0xff5ae0, 1); g.fillCircle(45, 45, 10);
-    g.fillStyle(0xffe6fb, 1); g.fillCircle(45, 45, 6.5);
+    glow(g, 45, 45, 45, 0xa86a9c, 16, 0.4);
+    glow(g, 45, 45, 16, 0xe8b0dc, 7, 0.7);
+    g.fillStyle(0xf8daf0, 1); g.fillCircle(45, 45, 5.5);
+    g.fillStyle(0xffffff, 1); g.fillCircle(45, 45, 3);
   });
   make(scene, 'orb_life', 28, 28, (g) => {
     glow(g, 14, 14, 14, 0x55ff77, 6, 0.9);

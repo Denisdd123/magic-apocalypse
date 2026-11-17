@@ -5,16 +5,16 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { aimR } from './_proj';
-import { HitGate, ImgPool, forSegment, viewHalfDiag } from './_zoneKit';
+import { HitGate, forSegment, viewHalfDiag } from './_zoneKit';
 
-/** Картинка fx_ray_beam: луч горизонтальный, видимая часть x 9..197, ось y≈133, толщина ≈18 px */
-const TEX = 'fx_ray_beam', TX0 = 9, TLEN = 188, TY = 133, TTH = 18;
+/** Базовый фиолетово-розовый оттенок луча (приглушённый, не кислотный) */
+const RAY_TINT = 0xe0c8f0;
 
 interface Beam {
   ang: number; spin: number; t: number; life: number;
   both: boolean;        // 515 Отражение: луч и в противоположную сторону
   reAim: number;        // C4: смена направления каждые 0.5 с
-  img: Phaser.GameObjects.Image; img2: Phaser.GameObjects.Image | null;
+  tint: number;         // оттенок тонкой второй линии
 }
 
 /**
@@ -27,7 +27,7 @@ interface Beam {
  */
 class Ray extends DataSpell {
   private beams: Beam[] = [];
-  private pool = new ImgPool();
+  private g: Phaser.GameObjects.Graphics | null = null;
   private gate = new HitGate();
   private clock = 0;
   private queue: number[] = [];   // задержки до выхода следующих лучей
@@ -46,11 +46,11 @@ class Ray extends DataSpell {
     if (!this.hasCombo(16) && this.plasmaN) { this.clearBeams(); this.plasmaN = 0; }
   }
 
-  destroy() { this.clearBeams(); this.pool.destroy(); }
+  destroy() { this.clearBeams(); this.g?.destroy(); this.g = null; }
 
   private clearBeams() {
-    for (const b of this.beams) { this.pool.put(b.img); if (b.img2) this.pool.put(b.img2); }
     this.beams.length = 0;
+    this.g?.clear();
   }
 
   /** интервал урона по одному врагу */
@@ -122,6 +122,9 @@ class Ray extends DataSpell {
     }
 
     // движение и урон
+    if (!this.g) this.g = W.scene.add.graphics().setDepth(DEPTH.projectile);
+    const g = this.g;
+    g.clear();
     if (!this.beams.length) return;
     const len = viewHalfDiag() + 20;
     const hw = this.halfW;
@@ -132,7 +135,6 @@ class Ray extends DataSpell {
       const b = this.beams[i];
       b.t += dt;
       if (b.t >= b.life) {
-        this.pool.put(b.img); if (b.img2) this.pool.put(b.img2);
         this.beams[i] = this.beams[this.beams.length - 1]; this.beams.pop();
         continue;
       }
@@ -143,18 +145,19 @@ class Ray extends DataSpell {
       const hit = this.onHit;
       if (b.both) forSegment(P.x - ux * len, P.y - uy * len, ux, uy, len * 2, hw, hit);
       else forSegment(P.x, P.y, ux, uy, len, hw, hit);
-      // картинка: вспыхивает и гаснет
+      // вид: точка у мага + тонкая статичная прямая линия (как лазерная указка), не расширяется; меняется только прозрачность
       const k = b.life === Infinity ? 1 : b.t / b.life;
-      const a = b.life === Infinity ? 0.85 + Math.sin(now * 20 + i) * 0.1 : k < 0.15 ? k / 0.15 : 1 - Math.max(0, (k - 0.7) / 0.3);
-      const th = (hw * 2.6) / TTH * (0.8 + 0.2 * Math.sin(now * 30 + i));
-      this.place(b.img, P.x, P.y, b.ang, len, th, a);
-      if (b.img2) this.place(b.img2, P.x, P.y, b.ang + Math.PI, len, th, a);
+      const a = b.life === Infinity ? 0.9 : k < 0.1 ? k / 0.1 : 1 - Math.max(0, (k - 0.75) / 0.25);
+      const x1 = P.x + ux * len, y1 = P.y + uy * len;
+      const x0 = b.both ? P.x - ux * len : P.x, y0 = b.both ? P.y - uy * len : P.y;
+      g.lineStyle(1.3, b.tint, 0.85 * a);
+      g.lineBetween(x0 + uy * 0.8, y0 - ux * 0.8, x1 + uy * 0.8, y1 - ux * 0.8);
+      g.lineStyle(2.2, 0xf6eefc, a);
+      g.lineBetween(x0, y0, x1, y1);
+      g.fillStyle(0xf6eefc, a); g.fillCircle(P.x, P.y - 3, 3.2);
+      g.fillStyle(b.tint, 0.8 * a); g.fillCircle(P.x, P.y - 3, 1.6);
     }
     if ((this.clock * 10 | 0) % 50 === 0) this.gate.prune(now, 5);
-  }
-
-  private place(img: Phaser.GameObjects.Image, x: number, y: number, ang: number, len: number, th: number, a: number) {
-    img.setPosition(x, y).setRotation(ang).setScale(len / TLEN, th).setAlpha(a);
   }
 
   /** обычный выстрел одного луча */
@@ -185,9 +188,8 @@ class Ray extends DataSpell {
     if (this.hasProp(517) && !this.hasCombo(16)) spin = 0;
     if (this.hasCombo(38) || this.hasCombo(30)) spin = 0;
     if (Math.random() < 0.5) spin = -spin;
-    const tint = this.hasCombo(16) ? 0xc8a0ff : this.hasProp(516) ? 0xff9a8a : this.hasProp(515) ? 0xffe7a0 : this.hasProp(517) ? 0x9ad8ff : 0xe8eaff;
-    const mk = () => this.pool.get(TEX, DEPTH.projectile).setOrigin(TX0 / 256, TY / 256).setTint(tint).setAlpha(0);
-    this.beams.push({ ang, spin, t: 0, life, both, reAim: 0.5, img: mk(), img2: both ? mk() : null });
+    const tint = this.hasCombo(16) ? 0xc8a0ff : this.hasProp(516) ? 0xf0b0b8 : this.hasProp(515) ? 0xf0d8b0 : this.hasProp(517) ? 0xb0d4f0 : RAY_TINT;
+    this.beams.push({ ang, spin, t: 0, life, both, reAim: 0.5, tint });
   }
 }
 

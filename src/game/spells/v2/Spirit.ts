@@ -4,12 +4,13 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { GB_NEEDLE, GB_STAR, ensureGroupBTextures } from './_groupB';
 import { aimR, faceVel, lifeToEdge, ROT } from './_proj';
 
-/** Свои текстуры: плоский мрачный дух в капюшоне и белый крестик-вспышка выстрела */
+/** Свои текстуры: плоский мрачный дух в капюшоне (вспышка и игла — из _groupB.ts) */
 const WRAITH = 'v2_spirit_wraith';
-const CROSS = 'v2_spirit_cross';
 function ensureTextures() {
+  ensureGroupBTextures();
   const tx = W.scene.textures;
   if (!tx.exists(WRAITH)) {
     const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
@@ -29,12 +30,6 @@ function ensureTextures() {
     g.fillStyle(0x0b0910, 1); g.fillEllipse(12, 11, 11, 8);
     g.fillStyle(0x3a3452, 0.6); g.fillEllipse(12, 12, 5, 3);
     g.generateTexture(WRAITH, 24, 28);
-    g.destroy();
-  }
-  if (!tx.exists(CROSS)) {
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xffffff, 1); g.fillRect(6, 0, 4, 16); g.fillRect(0, 6, 16, 4);
-    g.generateTexture(CROSS, 16, 16);
     g.destroy();
   }
 }
@@ -87,7 +82,7 @@ class Spirit extends DataSpell {
       const i = this.units.length;
       this.units.push({
         img: W.scene.add.image(0, 0, WRAITH).setDepth(DEPTH.projectile),
-        cross: W.scene.add.image(0, 0, CROSS).setDepth(DEPTH.projectile).setVisible(false),
+        cross: W.scene.add.image(0, 0, GB_STAR).setDepth(DEPTH.projectile).setVisible(false),
         // новые духи стартуют вразнобой — у каждого своя фаза перезарядки
         cd: full * (i / Math.max(1, need)), full, flash: 0,
       });
@@ -150,8 +145,9 @@ class Spirit extends DataSpell {
       if (u.flash > 0) {
         u.flash -= dt;
         const f = 1 - Math.max(0, u.flash) / FLASH;
-        const sz = u.img.displayWidth * (0.35 + 1.0 * f);
-        u.cross.setVisible(u.flash > 0).setPosition(x, y - 1).setDisplaySize(sz, sz).setAlpha(1 - f * f);
+        // маленькая острая звёздочка-штрих: быстро растёт, чуть поворачивается и гаснет
+        const sz = 9 + 11 * f;
+        u.cross.setVisible(u.flash > 0).setPosition(x, y - 1).setDisplaySize(sz, sz).setRotation(f * 0.8).setAlpha(1 - f * f);
       }
     }
 
@@ -194,12 +190,12 @@ class Spirit extends DataSpell {
   /** Обычный заряд духа: пробивает всех, летит до края экрана */
   private shot(x: number, y: number, a: number, dmg: number) {
     const spear = this.hasCombo(43), size = this.sizeMul;
-    const sp = (spear ? 900 : 380) * this.speedMul;
+    const sp = (spear ? 900 : 797) * this.speedMul; // 797 px/с — из кода (SpiritBulletMSpeed 180 × 0.0234 / 0.03 ед.)
     W.projectiles.fire({
       src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
-      r: 4 * size, life: lifeToEdge(sp, 0.6), tex: 'fx_spirit_shot', size: (spear ? 34 : 22) * size,
+      r: 4 * size, life: lifeToEdge(sp, 0.6), tex: GB_NEEDLE, size: (spear ? 40 : 26) * size,
       tint: this.hasProp(382) ? 0xffe2a8 : 0xffffff, pierce: Infinity, knock: 15,
-      rotateToVel: false, update: faceVel(ROT.tipLeft),
+      rotateToVel: false, update: faceVel(0), // игла смотрит остриём вправо
     });
   }
 

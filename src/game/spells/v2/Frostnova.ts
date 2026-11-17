@@ -5,9 +5,12 @@ import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, ringDamage } from './_skyfx';
 import { RING_K, ensureInkFrost, freezeOnly } from './_inkfx';
+import { SPIKE_TEX, ensureGroupC } from './_groupC';
 
 /** базовый радиус взрыва вокруг мага */
 const R0 = 70;
+/** число ледяных пик венца (по отзыву 2.1: 9–10 вместо множества) */
+const SPIKES = 10;
 
 /**
  * #5 Ледяные иглы → «Ледяной венец». Раз в КД вокруг мага раскрывается кольцо ледяных игл:
@@ -27,6 +30,7 @@ class Frostnova extends DataSpell {
 
   update(dt: number) {
     ensureInkFrost();
+    ensureGroupC();
     this.fx.update(dt);
     this.later.update(dt);
     if (this.readyData(dt)) this.cast();
@@ -69,13 +73,21 @@ class Frostnova extends DataSpell {
     // землетрясение — тот же венец, но грязно-бурый
     const tint = quake ? 0xd0a878 : 0xffffff;
     const follow = onPlayer ? W.player : undefined;
-    // штриховой венец ледяных осколков (_inkfx): быстро раскрывается, держится и гаснет;
-    // второй слой (другой рисунок, чуть повёрнут) даёт мерцание; кольцо холода — ударная волна
+    // «чик»: зона на миг покрывается льдом (светлый налёт), из центра выстреливают ледяные пики и тут же оседают,
+    // на земле остаётся короткий светлый след. Всё быстрое: пики 0.06 с, налёт гаснет за 0.4 с, след — за 1.1 с
     const rot = Math.random() * Math.PI * 2;
-    this.fx.spawn('ink_frost0', { x, y, w: R * 0.9, w1: R * 2.3, life: 0.14, a0: 0.7, a1: 1, tint, follow, rot });
-    this.fx.spawn('ink_frost0', { x, y, w: R * 2.3, life: 0.5, delay: 0.14, a0: 1, a1: 0, hold: true, tint, follow, rot });
-    this.fx.spawn('ink_frost1', { x, y, w: R * 2.0, w1: R * 2.45, life: 0.6, delay: 0.06, a0: 0.75, a1: 0, hold: true, tint, follow, rot: rot + 0.17 });
-    this.fx.spawn('ink_ring', { x, y, w: R * 0.3 * RING_K, w1: R * 1.05 * RING_K, life: 0.28, a0: 0.9, a1: 0, tint: quake ? 0xd0a878 : 0xcfeaff, follow });
+    const spikes = R < R0 * 0.8 ? 6 : SPIKES; // мелкие вспышки (Снежное цветение) — пик меньше
+    this.fx.spawn('gc_patch', { x, y, w: R * 2.0, w1: R * 2.5, life: 0.4, a0: 0.9, a1: 0, hold: true, tint, follow, rot, depth: DEPTH.zone + 0.3 });
+    for (let i = 0; i < spikes; i++) {
+      const a = rot + (i / spikes) * Math.PI * 2 + (Math.random() - 0.5) * 0.16;
+      const L = R * (0.82 + Math.random() * 0.2);
+      this.fx.spawn(SPIKE_TEX[i & 1], {
+        x, y, w: L * 0.3, h: L * 0.2, w1: L, h1: L * 0.27, life: 0.3, a0: 1, a1: 0, hold: true, tint,
+        follow, rot: a, ox: 0.04, oy: 0.5, depth: DEPTH.zone + 0.5,
+      });
+    }
+    this.fx.spawn('gc_trace', { x, y, w: R * 2.56, life: 1.1, delay: 0.1, a0: 0.7, a1: 0, hold: true, tint, rot: rot + 0.3, add: false, depth: DEPTH.zone });
+    this.fx.spawn('ink_ring', { x, y, w: R * 0.5 * RING_K, w1: R * 1.05 * RING_K, life: 0.16, a0: 0.8, a1: 0, tint: quake ? 0xd0a878 : 0xcfeaff, follow });
 
     if (quake) {
       // Землетрясение: трещины в земле, оглушение вместо заморозки; 31 — ещё и отбрасывание

@@ -1,6 +1,6 @@
 // Простой service worker: сначала сеть, при её отсутствии — кэш.
 // Так игра работает офлайн после первого запуска и сама обновляется при наличии интернета.
-const CACHE = 'magic-apocalypse-v1';
+const CACHE = 'magic-apocalypse-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -16,7 +16,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));

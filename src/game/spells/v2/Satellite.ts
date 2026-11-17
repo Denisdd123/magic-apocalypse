@@ -17,7 +17,7 @@ const SPIN = 1.05;
  */
 const ORBIT = 3.5 * MAGE_H, ORBIT_IN = ORBIT * 0.73, ORBIT_OUT = ORBIT * 1.42;
 /** базовый радиус сферы */
-const ORB_R = 8;
+const ORB_R = 12;
 
 /**
  * #4 Спутник → «Кольцо сфер» (референс — старый OrbRing). Сферы вращаются вокруг мага и бьют касанием
@@ -55,6 +55,8 @@ class Satellite extends DataSpell {
     while (this.sats.length > n) this.sats.pop()!.img.destroy();
     this.sats.forEach((s, i) => {
       s.img.setTexture(tex);
+      // сфера плотная (обычное смешивание, не свечение) — выглядит толще; клинок и солнце — свечением
+      s.img.setBlendMode(tex === 'fx_satellite_orb' ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
       s.ring = this.hasProp(390) && !merged ? i % 2 : 0;
       s.frost = merged && i === 1; // 32 Гиперион: второе солнце напротив — морозит при первом попадании
       if (s.frost) s.img.setTint(0x9fd8ff); else s.img.clearTint();
@@ -110,7 +112,7 @@ class Satellite extends DataSpell {
       }
       s.x = P.x + Math.cos(a) * R; s.y = P.y + Math.sin(a) * R;
       if (blade) s.img.setPosition(s.x, s.y).setDisplaySize(r * 4.5, r * 1.1).setRotation(a + Math.PI / 2).setTint(this.tint);
-      else s.img.setPosition(s.x, s.y).setDisplaySize(r * 2.8, r * 2.8).setRotation(this.t * (merged ? 0.8 : 2));
+      else s.img.setPosition(s.x, s.y).setDisplaySize(r * 3.4, r * 3.4).setRotation(this.t * (merged ? 0.8 : 2));
 
       this.cur = s;
       this.curDmg = s.frost ? dmg * 0.8 : dmg;

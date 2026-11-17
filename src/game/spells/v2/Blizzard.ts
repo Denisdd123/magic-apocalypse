@@ -7,8 +7,8 @@ import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, ringDamage } from './_skyfx';
 import { RING_K, ensureInkBlizzard, freezeOnly } from './_inkfx';
 
-/** радиус разрыва одной льдинки */
-const R0 = 22;
+/** радиус разрыва одной льдинки: по видео оригинала (17_blizzard_lv1) вспышка ≈45 px из 200 = 1.5 ед. в диаметре (было 22) */
+const R0 = 36;
 /** радиус области, где падают льдинки (вокруг мага) */
 const AREA = 150;
 /** базовый интервал появления льдинок, с (стат interval): 20 шт ≈ 2 с метели */
@@ -82,7 +82,7 @@ class Blizzard extends DataSpell {
     const vx = (Math.cos(FALL_A) * L) / fall, vy = (Math.sin(FALL_A) * L) / fall;
     const tint = this.color;
     this.fx.spawn(star ? 'ink_icestar' : 'ink_needle', {
-      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 1.8 : 40 * Math.sqrt(size), life: fall, a0: 1, a1: 1,
+      x: x - vx * fall, y: y - vy * fall, vx, vy, w: star ? r * 1.8 : 62 * Math.sqrt(size), life: fall, a0: 1, a1: 1,
       rot: star ? Math.random() * 6.28 : FALL_A, spin: star ? 3 : 0, tint, add: star, depth: DEPTH.top,
     });
     const dmg = this.dmg;

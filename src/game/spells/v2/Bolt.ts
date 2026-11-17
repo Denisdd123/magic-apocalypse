@@ -7,10 +7,12 @@ import { DataSpell, defFromData } from '../DataSpell';
 import { aimR, lifeToEdge, rnd } from './_proj';
 import { LF, MAGE_H, ensureLineFx, lighten } from './_linefx';
 
-/** Длина иглы (вместе со следом) в игровых единицах — заметная на телефоне: ~1.5 роста мага */
-const NEEDLE_LEN = 1.5 * MAGE_H;
+/** Длина иглы (вместе со следом) в игровых единицах — заметная на телефоне: ~2.6 роста мага (было 1.5, на iPhone была мелкой) */
+const NEEDLE_LEN = 2.6 * MAGE_H;
+/** Скорость пули из кода оригинала: 9.67 ед/с × 56.8 = 549 px/с (UnitBase_MagicBulletMSpeed 145 × 0.1 × 0.02/0.03) */
+const BOLT_SPEED = 549;
 /** Вспышка попадания — радиус */
-const HIT_R = 0.45 * MAGE_H;
+const HIT_R = 0.7 * MAGE_H;
 
 /**
  * #1 Магическая пуля → «Звёздная игла». ОБРАЗЕЦ для остальных заклинаний на DataSpell:
@@ -85,14 +87,14 @@ class Bolt extends DataSpell {
       dirs = targets.map((e) => Math.atan2(e.y - y, e.x - x));
     }
     const arrow = this.hasProp(362);
-    const speed = 320 * spd;
+    const speed = BOLT_SPEED * spd;
     // дальность — до края экрана и дальше (без короткого предела)
     const life = lifeToEdge(speed);
     ensureLineFx(W.scene);
     for (const a of dirs) {
       W.projectiles.fire({
         src: this.def.id, x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-        dmg, r: 4 * size, life,
+        dmg, r: 6 * size, life,
         // светлая игла-звезда со следом (ADD-свечение); Бластер — та же игла, вдвое крупнее
         tex: LF.needle, size: NEEDLE_LEN * size * (blast ? 1.3 : 1), tint: blast ? 0xffe0b0 : lighten(this.tint, 0.5),
         pierce: arrow ? Infinity : 0, knock: 30,
@@ -126,7 +128,7 @@ class Bolt extends DataSpell {
    * взрыв расширяется и наносит урон от ×1 до ×9 (чем сильнее, тем шире).
    */
   private pyro(x: number, y: number) {
-    const size = this.sizeMul, sp = 300 * this.speedMul;
+    const size = this.sizeMul, sp = BOLT_SPEED * this.speedMul;
     const e = Math.random() < 0.5 ? W.enemies.randomVisible() : null;
     const a = e ? Math.atan2(e.y - y, e.x - x) : Math.random() * Math.PI * 2;
     ensureLineFx(W.scene);

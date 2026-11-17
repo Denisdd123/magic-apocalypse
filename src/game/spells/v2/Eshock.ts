@@ -5,11 +5,12 @@ import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { aimR, lifeToEdge, rnd } from './_proj';
 import { LF, MAGE_H, animFrames, ensureLineFx } from './_linefx';
+import { GA, ensureGroupA } from './_groupA';
 
-/** Длина одного разряда — ~2.7 роста мага (раньше был короткий штрих) */
-const LEN = 2.7 * MAGE_H;
+/** Длина одного разряда в наших единицах */
+const LEN = 170; // ≈ 3 ед. оригинала: длинная толстая молния
 /** Ломаная перерисовывается каждые 0.05 с (4 кадра штриховой молнии по кругу) */
-const shockAnim = animFrames(LF.shock, 20);
+const shockAnim = animFrames(GA.shock, 24); // мерцание: 4 кадра по 1/24 с
 
 /**
  * #13 Электрический удар → «Разряд». Ломаные разряды из мага в случайные стороны (летят до края экрана), пробивают всех.
@@ -19,11 +20,11 @@ const shockAnim = animFrames(LF.shock, 20);
  */
 class Eshock extends DataSpell {
   private queue: { delay: number; a: number; target: Enemy | null; front: boolean }[] = [];
-  private static readonly SPEED = 300;
+  private static readonly SPEED = 850; // «бжух»: до края экрана за ~0.45 с (не мгновенно, не ползком)
   private static readonly LIFE = 0.32;
 
   update(dt: number) {
-    if (this.readyData(dt)) { ensureLineFx(W.scene); this.cast(); }
+    if (this.readyData(dt)) { ensureLineFx(W.scene); ensureGroupA(); this.cast(); }
     for (let i = this.queue.length - 1; i >= 0; i--) {
       const q = this.queue[i];
       q.delay -= dt;
@@ -82,7 +83,7 @@ class Eshock extends DataSpell {
       // хвост молнии начинается у мага — разряд «отрывается» от него и улетает вперёд
       src: this.def.id, x: x + Math.cos(a) * LEN * size * 0.2, y: y + Math.sin(a) * LEN * size * 0.2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
       // без предела длины: разряд пролетает весь экран (Буйство — ещё дальше)
-      r: 6 * size, life: lifeToEdge(sp) * this.rangeK, tex: LF.shock[(Math.random() * 4) | 0], size: LEN * size,
+      r: 9 * size, life: lifeToEdge(sp) * this.rangeK, tex: GA.shock[(Math.random() * 4) | 0], size: LEN * size,
       tint: this.tintFor(), pierce: Infinity, knock: 12,
       update: shockAnim,
       data: { chained: false },
@@ -125,7 +126,7 @@ class Eshock extends DataSpell {
       const nd = heart ? dmg * 0.8 : dmg, ns = size * (heart ? 0.8 : 0.85);
       const p = W.projectiles.fire({
         src: this.def.id, x: from.x, y: from.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: nd,
-        r: 5 * ns, life: d / sp + 0.05, tex: LF.shock[0], size: Math.min(LEN, Math.max(20, d)) * ns, tint: this.tintFor(),
+        r: 5 * ns, life: d / sp + 0.05, tex: GA.shock[0], size: Math.min(LEN, Math.max(20, d)) * ns, tint: this.tintFor(),
         pierce: 0, update: shockAnim,
         onHit: (q, e) => { this.hitFx(q, e); this.jump(e, nd, ns, left - 1, heart); },
       });
@@ -147,7 +148,7 @@ class Eshock extends DataSpell {
       const a = a0 + (i * Math.PI) / 2 + rnd(-0.2, 0.2), sp = Eshock.SPEED;
       W.projectiles.fire({
         src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: dmg * 0.5,
-        r: 5, life: Eshock.LIFE * 0.8, tex: LF.shock[i], size: LEN * 0.6, tint: 0xffb0c8,
+        r: 5, life: Eshock.LIFE * 0.8, tex: GA.shock[i], size: LEN * 0.6, tint: 0xffb0c8,
         pierce: Infinity, update: shockAnim,
       });
     }

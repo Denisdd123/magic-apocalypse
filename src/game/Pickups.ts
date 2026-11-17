@@ -11,7 +11,7 @@ export const RUNES: Record<RuneType, { name: string; tint: number; dur: number; 
   greed:    { name: 'Руна-магнит',       tint: 0xffd84a, dur: 5, weight: 2, text: 'Притягивает все кристаллы' },
   cleanse:  { name: 'Руна очищения',     tint: 0x8fd8ff, dur: 0, weight: 0.6, text: 'Уничтожает врагов на экране' },
   timestop: { name: 'Руна времени',      tint: 0x9fe8b0, dur: 5, weight: 1.5, text: 'Враги замирают на 5 сек.' },
-  curse:    { name: 'Проклятая руна',    tint: 0xff2d8a, dur: 0, weight: 0.8, text: 'Призывает элитных монстров. Последний оставит сундук' },
+  curse:    { name: 'Проклятая руна',    tint: 0xb8343f, dur: 0, weight: 2, text: 'Призывает элитных монстров. Последний оставит сундук' },
 };
 
 export type Spot = 'obelisk' | 'merchant';
@@ -33,7 +33,8 @@ export class Pickups {
   /** сундуки — по убийствам, как в оригинале (LOOT.chestKills); во время босса счёт стоит */
   private chestKills = 0;
   private chestIdx = 0;
-  private runeT = 100;  // первая руна примерно на 1:40
+  private runeT = 60;   // первая руна на 1:00 — проклятая (элитки -> сундук); оценка, в коде оригинала не найдено
+  private firstRune = true;
   onChest: (() => void) | null = null;
   onRune: ((r: RuneType) => void) | null = null;
   /** Подошёл к обелиску / торговцу */
@@ -99,8 +100,9 @@ export class Pickups {
     // появление
     this.runeT -= dt;
     if (this.runeT <= 0) {
-      this.runeT = 120 + Math.random() * 60; // руны — редкость: раз в 2–3 минуты
-      const p = this.around(110, 240); this.rune(this.randomRune(), p.x, p.y);
+      this.runeT = 75 + Math.random() * 45; // руны раз в 75–120 с (оценка)
+      const p = this.around(110, 240); this.rune(this.firstRune ? 'curse' : this.randomRune(), p.x, p.y);
+      this.firstRune = false;
     }
 
     // предметы на земле

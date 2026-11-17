@@ -97,11 +97,11 @@ export function showMenu(onPlay: () => void) {
     <div class="mm-mobs">${mobs.map((s, i) => `<img src="${s}" style="--i:${i}">`).join('')}</div>
     <div class="mm-center">
       <img class="emblem" src="${icon('mage_idle_0', 0xd9c9a0)}" alt="">
-      <div class="logo">Magic<br>Apocalypse<span class="v2">2.0</span><small>Выживи в Разломе</small></div>
+      <div class="logo">Magic<br>Apocalypse<span class="v2">2.2</span><small>Выживи в Разломе</small></div>
       <button class="play">Играть</button>
       <div class="hint">Веди пальцем в любом месте экрана, чтобы ходить. Маг атакует сам. Собирай голубые сферы и выбирай заклинания.</div>
     </div>
-    <div class="ver">версия 2.0 · Dark Fantasy</div>`;
+    <div class="ver">версия 2.2 · Dark Fantasy</div>`;
   m.querySelector('.play')!.addEventListener('click', () => { m.remove(); onPlay(); });
   root().appendChild(m);
   hideBoot();
@@ -146,15 +146,15 @@ export class Hud {
     if (lv !== this.lastLvl) { this.lastLvl = lv; this.lvl.innerHTML = `<small>ур.</small>${lv}`; }
   }
 
-  /** Здоровье босса — череп сверху по центру: красное «сливается» сверху вниз по мере урона. null — убрать. */
+  /** Здоровье босса — тонкая тёмная полоса сверху (2.2: вместо черепа). null — убрать. */
   boss(frac: number | null) {
     if (frac === null) { this.bossEl?.remove(); this.bossEl = null; this.timer.classList.remove('red'); return; }
     if (!this.bossEl) {
-      this.bossEl = el('div', 'bossbar', `<img class="bg" src="${icon('skull_dark')}"><img class="fg" src="${icon('skull_red')}">`);
+      this.bossEl = el('div', 'bossbar', '<div class="fg"></div>');
       this.wrap.appendChild(this.bossEl);
       this.timer.classList.add('red');
     }
-    (this.bossEl.querySelector('.fg') as HTMLElement).style.clipPath = `inset(${((1 - Math.max(0, frac)) * 100).toFixed(1)}% 0 0 0)`;
+    (this.bossEl.querySelector('.fg') as HTMLElement).style.width = `${(Math.max(0, frac) * 100).toFixed(1)}%`;
   }
 
   /** Иконка перезарядки (Фаза и др.): frac 0 = готово, 1 = только что использовано */

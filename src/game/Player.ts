@@ -63,12 +63,13 @@ export class Player {
     const len = Math.hypot(dx, dy);
     this.moving = len > 0.05;
     if (this.moving) {
-      const k = Math.min(1, len);
+      const k = 1; // оригинал (V_JoyStickController): нормализованный вектор, градации силы стика нет
       const sp = W.stats.moveSpeed * (1 + this.speedBuff);
       this.x += (dx / len) * sp * k * dt;
       this.y += (dy / len) * sp * k * dt;
       this.faceX = dx / len; this.faceY = dy / len;
     }
+    W.zone.arenaClamp(this, dt);
   }
 
   update(dt: number) {

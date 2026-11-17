@@ -160,7 +160,7 @@ export class SpellBook {
       } else if (sp.level < def.maxLevel) {
         const lvl = sp.level + 1;
         const attr = def.attrLevels.includes(lvl);
-        pool.push({ w: attr ? 3 : 2.2, c: { kind: 'spell', id: def.id, icon: def.icon, title: def.name, level: lvl, lines: attr ? ['Можно изучить свойство!'] : def.levelText[lvl] ?? [], isNew: false, attr } });
+        pool.push({ w: attr ? 10 : 8, /* 2.2: взятые заклинания заметно чаще (по отзыву; веса в коде оригинала не найдены) */ c: { kind: 'spell', id: def.id, icon: def.icon, title: def.name, level: lvl, lines: attr ? ['Можно изучить свойство!'] : def.levelText[lvl] ?? [], isNew: false, attr } });
       }
     }
     for (const p of PASSIVES) {

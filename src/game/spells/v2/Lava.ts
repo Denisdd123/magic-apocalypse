@@ -5,14 +5,14 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
-import { LAVA_D, LAVA_TEX, ensureInkLava } from './_inkfx';
+import { GA, LAVA_DIAM, ensureGroupA } from './_groupA';
 
 /**
- * Лужа — штриховая магма из _inkfx в 2 кадрах (ink_lava0/1): тёмная корка со штриховкой плит,
- * рваная кромка, ветвящиеся тлеющие трещины, пузыри. Кадры отличаются накалом трещин и меняются раз в FRAME_SEC.
+ * Лужа — тёмно-рыжая магма-клякса из _groupA в 2 кадрах (ga_lava0/1): светлые штрихи-трещины, редкие пузыри,
+ * тёмный рваный контур. Кадры отличаются накалом трещин и пузырями и меняются раз в FRAME_SEC.
  * fx_lava_wave — дуга фронта (выпуклостью вниз) для C56.
  */
-const POOL_TEX = LAVA_TEX, POOL_D = LAVA_D;
+const POOL_TEX = GA.lava, POOL_D = LAVA_DIAM;
 const FRAME_SEC = 0.32;
 const WAVE_TEX = 'fx_lava_wave', WAVE_D = 153;
 
@@ -44,7 +44,7 @@ class Lava extends DataSpell {
   }
 
   update(dt: number) {
-    ensureInkLava();
+    ensureGroupA();
     this.clock += dt;
     // КД идёт только когда луж нет (оригинал: «5 с после окончания»)
     if (!this.pools.length && this.readyData(dt)) this.cast();
@@ -84,7 +84,7 @@ class Lava extends DataSpell {
   private cast() {
     this.tickAcc = this.tickSec; // первый тик сразу
     const n = this.count;
-    let r = 34 * this.sizeMul;
+    let r = 72 * this.sizeMul; // диаметр ≈ 2.5 ед. оригинала (1 ед. = 56.8)
     const life = this.durSec;
     const P = W.player;
 

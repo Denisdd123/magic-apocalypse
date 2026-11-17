@@ -287,7 +287,8 @@ export class Enemies {
       }
     }
     // элитки: группа усиленных мобов текущей волны (оценка времени — см. ELITE); во время босса не идут
-    if (t >= this.nextElite && !W.zone.bossFight) {
+    // 2.2: по отзыву — элитки по таймеру не идут, только от проклятой руны (Pickups.activate 'curse')
+    if (false && t >= this.nextElite && !W.zone.bossFight) {
       this.nextElite = t + ELITE.every;
       const type = this.waveType(), p = this.spawnPoint(), px = p.x, py = p.y;
       const n = ELITE.group + Math.min(W.zone.stage, 3);
@@ -372,7 +373,7 @@ export class Enemies {
         e.x -= nx * over * (1 - wp); e.y -= ny * over * (1 - wp);
         P.hurt(e.dmg);
         // камикадзе (особая способность 1): ударил — и погиб с «взрывом», без награды
-        if (e.type.kami && !boss) {
+        if (e.type.kami && !boss && !e.elite) { // элитки (проклятые) не взрываются — иначе не оставят сундук
           W.fx.burst(e.x, e.y, KAMI.ring * 0.5, KAMI.tint, KAMI.life, 'kami_ring');
           this.despawn(e);
           continue;
@@ -436,7 +437,7 @@ export class Enemies {
       const r = (Math.random() * 4) | 0;
       if (r === 3) W.pickups.rune(W.pickups.randomRune(), e.x, e.y);
       else W.orbs.drop(e.x, e.y, r === 0 ? 'm' : r === 1 ? 'l' : 'life');
-      W.fx.burst(e.x, e.y, 60, 0xff2d8a, 0.5);
+      W.fx.burst(e.x, e.y, 60, 0xb8343f, 0.5);
     }
     // сфера маны — не по шансу, а за каждые 20 убийств (общий счётчик)
     if (++this.orbKills >= LOOT.orbEveryKills / (1 + W.stats.orbRate)) {

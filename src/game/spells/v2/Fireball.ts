@@ -5,12 +5,21 @@ import { DataSpell, defFromData } from '../DataSpell';
 import { aimR, lifeToEdge, rnd } from './_proj';
 import { LF, MAGE_H, animFrames, ensureLineFx } from './_linefx';
 
-/** Длина огненной кометы (голова + шлейф) — ~1.7 роста мага, голова ≈ треть роста */
-const COMET = 1.7 * MAGE_H;
+/** Длина огненной кометы (голова + шлейф) — ~3 роста мага (было 1.7: на телефоне казалась маленькой) */
+const COMET = 3 * MAGE_H;
+/** Скорость шара из кода оригинала: 5.33 ед/с × 56.8 = 303 px/с (UnitBase_FireballMSpeed 80 × 0.1 × 0.02/0.03) */
+const FIRE_SPEED = 303;
 /** Диаметр огненной сферы «Созвездия» */
-const ORB = 1.1 * MAGE_H;
+const ORB = 1.8 * MAGE_H;
 /** Покадровая анимация пламени (3 кадра штриховых языков, ~14 кадров/с) */
-const fireAnim = animFrames(LF.fire, 14);
+const flick = animFrames(LF.fire, 24);
+/** «Рваное» пламя: кадры чаще, размер и яркость дёргаются от кадра к кадру */
+const fireAnim = (p: Projectile) => {
+  flick(p);
+  const d = p.data;
+  if (d) { if (d.s0 === undefined) d.s0 = p.img.scaleX; p.img.setScale(d.s0 * (0.88 + Math.random() * 0.26)); }
+  p.img.setAlpha(0.8 + Math.random() * 0.2);
+};
 
 /** Облако яда / многократный взрыв: расширяется и бьёт hitsMax раз */
 interface Gas { x: number; y: number; t: number; hits: number; hitsMax: number; r: number; dmg: number; step: number; tint: number }
@@ -75,12 +84,12 @@ class Fireball extends DataSpell {
   }
 
   private shootDir(a: number, first: boolean) {
-    const P = W.player, k = this.bigK(first), size = this.sizeMul * k, sp = 210 * this.speedMul;
+    const P = W.player, k = this.bigK(first), size = this.sizeMul * k, sp = FIRE_SPEED * this.speedMul;
     const dmg = this.dmg * k, r = Fireball.R * size;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: 0,
-      r: 7 * size, life: lifeToEdge(sp, 1.5), tex: LF.fire[0], size: COMET * size, tint: this.projTint,
-      pierce: Math.round(this.stat('pierce', 0)), update: fireAnim,
+      r: 10 * size, life: lifeToEdge(sp, 1.5), tex: LF.fire[0], size: COMET * size, tint: this.projTint,
+      pierce: Math.round(this.stat('pierce', 0)), update: fireAnim, data: {},
       onHit: (p) => this.explode(p.x, p.y, r, dmg),
       // долетел, ни в кого не попав — взрыв в конце пути
       onEnd: (p) => { if (p.t >= p.life && p.hit.size === 0) this.explode(p.x, p.y, r, dmg); },
@@ -93,7 +102,7 @@ class Fireball extends DataSpell {
     const dmg = this.dmg * k, r = Fireball.R * size;
     const a = Math.random() * Math.PI * 2, sp = rnd(140, 220) * this.speedMul;
     W.projectiles.fire({
-      src: this.def.id, x: P.x, y: P.y, vx: 0, vy: 0, dmg: 0, r: 7 * size, life: 3.5 * W.stats.durMul,
+      src: this.def.id, x: P.x, y: P.y, vx: 0, vy: 0, dmg: 0, r: 10 * size, life: 3.5 * W.stats.durMul,
       tex: LF.fireOrb, size: ORB * size, tint: this.projTint, rotateToVel: false, spin: 2.5,
       pierce: Math.round(this.stat('pierce', 0)),
       // ox/oy — смещение от мага, v — скорость разлёта (гаснет)
@@ -119,9 +128,9 @@ class Fireball extends DataSpell {
     const a = Math.random() * Math.PI * 2, sp = 120 * this.speedMul;
     W.projectiles.fire({
       src: this.def.id, x: P.x, y: P.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: touch,
-      r: 8 * size, life, tex: LF.fire[0], size: COMET * size, tint: 0xd8e4ff,
+      r: 11 * size, life, tex: LF.fire[0], size: COMET * size, tint: 0xd8e4ff,
       pierce: Infinity, hitInterval: 0.5, knock: 10,
-      data: { turn: rnd(-2, 2) },
+      data: { turn: rnd(-2, 2), s0: undefined },
       update: (p, dt) => {
         // случайное блуждание + мягкое притяжение к магу, чтобы не улетал за экран
         const d = p.data;
@@ -151,7 +160,7 @@ class Fireball extends DataSpell {
     if (!plain && this.hasProp(372)) { this.addGas(x, y, r, dmg, 3, 0.3, 0x8fdc5a); return; }
     areaDamage(x, y, r, dmg, 40, this.def.id);
     // кольцо рваных огненных штрихов + белая вспышка лучами в центре
-    W.fx.burst(x, y, r * 1.15, this.boomTint, 0.45, LF.fireBoom);
+    W.fx.burst(x, y, r * 1.4, this.boomTint, 0.45, LF.fireBoom);
     W.fx.burst(x, y, r * 0.8, 0xfff0d0, 0.2, LF.spark);
     W.fx.sparks(x, y, 3, 0xffa060, 80);
   }

@@ -5,13 +5,17 @@ import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Later, SkyFx, randomInView } from './_skyfx';
-import { RING_K, ensureDarkTex, quarterRot } from './_darkfx';
+import { ensureDarkTex } from './_darkfx';
+import { RING_K, ensureInkFrost } from './_inkfx';
+import { SHARD_TEX, SPLASH_TEX, TRAIL_TEX, ensureGroupC } from './_groupC';
 import { ImgPool } from './_zoneKit';
 
 /** базовый радиус взрыва метеорита */
 const R0 = 42;
-/** время падения (тень на земле растёт — телеграф): быстро, «бух и приземлилась» как в оригинале */
-const FALL = 0.36;
+/** время падения, с (тень на земле растёт — телеграф). В 2.0 было 0.7, в 2.1 — 0.36 (слишком быстро); теперь чуть быстрее 2.0 */
+const FALL = 0.55;
+/** приглушённый багрянец телеграфа (STYLE_GUIDE: не розовый) */
+const CRIMSON = 0xb8343f;
 /** высота старта над точкой удара и снос вбок (дуга: сначала полого, потом почти отвесно) */
 const FALL_H = 300, FALL_DX = 0.75;
 
@@ -46,6 +50,8 @@ class Meteor extends DataSpell {
 
   update(dt: number) {
     ensureDarkTex();
+    ensureInkFrost();
+    ensureGroupC();
     this.fx.update(dt);
     this.later.update(dt);
     this.updateFalls(dt);
@@ -104,20 +110,21 @@ class Meteor extends DataSpell {
   }
 
   /**
-   * Падение: телеграф (растущая тень и тусклое пиксельное кольцо) → тёмная «звезда» с узким следом
+   * Падение: телеграф (растущая тень и тонкое тусклое кольцо) → тёмная «звезда» с узким следом
    * сверху → разлёт обломков и выжженный кратер. Не огненный шар: тёмный камень, багровая кромка,
    * бледное ядро (текстуры _darkfx). instant — извержение без падения.
    */
   private drop(x: number, y: number, R: number, dmg: number, delay: number, instant: boolean, crater = instant) {
     if (instant) {
       const tele = 0.25;
-      this.fx.spawn('dk_ring', { x, y, w: R * 0.6 * RING_K, w1: R * RING_K, a0: 0.3, a1: 0.85, life: tele, delay, tint: 0x8a3a1e, add: false, depth: DEPTH.zone + 0.1 });
+      this.fx.spawn('ink_ring', { x, y, w: R * 0.7 * RING_K, w1: R * RING_K, a0: 0.15, a1: 0.5, life: tele, delay, tint: CRIMSON, depth: DEPTH.zone + 0.1 });
       this.later.add(delay + tele, () => this.land(x, y, R, dmg, crater));
       return;
     }
     const fall = R > R0 * 2 ? FALL * 1.35 : FALL;
-    this.fx.spawn('shadow', { x, y, w: R * 0.5, w1: R * 2, h: R * 0.25, h1: R * 0.8, a0: 0.25, a1: 0.85, life: fall, delay, add: false, depth: DEPTH.zone });
-    this.fx.spawn('dk_ring', { x, y, w: R * RING_K, a0: 0.1, a1: 0.45, life: fall, delay, tint: 0x6a2418, add: false, depth: DEPTH.zone + 0.1 });
+    this.fx.spawn('shadow', { x, y, w: R * 0.5, w1: R * 2, h: R * 0.25, h1: R * 0.8, a0: 0.2, a1: 0.7, life: fall, delay, add: false, depth: DEPTH.zone });
+    // тонкое тусклое кольцо-телеграф: сжимается к точке удара
+    this.fx.spawn('ink_ring', { x, y, w: R * 1.5 * RING_K, w1: R * RING_K, a0: 0.1, a1: 0.45, life: fall, delay, tint: CRIMSON, depth: DEPTH.zone + 0.1 });
     // кривая падения: старт высоко и сбоку (сторона случайная), контрольная точка даёт дугу —
     // сначала камень летит полого, затем почти отвесно «втыкается» в землю
     const side = Math.random() < 0.5 ? -1 : 1, dx = FALL_H * FALL_DX * (0.85 + Math.random() * 0.3);
@@ -126,15 +133,15 @@ class Meteor extends DataSpell {
     f.cx = x - side * dx * 0.35; f.cy = y - FALL_H * 0.8;
     f.ex = x; f.ey = y;
     f.t = 0; f.dur = fall; f.delay = delay; f.R = R; f.dmg = dmg; f.crater = crater;
-    f.head = null; f.tail = null; f.spin = quarterRot();
+    f.head = null; f.tail = null; f.spin = ((Math.random() * 4) | 0) * (Math.PI / 2);
     this.falls.push(f);
     if (delay <= 0) this.showFall(f);
   }
 
-  /** Картинки звезды (вид прежний: dk_streak + dk_star из _darkfx) */
+  /** Картинки звезды (камень dk_star из _darkfx прежний; след — светлый gc_trail) */
   private showFall(f: Fall) {
     // след: «голова» картинки (правый край) совпадает с камнем
-    f.tail = this.imgs.get('dk_streak', DEPTH.top, false).setOrigin(0.92, 0.5).setDisplaySize(f.R * 2.2, f.R * 0.42).setAlpha(0);
+    f.tail = this.imgs.get(TRAIL_TEX, DEPTH.top, true).setOrigin(0.95, 0.5).setDisplaySize(f.R * 2.4, f.R * 0.45).setAlpha(0);
     f.head = this.imgs.get('dk_star', DEPTH.top + 0.01, false).setDisplaySize(f.R * 0.8, f.R * 0.8).setRotation(f.spin);
     this.placeFall(f, 0);
   }
@@ -166,21 +173,29 @@ class Meteor extends DataSpell {
       }
       const u = f.t / f.dur;
       // разгон к земле: медленнее вверху, «бух» в конце
-      this.placeFall(f, u * (0.45 + 0.55 * u));
-      f.tail!.setAlpha(Math.min(0.9, u * 6));
+      this.placeFall(f, u * (0.35 + 0.65 * u));
+      f.tail!.setAlpha(Math.min(0.95, u * 5));
     }
   }
 
   private land(x: number, y: number, R: number, dmg: number, crater: boolean) {
     areaDamage(x, y, R, dmg, 80, this.def.id);
-    // короткая тусклая вспышка-кольцо + разлёт обломков в 2 «кадра» (малый → большой, без плавности)
-    this.fx.spawn('dk_ring', { x, y, w: R * 0.5 * RING_K, w1: R * 1.1 * RING_K, life: 0.18, a0: 0.8, a1: 0, tint: 0x9a4a22 });
-    const rb = quarterRot();
-    this.fx.spawn('dk_burst', { x, y, w: R * 1.5, life: 0.08, a0: 1, a1: 1, add: false, rot: rb });
-    this.fx.spawn('dk_burst', { x, y, w: R * 2.4, life: 0.3, delay: 0.08, a0: 1, a1: 0, hold: true, add: false, rot: rb });
-    const rc = quarterRot();
-    this.fx.spawn('dk_crater', { x, y, w: R * 2, life: crater ? 3 : 1.6, a0: 0.95, a1: 0, hold: true, add: false, depth: DEPTH.zone, rot: rc });
-    W.fx.sparks(x, y, R > 60 ? 10 : 5, 0x9a4420, 120);
+    // взрыв в нашем стиле: светлая клякса-вспышка (быстро растёт и гаснет) + штрихи-осколки веером + тонкое кольцо
+    const sp = (Math.random() * 2) | 0;
+    this.fx.spawn(SPLASH_TEX[sp], { x, y, w: R * 1.3, w1: R * 2.3, life: 0.1, a0: 1, a1: 1, rot: Math.random() * 6.28, tint: 0xfff0d8 });
+    this.fx.spawn(SPLASH_TEX[sp ^ 1], { x, y, w: R * 2.3, w1: R * 2.7, life: 0.28, delay: 0.1, a0: 0.9, a1: 0, hold: true, rot: Math.random() * 6.28, tint: 0xffe2b8 });
+    const n = R > 60 ? 10 : 7, a0 = Math.random() * 6.28;
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * 6.28 + (Math.random() - 0.5) * 0.4, v = R * (3.2 + Math.random() * 2.2);
+      this.fx.spawn(SHARD_TEX, {
+        x, y, w: R * (0.45 + Math.random() * 0.35), h: R * 0.1, w1: R * 0.2, h1: R * 0.07, life: 0.32, a0: 1, a1: 0, hold: true,
+        rot: a, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ox: 0.2, oy: 0.5, tint: 0xffe9c8,
+      });
+    }
+    this.fx.spawn('ink_ring', { x, y, w: R * 0.6 * RING_K, w1: R * 1.5 * RING_K, life: 0.22, a0: 0.55, a1: 0, tint: 0xf0d2a8 });
+    // выжженное пятно: гладкая тёмная копоть (fx_thunder_scorch)
+    this.fx.spawn('fx_thunder_scorch', { x, y, w: R * 2, life: crater ? 3 : 1.6, a0: 0.85, a1: 0, hold: true, add: false, depth: DEPTH.zone, tint: 0x2a1c18, rot: Math.random() * 6.28 });
+    W.fx.sparks(x, y, R > 60 ? 8 : 4, 0xffd8a0, 120);
     if (R > 70) W.scene.cameras.main.shake(140, 0.005);
     if (crater) {
       // кратер: 25% урона каждые 0.5 с в течение 3 с
@@ -188,7 +203,7 @@ class Meteor extends DataSpell {
       c.x = x; c.y = y; c.r = R; c.dmg = dmg * 0.25; c.t = 3; c.next = 0.5;
       this.craters.push(c);
       // тлеющие трещины активного кратера: тусклое ADD поверх той же картинки
-      this.fx.spawn('dk_crater', { x, y, w: R * 2, life: 3, a0: 0.5, a1: 0, hold: true, add: true, depth: DEPTH.zone + 0.1, tint: 0x7a2a12, rot: rc });
+      this.fx.spawn('ink_ring', { x, y, w: R * 2 * RING_K * 0.5, life: 3, a0: 0.35, a1: 0, hold: true, depth: DEPTH.zone + 0.1, tint: CRIMSON });
     }
   }
 

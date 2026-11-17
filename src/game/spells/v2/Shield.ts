@@ -4,6 +4,7 @@ import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { scribbleLoop } from './_groupB';
 import { addGuard, effCd, keepGuard, removeGuard } from './_utilGuard';
 
 /** цвет пузыря по числу зарядов (как Shield1–5 оригинала, но приглушённо): бронза → серебро */
@@ -23,7 +24,9 @@ class Shield extends DataSpell {
   charges = 0;
   cdLeft = 0;
   private started = false;
-  private bubble: Phaser.GameObjects.Image | null = null;
+  private g: Phaser.GameObjects.Graphics | null = null; // накаляканный кокон + вспышка
+  private flashT = 0;   // таймер вспышки поглощения (0 — нет)
+  private tmp: { x: number; y: number }[] = [];
   private fieldHits = 0;   // оставшиеся взрывы Поля разрушения
   private fieldT = 0;
   private animT = 0;
@@ -40,9 +43,7 @@ class Shield extends DataSpell {
     if (!this.started) { this.started = true; this.charges = this.hasCombo(18) ? 0 : max; }
     if (this.charges > max) this.charges = max;
     if (this.hasCombo(18) && this.cdLeft <= 0) this.cdLeft = this.cdTotal;
-    if (!this.bubble) {
-      this.bubble = W.scene.add.image(0, 0, 'fx_shield_bubble').setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
-    }
+    if (!this.g) this.g = W.scene.add.graphics().setDepth(DEPTH.projectile);
   }
 
   /** удар по магу: снять заряд вместо HP */
@@ -51,9 +52,8 @@ class Shield extends DataSpell {
     this.charges--;
     const P = W.player;
     P.invulnT = Math.max(P.invulnT, this.hasProp(407) ? 1 : 0.2);
-    const r = 26 * W.stats.sizeMul;
-    W.fx.burst(P.x, P.y - 3, r * 1.6, CHARGE_TINT[Math.min(this.charges, 4)], 0.4, 'fx_shield_break', P);
-    W.fx.sparks(P.x, P.y - 3, 8, 0xd8c8a0, 120);
+    this.flashT = 0.3; // чёткая вспышка: рисуется в update
+    W.fx.sparks(P.x, P.y - 3, 8, 0xf3efe7, 120);
     if (this.hasProp(409)) { this.fieldHits = 4; this.fieldT = 0; }
     if (this.cdLeft <= 0) this.cdLeft = this.cdTotal;
     return true;
@@ -89,16 +89,40 @@ class Shield extends DataSpell {
       }
     }
 
-    // пузырь вокруг мага: виден при зарядах, цвет — по их числу
-    const b = this.bubble;
-    if (b) {
+    // кокон вокруг мага: 2–3 светлых контура внахлёст (только линии, мага не закрывает) + вспышка при ударе
+    const g = this.g;
+    if (g) {
+      g.clear();
+      this.animT += dt;
+      const sm = W.stats.sizeMul;
+      const cx = P.x, cy = P.y - 3;
       if (this.charges > 0) {
-        this.animT += dt;
-        const s = (34 + 3 * Math.min(this.charges - 1, 4)) * W.stats.sizeMul * (1 + 0.03 * Math.sin(this.animT * 3));
-        b.setVisible(true).setPosition(P.x, P.y - 3).setDisplaySize(s, s * 1.1)
-          .setTint(CHARGE_TINT[Math.min(this.charges - 1, 4)]).setAlpha(0.55 + 0.1 * Math.sin(this.animT * 2.2));
-        b.rotation += dt * 0.4;
-      } else b.setVisible(false);
+        const ch = Math.min(this.charges - 1, 4);
+        const loops = ch >= 1 ? 3 : 2;
+        // дрожание: форма штрихов меняется ~9 раз в секунду
+        const fr = Math.floor(this.animT * 9);
+        const tw = 0.8 + 0.2 * Math.sin(this.animT * 11);
+        const col = ch === 0 ? 0xf3efe7 : CHARGE_TINT[ch];
+        for (let i = 0; i < loops; i++) {
+          const ph = fr * 1.7 + i * 2.3;
+          const st = this.animT * (0.8 + i * 0.35) * (i % 2 ? -1 : 1) + i * 2.1;
+          g.lineStyle(i === 0 ? 2.2 : 1.6, i === 0 ? 0xfff8ec : col, (i === 0 ? 0.95 : 0.75) * tw);
+          scribbleLoop(g, cx, cy, (17 + i * 1.8) * sm, (21 + i * 2) * sm, ph, 0.05, st, Math.PI * 2 * 1.12, this.tmp);
+        }
+      }
+      if (this.flashT > 0) {
+        this.flashT -= dt;
+        const f = 1 - Math.max(0, this.flashT) / 0.3, a = 1 - f;
+        const rr = (20 + 26 * f) * sm;
+        g.lineStyle(3, 0xffffff, a);
+        scribbleLoop(g, cx, cy, rr, rr * 1.15, 0.7, 0.04, 0, Math.PI * 2, this.tmp);
+        // острые лучи-штрихи наружу
+        g.lineStyle(2, 0xfff4e0, a);
+        for (let i = 0; i < 8; i++) {
+          const an = (i / 8) * Math.PI * 2 + 0.3, c = Math.cos(an), sn = Math.sin(an);
+          g.lineBetween(cx + c * rr * 0.9, cy + sn * rr * 1.05, cx + c * (rr + 9 * sm), cy + sn * (rr * 1.15 + 9 * sm));
+        }
+      }
     }
   }
 
@@ -115,7 +139,7 @@ class Shield extends DataSpell {
 
   destroy() {
     removeGuard(this.guard);
-    this.bubble?.destroy(); this.bubble = null;
+    this.g?.destroy(); this.g = null;
   }
 }
 

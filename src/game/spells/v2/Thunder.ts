@@ -1,19 +1,20 @@
-import { DEPTH } from '../../../config';
+
 import { SPELL_BY_ID } from '../../../data/spells_data';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { aimR } from './_proj';
 import { Later, SkyFx, randomInView, ringDamage } from './_skyfx';
-import { LF, LF_SIZE, MAGE_H, ensureLineFx } from './_linefx';
+import { MAGE_H } from './_linefx';
+import { GA, ensureGroupA } from './_groupA';
 
 /** ширина молнии с неба (по текстуре 96×384 при высоте ~11 ростов мага) */
-const SKY_W = 2.9 * MAGE_H;
+const SKY_W = 4.2 * MAGE_H;
 
 /** базовый радиус взрыва молнии у земли (игровые единицы) */
 const R0 = 28;
-/** короткий телеграф перед ударом, с */
-const TELE = 0.14;
+/** короткая задержка перед ударом, с */
+const TELE = 0.05;
 
 /**
  * #7 Молния → «Гнев туч». Раз в КД count молний бьют в ближайших врагов (у земли — взрыв и выжженное пятно).
@@ -38,7 +39,7 @@ class Thunder extends DataSpell {
   update(dt: number) {
     this.fx.update(dt);
     this.later.update(dt);
-    if (this.readyData(dt)) { ensureLineFx(W.scene); this.cast(); }
+    if (this.readyData(dt)) { ensureGroupA(); this.cast(); }
   }
 
   private cast() {
@@ -100,39 +101,32 @@ class Thunder extends DataSpell {
     });
   }
 
-  /** Удар молнии: телеграф (сходящееся кольцо) → вспышка, урон, выжженное пятно */
+  /** Удар молнии: короткая задержка (серия) → вспышка, урон. Без телеграфа-кольца. */
   private strike(x: number, y: number, R: number, dmg: number, delay: number, mode: 'plain' | 'expand' | 'judg') {
     const tint = this.color;
-    this.fx.spawn(LF.ring, { x, y, w: R * 2.6, w1: R * 0.8, a0: 0.15, a1: 0.6, life: TELE, delay, tint });
     this.later.add(delay + TELE, () => this.hit(x, y, R, dmg, mode, tint));
   }
 
   private hit(x: number, y: number, R: number, dmg: number, mode: 'plain' | 'expand' | 'judg', tint: number) {
     const src = this.def.id;
     const big = mode === 'judg';
-    // молния с неба: ветвистая штриховая, от верхнего края экрана до точки удара (низ картинки — в точке)
+    // одна белая ломаная молния от верхнего края экрана до точки удара (низ картинки — в точке)
     const k = Math.min(2, Math.max(0.8, R / R0)) * (big ? 1.6 : 1);
     const top = W.scene.cameras.main.worldView.y;
     const h = Math.max(8 * MAGE_H, y - top + 20);
-    const bw = SKY_W * k * Math.min(1.6, h / (LF_SIZE.sky[1] * 0.66));
+    const bw = SKY_W * k;
     const f0 = (Math.random() * 3) | 0, f1 = (f0 + 1 + ((Math.random() * 2) | 0)) % 3;
-    const rot = (Math.random() - 0.5) * 0.1;
-    // два кадра подряд — молния «дрожит» и перерисовывается
-    this.fx.spawn(LF.sky[f0], { x, y, w: bw, h, ox: 0.5, oy: 1, life: 0.09, a0: 1, a1: 0.7, tint, rot });
-    this.fx.spawn(LF.sky[f1], { x, y, w: bw, h, ox: 0.5, oy: 1, life: 0.2, delay: 0.07, a0: 1, a1: 0, hold: true, tint, rot: -rot });
-    // разряд на земле: белая вспышка, звезда тонких лучей, штриховое кольцо, выжженные трещины
-    this.fx.spawn(LF.glow, { x, y, w: R * 1.2, w1: R * 2.2, life: 0.18, a0: 0.9, a1: 0, tint });
-    this.fx.spawn(LF.spark, { x, y, w: R * 1.1, w1: R * 2.6, life: 0.28, a0: 1, a1: 0, tint, rot: Math.random() * 6.28 });
-    this.fx.spawn(LF.ring, { x, y, w: R * 0.8, w1: R * 2.3, life: 0.3, a0: 0.9, a1: 0, tint });
-    this.fx.spawn(LF.scorch, { x, y, w: R * 2.2, life: 1.3, a0: 0.8, a1: 0, hold: true, add: false, depth: DEPTH.zone, rot: Math.random() * 6.28 });
-    W.fx.sparks(x, y, big ? 8 : 4, tint, 110);
+    // два кадра подряд — молния «дрожит» (мерцание 2 кадра)
+    this.fx.spawn(GA.sky[f0], { x, y, w: bw, h, ox: 0.5, oy: 1, life: 0.08, a0: 1, a1: 1, tint });
+    this.fx.spawn(GA.sky[f1], { x, y, w: bw, h, ox: 0.5, oy: 1, life: 0.16, delay: 0.08, a0: 1, a1: 0, hold: true, tint });
+    // короткая вспышка-клякса на земле
+    this.fx.spawn(GA.splat[(Math.random() * 2) | 0], { x, y, w: R * 2.4, life: 0.24, a0: 1, a1: 0, tint, rot: Math.random() * 6.28 });
 
     if (mode === 'expand') {
       // 3 тика: R → 1.5R → 2R, каждый бьёт только новых
       areaDamage(x, y, R, dmg, 40, src);
       this.later.add(0.1, () => ringDamage(x, y, R, R * 1.5, dmg, 40, src));
       this.later.add(0.2, () => ringDamage(x, y, R * 1.5, R * 2, dmg, 40, src));
-      this.fx.spawn(LF.ring, { x, y, w: R * 2, w1: R * 4.4, life: 0.32, a0: 0.9, a1: 0, tint });
       return;
     }
     areaDamage(x, y, R, dmg, 40, src);
@@ -141,11 +135,9 @@ class Thunder extends DataSpell {
       if (this.hasCombo(52)) {
         // 52 Астрапе: ударная волна — половина урона и оглушение вокруг
         ringDamage(x, y, R, R * 3, dmg * 0.5, 120, src, (e) => W.enemies.stun(e, 1.5));
-        this.fx.spawn(LF.ring, { x, y, w: R * 2, w1: R * 6.6, life: 0.4, a0: 1, a1: 0, tint: 0xfff4d0 });
       } else {
         // Суд: враги рядом с местом удара получают половину урона
         ringDamage(x, y, R, R * 2, dmg * 0.5, 60, src);
-        this.fx.spawn(LF.ring, { x, y, w: R * 2, w1: R * 4.4, life: 0.3, a0: 0.8, a1: 0, tint });
       }
     }
   }

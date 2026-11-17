@@ -5,15 +5,15 @@ import type { Enemy } from '../../Enemies';
 import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
+import { GB_FLAME, GB_FLAME_W, ensureGroupBTextures } from './_groupB';
 import { HitGate, ImgPool, faceAngle } from './_zoneKit';
 
-/** fx_incinerate_flame: язык головой вправо, ширина ≈167 px; fx_incinerate_blue: вертикальный, остриё вверх (+π/2) */
-const RED = 'fx_incinerate_flame', RED_W = 167;
-const BLUE = 'fx_incinerate_blue', BLUE_H = 200;
+/** Мультяшные языки пламени (штрихи и кляксы, кремово-оранжевые) из _groupB.ts; остриё вправо. «Синее» пламя — тот же язык с холодным тинтом. */
+const COOL = 0xbfd8ff, WARM = 0xfff2e0;
 
 interface Tongue {
   x: number; y: number; vx: number; vy: number; t: number; life: number; delay: number;
-  r: number; blue: boolean; img: Phaser.GameObjects.Image | null;
+  r: number; blue: boolean; v: number; img: Phaser.GameObjects.Image | null;
 }
 interface Spot { x: number; y: number; delay: number; left: number }
 
@@ -58,6 +58,7 @@ class Incinerate extends DataSpell {
   private get rampSize(): number { return 1 + 0.5 * this.ramp; }
 
   update(dt: number) {
+    ensureGroupBTextures();
     this.clock += dt;
     if (this.readyData(dt)) this.cast();
 
@@ -68,7 +69,7 @@ class Incinerate extends DataSpell {
       if (t.delay > 0) {
         t.delay -= dt;
         if (t.delay > 0) continue;
-        t.img = this.pool.get(t.blue ? BLUE : RED, DEPTH.projectile).setAlpha(0);
+        t.img = this.pool.get(GB_FLAME[t.v], DEPTH.projectile, false).setAlpha(0).setTint(t.blue ? COOL : WARM);
         const P = W.player; t.x = P.x; t.y = P.y; // поток идёт от текущего положения мага
       }
       t.t += dt;
@@ -85,8 +86,8 @@ class Incinerate extends DataSpell {
       const a = k < 0.15 ? k / 0.15 : 1 - Math.max(0, (k - 0.55) / 0.45);
       const ang = Math.atan2(t.vy, t.vx);
       const img = t.img!;
-      if (t.blue) img.setRotation(ang + Math.PI / 2).setScale((r * 3) / BLUE_H);
-      else img.setRotation(ang).setScale((r * 2.6) / RED_W);
+      // язык «пляшет»: лёгкое покачивание угла и пульсация длины
+      img.setRotation(ang + Math.sin(t.t * 18 + t.v * 2) * 0.12).setScale(((r * 2.8) / GB_FLAME_W) * (0.92 + 0.12 * Math.sin(t.t * 25 + t.x)));
       img.setPosition(t.x, t.y).setAlpha(a);
       this.cur = t;
       W.enemies.grid.query(t.x, t.y, r, this.onHit);
@@ -99,7 +100,7 @@ class Incinerate extends DataSpell {
       if (s.delay > 0) continue;
       const r = 20 * this.size;
       areaDamage(s.x, s.y, r, dmg, 20, this.def.id);
-      W.fx.burst(s.x, s.y, r, this.ramp > 0.5 ? 0x7ab8ff : 0xff6a2a, 0.3);
+      W.fx.burst(s.x, s.y, r, this.ramp > 0.5 ? 0xbfd8ff : 0xffd9a0, 0.3);
       if (--s.left > 0) { s.delay = 0.2; continue; }
       this.spots[i] = this.spots[this.spots.length - 1]; this.spots.pop();
     }
@@ -137,7 +138,7 @@ class Incinerate extends DataSpell {
         const s = speed * (0.75 + Math.random() * 0.4);
         const t = this.spare.pop() ?? ({} as Tongue);
         t.x = 0; t.y = 0; t.vx = Math.cos(a) * s; t.vy = Math.sin(a) * s;
-        t.t = 0; t.life = life; t.delay = (i / n) * stream + 0.0001; t.r = r; t.blue = blue; t.img = null;
+        t.t = 0; t.life = life; t.delay = (i / n) * stream + 0.0001; t.r = r; t.blue = blue; t.v = (Math.random() * GB_FLAME.length) | 0; t.img = null;
         this.tongues.push(t);
       }
     }
