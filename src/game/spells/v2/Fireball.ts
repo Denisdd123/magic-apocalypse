@@ -223,7 +223,7 @@ class Fireball extends DataSpell {
       step: (b) => {
         while (b.data.acc + TICK <= b.t) {
           b.data.acc += TICK;
-          b.ang += rot;
+          b.ang -= rot;   // Unity rotation.z += (против часовой) = на экране (y вниз) угол уменьшается
           const v = 0.022 * MSPEED * this.speedMul * U;
           b.x += Math.cos(b.ang) * v; b.y += Math.sin(b.ang) * v;
         }
