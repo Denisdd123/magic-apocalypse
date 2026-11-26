@@ -288,6 +288,54 @@ function build() {
   imgTile(g, fl(12), 'база и 542 Уничтожение', 320, 55, 300);
   imgTile(g, fl(20), '543 Рагнарок', 320, 55, 300);
 
+  g = section('ebolt-game', 'Энергопуля — сейчас в игре',
+    'Сгусток летит и тормозит, кадры 01→02→03 по 0.06 с. 497 Возврат: свой цвет. 498 Искра: 4 кадра с миганием. 499 Вспышка: свой сгусток + взрыв 33, 9 × 0.06 с.');
+  const eb = (n: string, c: number) => Array.from({ length: c }, (_, i) => `vfx/ebolt/orig/${n}_${String(i + 1).padStart(2, '0')}.png`);
+  imgTile(g, eb('Incinerate2', 3), 'база', 84, 60);
+  imgTile(g, eb('Incinerate17', 3), '497 Возврат', 84, 60);
+  imgTile(g, eb('Incinerate7', 4), '498 Искра', 140, 150);
+  imgTile(g, eb('Incinerate6', 3), '499 Вспышка', 84, 60);
+  imgTile(g, eb('Explosion33', 9), '499: взрыв, 9 × 0.06 с', 157, 60, 300);
+
+  g = section('eshock-game', 'Электрический удар — сейчас в игре',
+    'Молния из мага, не летит: кадры 01→05 растут, 06→10 рассыпаются, ≈0.57 с. 470 Цепная — те же кадры. 471 — короткая летящая молния + взрыв 124. 472 Сверхпроводимость — двойная, голубая.');
+  const es = (n: string, c: number) => Array.from({ length: c }, (_, i) => `vfx/eshock/orig/${n}_${String(i + 1).padStart(2, '0')}.png`);
+  imgTile(g, es('Incinerate11', 10), 'база и 470 Цепная', 385, 50, 300);
+  imgTile(g, es('Incinerate45', 9), '471 Высокая производительность', 190, 45, 300);
+  imgTile(g, es('Explosion124', 6), '471: взрыв, 0.03 + 5 × 0.045 с', 260, 45, 300);
+  imgTile(g, es('Incinerate16', 11), '472 Сверхпроводимость', 400, 50, 300);
+
+  g = section('thunder-game', 'Молния — сейчас в игре',
+    'Разряд с неба гаснет за 0.27 с, кольцо удара 8 × 0.06 с со случайным поворотом. 416 Гром — разряды B0–B2 и кольцо 38. 417 — бирюзовое кольцо 7. 418 Суд — разряды D0–D5 и кольцо 58.');
+  const th = (n: string, c: number) => Array.from({ length: c }, (_, i) => `vfx/thunder/orig/${n}_${String(i + 1).padStart(2, '0')}.png`);
+  const thb = (n: string, c: number) => Array.from({ length: c }, (_, i) => `vfx/thunder/orig/${n}${i}.png`);
+  imgTile(g, thb('ThunderA', 1), 'разряд базы', 160, 270, 200);
+  imgTile(g, th('Explosion7', 8), 'кольцо удара, 8 × 0.06 с', 204, 60, 300);
+  imgTile(g, thb('ThunderB', 3), '416 Гром: разряды', 160, 120);
+  imgTile(g, th('Explosion38', 8), '416 Гром: кольцо', 120, 60, 300);
+  imgTile(g, thb('ThunderD', 6), '418 Суд: разряд', 200, 80, 200);
+  imgTile(g, th('Explosion58', 7), '418 Суд: кольцо', 280, 60, 300);
+
+  g = section('meteor-game', 'Метеор — сейчас в игре',
+    'Камень падает по диагонали (кадры A1–A3 по 0.04 с), взрыв 10 × 0.06 с: белая вспышка → тёмный дым; тёмный след гаснет 0.6 с. 443 — лавовый кратер. 445 Астероид — камень C. Слияние 35 — камень E почти вертикально.');
+  const mt = (n: string[]) => n.map((x) => `vfx/meteor/orig/${x}.png`);
+  const rng = (p: string, c: number, pad = false) => Array.from({ length: c }, (_, i) => p + (pad ? String(i + 1).padStart(2, '0') : String(i + 1)));
+  imgTile(g, mt(rng('MeteorA', 3)), 'камень базы', 200, 40);
+  imgTile(g, mt(rng('Explosion9_', 10, true)), 'взрыв, 10 × 0.06 с', 237, 60, 300);
+  imgTile(g, mt(['MeteorLand1']), 'след базы (в игре почти чёрный)', 140, 600);
+  imgTile(g, mt(['MeteorLand2A', 'MeteorLand2B', 'MeteorLand2C']), '443 кратер, 0.165 с', 170, 165);
+  imgTile(g, mt(rng('MeteorC', 5)), '445 Астероид', 200, 60);
+  imgTile(g, mt(rng('MeteorE', 5)), 'слияние 35 Великое столкновение', 180, 60);
+  imgTile(g, mt(['MeteorLand3']), 'след 445 / 35', 200, 600);
+
+  g = section('frostnova-game', 'Ледяные иглы — сейчас в игре',
+    'Голубые иглы кольцом из точки, урон в первые 0.06 с, кадры по 0.06 с. 398 Абсолютный ноль, 399 Ледниковый период (3 удара), 400 Землетрясение — свои кадры.');
+  const fn = (n: number, c: number) => Array.from({ length: c }, (_, i) => `vfx/frostnova/orig/Explosion${n}_${String(i + 1).padStart(2, '0')}.png`);
+  imgTile(g, fn(12, 8), 'база', 280, 60, 300);
+  imgTile(g, fn(30, 7), '398 Абсолютный ноль', 280, 60, 300);
+  imgTile(g, fn(35, 8), '399 Ледниковый период', 280, 60, 300);
+  imgTile(g, fn(48, 14), '400 Землетрясение', 300, 60, 300);
+
   g = section('vfx', 'Огненный шар (старая проба)',
     'Шар нарисован слоями по меркам оригинала: красная кайма → золото → бледный → крем, языки-капсулы назад (research/vfx/fireball/ball_draw.py), 6 кадров по 0.06 с. ' +
     'Взрыв — из редактора Effekseer, 9 кадров по 0.06 с; «плавно» — 18 кадров. Размер «в игре»: шар 148×77, взрыв 218 px.');

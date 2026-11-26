@@ -10,45 +10,14 @@ const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 /** Приоритет цели (боссы/эпики UnitID 41–46 ×0.5) */
 const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 
-// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-/** Incinerate11_01..10 (600×200), видимая ширина кадров, px */
-const VIS11 = [34, 112, 290, 468, 564, 439, 399, 244, 147, 79];
-const T = { bolt: 'es_bolt', dots: 'es_dots', short: 'es_short', boom: 'es_boom' };
-
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  const zig = (g: Phaser.GameObjects.Graphics, w: number, h: number, amp: number, step: number) => {
-    const pts: [number, number][] = [[0, h / 2]];
-    for (let x = step; x < w; x += step) pts.push([x, h / 2 + (Math.random() * 2 - 1) * amp]);
-    pts.push([w, h / 2]);
-    for (const [lw, a] of [[12, 0.12], [5, 0.35], [2, 1]] as const) {
-      g.lineStyle(lw, 0xffffff, a);
-      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
-      for (const p of pts) g.lineTo(p[0], p[1]);
-      g.strokePath();
-    }
-  };
-  // тонкая белая зигзаг-молния с мягким свечением (рисуем 300×100 на 600×200)
-  make(T.bolt, 300, 100, (g) => zig(g, 300, 100, 9, 16));
-  // рассыпание в точки (кадры 06–10)
-  make(T.dots, 300, 100, (g) => { g.fillStyle(0xffffff, 1); for (let x = 6; x < 300; x += 14) g.fillCircle(x, 50 + (Math.random() * 2 - 1) * 8, 2); });
-  // Incinerate45 220×100 (рисуем 110×50): короткая толстая молния
-  make(T.short, 110, 50, (g) => zig(g, 110, 50, 8, 11));
-  // Explosion124 512 px (рисуем 128): белое кольцо с шипами
-  make(T.boom, 128, 128, (g) => {
-    g.lineStyle(6, 0xffffff, 0.3); g.strokeCircle(64, 64, 46);
-    g.lineStyle(2, 0xffffff, 1); g.strokeCircle(64, 64, 46);
-    for (let i = 0; i < 12; i++) {
-      const a = i * Math.PI / 6;
-      g.lineBetween(64 + Math.cos(a) * 40, 64 + Math.sin(a) * 40, 64 + Math.cos(a + 0.12) * 58, 64 + Math.sin(a + 0.12) * 58);
-    }
-  });
-}
+// ——— кадры оригинала (холсты Unity целиком, PPU 100: масштаб в игре = localScale × PX на 1 px холста) ———
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+/** Incinerate11 600×200 (база, 470), Incinerate45 220×100 (471), Explosion124 512² (взрыв 471), Incinerate16 848×300 (472) */
+const I11 = seq('Incinerate11', 10), I45 = seq('Incinerate45', 9), EX124 = seq('Explosion124', 6), I16 = seq('Incinerate16', 11);
+const DIR = 'vfx/eshock/orig/';
+export const ESHOCK_LOAD: [string, string][] = [...I11, ...I45, ...EX124, ...I16].map((k): [string, string] => [k, `${DIR}${k}.png`]);
+/** ElectricB: кадр Incinerate16 на шаг (−1 = Sprite_Trans) */
+const FRAMES_B = [0, 1, -1, 2, 3, -1, 4, 5, -1, 6, 7, 8, 9, 10];
 
 /**
  * ElectricA_Animation: [кадр Incinerate11 (−1 = Sprite_Trans), центр коллайдера x, размер x, пауза] (локальные ед. до ×1.2·BulletSize).
@@ -111,7 +80,6 @@ class Eshock extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     const k = this.kind;
     if (!this.co || k !== this.mode) { this.mode = k; this.co = new Co(k === 472 ? this.loopSC() : this.loop()); }
   }
@@ -210,16 +178,11 @@ class Eshock extends DataSpell {
     boxDamage(x, y, sh.ang, hl, sh.hw, sh.dmg, this.def.id, sh.hits);
   }
 
-  /** спрайт отрезка: кадр f (видимая ширина VIS11[f] из 600 px), левый край у начала */
-  private drawA(sh: Shock, f: number, scaleY = 1, texW = 600, vis = VIS11, tint?: number) {
+  /** спрайт отрезка: кадр f (Incinerate11_f+1 целиком), центр спрайта на +2.85 ед. от корня, масштаб s·PX */
+  private drawA(sh: Shock, f: number, tint?: number) {
     if (f < 0) { sh.img.setVisible(false); return; }
-    // корневая длина 5.75 ед. ↔ спрайт 600 px; кадр рисуем по видимой ширине, начало у мага
-    const L = 5.75 * sh.s * U, w = L * vis[f] / texW;
-    const c = Math.cos(sh.ang), s = Math.sin(sh.ang);
-    const startK = f < 5 ? 0 : (texW - vis[f]) / texW; // 01→05 растут от мага, 06→10 рассыпаются к концу
-    const cx = (startK * L + w / 2);
-    sh.img.setVisible(true).setTexture(f < 5 ? T.bolt : T.dots).setPosition(sh.x + c * cx, sh.y + s * cx)
-      .setDisplaySize(Math.max(2, w), 200 * PX * sh.s * scaleY);
+    const c = Math.cos(sh.ang), s = Math.sin(sh.ang), d = 2.85 * sh.s * U;
+    sh.img.setVisible(true).setTexture(I11[f]).setPosition(sh.x + c * d, sh.y + s * d).setScale(sh.s * PX);
     if (tint !== undefined) sh.img.setTint(tint);
   }
 
@@ -231,13 +194,13 @@ class Eshock extends DataSpell {
     const s = 1.2 * bs;
     // старт +0.45 ед. вперёд; Sprite_Electric сдвинут на +2.85 (локальные ед.)
     const ox = px + Math.cos(ang) * 0.45 * U, oy = py + Math.sin(ang) * 0.45 * U;
-    const sh = this.add(ox, oy, ang, s, dmg, 0.22 * s / 2 * U, T.bolt);
+    const sh = this.add(ox, oy, ang, s, dmg, 0.22 * s / 2 * U, I11[0]);
     sh.on = true;
     for (let i = 0; i < STEPS_A.length; i++) {
       const [f, cx, sx, w] = STEPS_A[i];
       if (i === 12) sh.on = false;
       else { sh.a = cx - sx / 2 + 2.85; sh.b = cx + sx / 2 + 2.85; }
-      this.drawA(sh, f, 1, 600, VIS11, tint);
+      this.drawA(sh, f, tint);
       if (i === 6 && chain >= 10) this.link(sh, bs, chain);
       yield w;
     }
@@ -264,29 +227,30 @@ class Eshock extends DataSpell {
     const c = Math.cos(ang), s = Math.sin(ang);
     // корень на 3 ед. позади мага; Sprite_Electric сдвиг +2.85, EndPoint01 x 3.9
     let rx = px - c * 3 * U, ry = py - s * 3 * U;
-    const sh = this.add(rx, ry, ang, S, dmg, 0.35 * S / 2 * U, T.short);
+    const sh = this.add(rx, ry, ang, S, dmg, 0.35 * S / 2 * U, I45[0]);
     sh.on = true;
     const N = (Math.random() * 7) | 0;
-    const set = (cx: number, sx: number, tex: number) => {
+    const d = 2.85 * S * U;
+    const set = (cx: number, sx: number, f: number) => {
       sh.x = rx; sh.y = ry;
       sh.a = cx - sx / 2 + 2.85; sh.b = cx + sx / 2 + 2.85;
-      const mid = (2.85 + cx) * S * U;
-      sh.img.setVisible(tex >= 0).setTexture(T.short).setPosition(rx + c * mid, ry + s * mid)
-        .setDisplaySize(Math.max(2, sx * S * U), 100 * PX * S);
+      sh.img.setVisible(true).setTexture(I45[f]).setPosition(rx + c * d, ry + s * d).setScale(S * PX);
     };
     set(-0.7, 0.3, 0); yield 0.03;
     set(-0.35, 1.0, 1); yield 0.05;
     set(-0.2, 1.25, 2); yield 0.05;
     for (let count = 1; count <= N; count++) {
       rx += c * 0.62 * U; ry += s * 0.62 * U;
-      set(0.05, 2.0, 3); yield 0.05;
+      set(0.05, 2.0, 3 + (count - 1) % 3); yield 0.05;
     }
     const ex = rx + c * 3.9 * S * U, ey = ry + s * 3.9 * S * U;
     this.explode124(ex, ey, dmg);
     sh.on = false;
-    sh.img.setAlpha(0.6); yield 0.03;
-    sh.img.setAlpha(0.35); yield 0.03;
-    sh.img.setAlpha(0.15); yield 0.03;
+    // кадры 07, 08, 09 по 0.03 с (позиция корня — последняя)
+    for (let f = 6; f < 9; f++) {
+      sh.img.setTexture(I45[f]).setPosition(rx + c * d, ry + s * d);
+      yield 0.03;
+    }
     this.remove(sh);
   }
 
@@ -299,24 +263,24 @@ class Eshock extends DataSpell {
       yield 0.015;
       boxDamage(x, y, 0, half, half, dmg, self.def.id, hits);
     })(this));
-    W.fx.puff(x, y, 512 * PX * 1.25, 0xffffff, 0.03 + 5 * 0.045, T.boom, Math.random() * 361 * DEG);
+    const rot = Math.random() * 361 * DEG;
+    W.fx.anim(x, y, EX124, 0.03, 0.045, 1.25 * PX, 1.25 * PX, { hook: (img) => { img.setRotation(rot); } });
   }
 
   /** ElectricB_Animation (472, ID 57): Incinerate16 848×300, тинт (0.7, 0.9, 1), scale (1.22, 1.16)·Size, h 0.55, +0.8 ед., 0.63 с */
   private *superB(px: number, py: number, ang: number): Generator<number, void, unknown> {
     const bs = this.size, sx = 1.22 * bs, sy = 1.16 * bs;
     const c = Math.cos(ang), s = Math.sin(ang);
-    const sh = this.add(px + c * 0.8 * U, py + s * 0.8 * U, ang, sx, this.damage, 0.55 * sy / 2 * U, T.bolt);
+    const sh = this.add(px + c * 0.8 * U, py + s * 0.8 * U, ang, sx, this.damage, 0.55 * sy / 2 * U, I16[0]);
     sh.img.setTint(0xb3e6ff);
     sh.on = true;
     for (let i = 0; i < STEPS_B.length; i++) {
       const [vis, cx, w0, w] = STEPS_B[i];
       if (i === 12) sh.on = false;
       else if (w0 > 0) { sh.a = cx - w0 / 2 + 2.85; sh.b = cx + w0 / 2 + 2.85; }
-      // спрайт — по хит-зоне кадра (видимые ширины Incinerate16 не замерены, кроме 05 = 714 px)
-      const mid = (sh.a + sh.b) / 2 * sx * U, len = (sh.b - sh.a) * sx * U;
-      sh.img.setVisible(vis).setPosition(sh.x + c * mid, sh.y + s * mid).setDisplaySize(Math.max(2, len), 300 * PX * sy)
-        .setAlpha(i >= 12 ? 0.4 : 1);
+      const f = FRAMES_B[i], d = 2.85 * sx * U;
+      sh.img.setVisible(vis && f >= 0);
+      if (f >= 0) sh.img.setTexture(I16[f]).setPosition(sh.x + c * d, sh.y + s * d).setScale(sx * PX, sy * PX);
       yield w;
     }
     this.remove(sh);

@@ -10,52 +10,28 @@ const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 /** мешок мест падения: 3 × 4 ячейки вокруг мага (ед., y вверх); в центре (y = 0) ячеек нет */
 const CELL_X = [-2, 0, 2], CELL_Y = [4.5, 2, -2, -4.5];
 
-// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { rockC: 'mt_rock_c', rock: 'mt_rock', flash: 'mt_flash', smoke: 'mt_smoke', scorch: 'mt_scorch', lava: 'mt_lava', dot: 'mt_dot' };
+// ——— кадры оригинала (холсты Unity, PPU 100: масштаб = localScale × PX на px холста) ———
+const seq = (pre: string, n: number, w = 1) => Array.from({ length: n }, (_, i) => `${pre}${String(i + 1).padStart(w, '0')}`);
+const EXP = seq('mt_Explosion9_', 10, 2);   // Explosion9_01..10 (11–15 пустые)
+const RA = seq('mt_MeteorA', 3), RC = seq('mt_MeteorC', 5), RE = seq('mt_MeteorE', 5);
+const LAND2 = ['mt_MeteorLand2A', 'mt_MeteorLand2B', 'mt_MeteorLand2C'];
+const T = { land1: 'mt_MeteorLand1', land3: 'mt_MeteorLand3', land6: 'mt_MeteorLand6', dot: 'mt_dot' };
+/** [ключ, путь от public] — грузит GameScene.preload */
+export const METEOR_LOAD: [string, string][] = [
+  ...EXP, ...RA, ...RC, ...RE, ...LAND2, T.land1, T.land3, T.land6,
+].map((k): [string, string] => [k, `vfx/meteor/orig/${k.slice(3)}.png`]);
+/** камень: кадры, пауза кадра, поворот (по траектории) */
+interface Rock { fr: string[]; dt: number; rot: 'ang' | 'up' | 0 }
+const ROCK_A: Rock = { fr: RA, dt: 0.04, rot: 'ang' };    // MeteorA_AnimationA 0.04 с
+const ROCK_C: Rock = { fr: RC, dt: 0.06, rot: 0 };        // MeteorC_AnimationA 0.06 с
+const ROCK_E: Rock = { fr: RE, dt: 0.06, rot: 'up' };     // MeteorE_AnimationA 0.06 с (кадр смотрит вниз)
 function textures() {
   const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // MeteorA1 rect 360×200, видимая 274×60 (рисуем 90×50 = ×4): тёмный камень спереди (справа), раскалённый хвост
-  make(T.rock, 90, 50, (g) => {
-    g.fillStyle(0xff7a2a, 0.35); g.fillEllipse(48, 25, 68, 14);
-    g.fillStyle(0xffc060, 0.8); g.fillEllipse(56, 25, 46, 8);
-    g.fillStyle(0x3a1a12, 1); g.fillEllipse(74, 25, 16, 13);
-    g.fillStyle(0xfff0c0, 1); g.fillEllipse(80, 25, 5, 9);
-  });
-  // MeteorC1 видимая 302×324 (рисуем 76×81 = ×4): круглая глыба с раскалённой кромкой
-  make(T.rockC, 76, 81, (g) => {
-    g.fillStyle(0xff7a2a, 0.35); g.fillCircle(38, 40, 37);
-    g.fillStyle(0x4a2418, 1); g.fillCircle(38, 40, 30);
-    g.fillStyle(0xffb050, 1); g.fillCircle(50, 52, 9);
-    g.fillStyle(0x2a120c, 1); g.fillCircle(30, 32, 10);
-  });
-  // Explosion9_01: белая «вата» (rect 400, рисуем 100)
-  make(T.flash, 100, 100, (g) => {
-    for (let i = 0; i < 5; i++) { g.fillStyle(0xffffff, 0.2 + i * 0.16); g.fillCircle(50, 50, 30 - i * 4); }
-    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; g.fillStyle(0xffffff, 0.8); g.fillCircle(50 + Math.cos(a) * 22, 50 + Math.sin(a) * 22, 10); }
-  });
-  // Explosion9_04..10: клубы дыма (тинт тёмно-красный → чёрный)
-  make(T.smoke, 100, 100, (g) => {
-    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; g.fillStyle(0xffffff, 0.9); g.fillCircle(50 + Math.cos(a) * 16, 50 + Math.sin(a) * 14, 13); }
-    g.fillStyle(0xffffff, 1); g.fillCircle(50, 50, 18);
-  });
-  // MeteorLand1 227×118 (рисуем как есть): копоть
-  make(T.scorch, 114, 59, (g) => {
-    g.fillStyle(0xffffff, 0.5); g.fillEllipse(57, 30, 110, 56);
-    g.fillStyle(0xffffff, 1); g.fillEllipse(57, 30, 80, 38);
-  });
-  // MeteorLand2A 419×381 (рисуем 105×95): лавовая лужа — жёлто-оранжевый центр, красная кромка
-  make(T.lava, 105, 95, (g) => {
-    g.fillStyle(0x8a1a10, 0.9); g.fillEllipse(52, 48, 100, 88);
-    g.fillStyle(0xe03a14, 1); g.fillEllipse(52, 48, 84, 72);
-    g.fillStyle(0xff9a20, 1); g.fillEllipse(52, 48, 60, 50);
-    g.fillStyle(0xffe070, 1); g.fillEllipse(52, 48, 34, 28);
-  });
-  make(T.dot, 12, 12, (g) => { g.fillStyle(0xffffff, 0.4); g.fillCircle(6, 6, 6); g.fillStyle(0xffffff, 1); g.fillCircle(6, 6, 3.5); });
+  if (tx.exists(T.dot)) return;
+  // точка шлейфа (TrailRenderer оригинала — свой, точками)
+  const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+  g.fillStyle(0xffffff, 0.4); g.fillCircle(6, 6, 6); g.fillStyle(0xffffff, 1); g.fillCircle(6, 6, 3.5);
+  g.generateTexture(T.dot, 12, 12); g.destroy();
 }
 
 /** Визуальный объект с временной шкалой: step(t) вернул false — убрать */
@@ -190,18 +166,19 @@ class Meteor extends DataSpell {
    * Камень летит от (x, y) − dir·startU, шаг stepU за тик (tick с), nSteps шагов, затем onLand.
    * dir — экранный угол полёта. scale — масштаб спрайта MeteorA (360×200).
    */
-  private fall(x: number, y: number, ang: number, startU: number, stepU: number, nSteps: number, tick: number, scale: number, onLand: () => void, tex: string = T.rock, noTrail = false) {
+  private fall(x: number, y: number, ang: number, startU: number, stepU: number, nSteps: number, tick: number, scale: number, onLand: () => void, rk: Rock = ROCK_A, noTrail = false) {
     const c = Math.cos(ang), s = Math.sin(ang);
-    const rock = this.img(tex, DEPTH.top, true).setRotation(tex === T.rock ? ang : 0).setScale(PX * 4 * scale);
+    const rock = this.img(rk.fr[0], DEPTH.top, false).setRotation(rk.rot === 'ang' ? ang : rk.rot === 'up' ? ang - Math.PI / 2 : 0).setScale(PX * scale);
     let i = 0, acc = 0, trail = 0;
     const place = () => rock.setPosition(x - c * (startU - stepU * i) * U, y - s * (startU - stepU * i) * U);
     place();
     this.addVis(rock, (_v, dt) => {
       acc += dt; trail += dt;
+      rock.setTexture(rk.fr[Math.floor(_v.t / rk.dt) % rk.fr.length]);
       while (acc >= tick && i < nSteps) { acc -= tick; i++; }
       place();
       // TrailRenderer 0.45 с
-      if (!noTrail && trail >= TICK) { trail = 0; W.fx.puff(rock.x, rock.y, 16 * scale * PX * 4, 0xffa040, 0.45, T.dot); }
+      if (!noTrail && trail >= TICK) { trail = 0; W.fx.puff(rock.x, rock.y, 64 * scale * PX, 0xffa040, 0.45, T.dot); }
       if (i >= nSteps) { onLand(); return false; }
       return true;
     });
@@ -212,7 +189,7 @@ class Meteor extends DataSpell {
     const ang = rnd(68, 75) * DEG;
     this.fall(x, y, ang, 20, 0.7015, 26, TICK, 1.25, () => {
       this.explode(x, y, area * pw, this.dmg * pw, EX9);
-      this.scorch(x, y, area * pw * 1.1, 227, 118, 0x1a1a1a);
+      this.scorch(x, y, area * pw * 1.1, T.land1);
     });
   }
 
@@ -231,8 +208,8 @@ class Meteor extends DataSpell {
     const L = Math.hypot(4.88, 9.76);
     this.fall(x, y, ang, L, Math.hypot(0.22, 0.44), 22, TICK, area * 0.38, () => {
       this.explode(x, y, area * pw, this.dmg * pw, EX54);
-      this.scorch(x, y, area * pw * 1.1, 485, 83, 0x333333);
-    }, T.rockC);
+      this.scorch(x, y, area * pw * 1.1, T.land3, 0x333333);
+    }, ROCK_C);
   }
 
   /** 35 (ID 93, MeteorE): поле повёрнуто на 15–21° против часовой, старт +11 ед. по up, 22 × 0.48 ед. */
@@ -244,8 +221,8 @@ class Meteor extends DataSpell {
     this.fall(x, y, ang, 11, 0.48, 22, TICK, (first ? 0.45 : 0) + area * 0.3 + 0.2, () => {
       this.explode(x, y, area * pw, dmg, ex);
       // MeteorLand 6: Size = ApplyExplosionArea·0.38 (0x7360fc), scale = Size·1.45, спрайт MeteorLand03
-      this.scorch(x, y, area * pw * 0.38 * 1.45, 485, 83, 0x333333);
-    }, T.rock, true);   // ExplosionAttack 93: Trail выключен
+      this.scorch(x, y, area * pw * 0.38 * 1.45, T.land3, 0x333333);
+    }, ROCK_E, true);   // ExplosionAttack 93: Trail выключен
   }
 
   /** 5 Военный климат (Com01, ID 25, MeteorD): поток в ±4.6 × ±5.8 ед., пауза PSpeed'·Random(0.2, 1.0) */
@@ -255,7 +232,7 @@ class Meteor extends DataSpell {
       const area = this.area, dmg = this.dmg * (7 / 6);   // данные ×6, код ×7
       this.fall(x, y, rnd(68, 75) * DEG, 20, 0.76, 24, TICK, 1.5, () => {
         this.explode(x, y, area, dmg, EX25);
-        this.scorch(x, y, area * 1.1, 227, 118, 0x1a1a1a);
+        this.scorch(x, y, area * 1.1, T.land1);
       });
       const ps = Math.max(0.02, (this.pSpeed + 2) / (this.count * 0.5 + 23));
       yield ps * rnd(0.2, 1.0);
@@ -274,7 +251,7 @@ class Meteor extends DataSpell {
         const a = (90 - step * j) * DEG;
         const x = cx + 1.84 * row * Math.cos(a) * U, y = cy - 1.84 * row * Math.sin(a) * U;
         this.explode(x, y, A, dmg, EX97);
-        this.scorch(x, y, A * 0.9, 303, 191, 0x8a1010);   // MeteorLand 7 — без урона
+        this.scorch(x, y, A * 0.9, T.land6, 0xffffff, 0xffffff);   // MeteorLand 7 — без урона
       }
       yield 0.2;
     }
@@ -287,40 +264,27 @@ class Meteor extends DataSpell {
     const hl = (ex.cw / 2) * sc * U, hw = (ex.ch / 2) * sc * U;
     const oy = -(ex.cy ?? 0) * sc * U;
     this.after(ex.delay ?? 0, () => boxDamage(x, y + oy, 0, hl, hw, dmg, this.def.id));
-    // вспышка Explosion9_01: видимая ≈440 px × scale
-    const fl = this.img(T.flash, DEPTH.fx, true).setPosition(x, y).setScale((440 / 64) * PX * sc);
-    this.addVis(fl, (v) => { fl.setAlpha(v.t < 0.06 ? 1 : Math.max(0, 1 - (v.t - 0.06) / 0.12)); return v.t < 0.18; });
-    const sm = this.img(T.smoke, DEPTH.fx, false).setPosition(x, y).setAlpha(0);
-    const col0 = Phaser.Display.Color.ValueToColor(0x8a1a10), col1 = Phaser.Display.Color.ValueToColor(0x141010);
-    this.addVis(sm, (v) => {
-      if (v.t < 0.06) return true;
-      const k = Math.min(1, (v.t - 0.06) / 0.54);
-      const c = Phaser.Display.Color.Interpolate.ColorWithColor(col0, col1, 100, k * 100);
-      sm.setTint(Phaser.Display.Color.GetColor(c.r, c.g, c.b)).setAlpha(0.85 * (1 - k * k))
-        .setScale((230 / 58) * PX * sc * (1 + 0.25 * k));
-      return v.t < 0.6;
-    });
+    // Explosion9_01..10 по 0.06 с, localScale = Area·base + plus
+    W.fx.anim(x, y, EXP, 0.06, 0.06, sc * PX);
   }
 
-  /** MeteorLand_DurationA: тинт, alpha 1 − 0.1·i, 10 шагов по 0.06 с; размер спрайта w×h px × scale; без урона */
-  private scorch(x: number, y: number, scale: number, w: number, h: number, tint: number) {
-    const im = this.img(T.scorch, DEPTH.zone, false).setPosition(x, y).setTint(tint)
-      .setScale((w / 114) * PX * scale, (h / 59) * PX * scale);
-    this.addVis(im, (v) => { im.setAlpha(1 - 0.1 * Math.floor(v.t / 0.06)); return v.t < 0.6; });
+  /** MeteorLand_DurationA: тинт (0.1)·, alpha 1 − 0.1·i, 10 шагов по 0.06 с; scale = Size·k × PX на px холста; без урона. tint0 — первый шаг (тип 3/6: 0.2) */
+  private scorch(x: number, y: number, scale: number, tex: string, tint0 = 0x1a1a1a, tint = 0x1a1a1a) {
+    const im = this.img(tex, DEPTH.zone, false).setPosition(x, y).setTint(tint0).setScale(PX * scale);
+    this.addVis(im, (v) => { im.setTint(v.t < 0.06 ? tint0 : tint).setAlpha(1 - 0.1 * Math.floor(v.t / 0.06)); return v.t < 0.6; });
   }
 
   /** MeteorLand тип 2 (443): scale Size·0.5, коллайдер 2.5 × scale, удар в первые 0.165 с каждого периода 0.495 с, живёт VolcanoTime + 0.6 с */
   private crater(x: number, y: number, size: number, dmg: number) {
     const sc = size * 0.5, half = 1.25 * sc * U, life = this.volcanoT;
-    const im = this.img(T.lava, DEPTH.zone, false).setPosition(x, y).setScale((419 / 105) * PX * sc);
+    const im = this.img(LAND2[0], DEPTH.zone, false).setPosition(x, y).setScale(PX * sc);
     const hits = new Set<number>();
     let period = -1;
-    const tints = [0xffffff, 0xffd8b0, 0xffb090];
     this.addVis(im, (v) => {
       if (v.t < life) {
         const p = Math.floor(v.t / 0.495), ph = v.t - p * 0.495;
         if (p !== period) { period = p; hits.clear(); }
-        im.setTint(tints[Math.min(2, Math.floor(ph / 0.165))]);
+        im.setTexture(LAND2[Math.min(2, Math.floor(ph / 0.165))]);
         if (ph < 0.165) boxDamage(x, y, 0, half, half, dmg, this.def.id, hits);
         return true;
       }

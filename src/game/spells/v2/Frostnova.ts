@@ -10,6 +10,14 @@ const BLOSSOM_RANGE = 28;
 /** Землетрясение: ApplyStunTime */
 const STUN = 0.2;
 const T = { ice: 'fn_ice', quake: 'fn_quake' };
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+/** кадры оригинала (холсты Unity: Explosion12/30/35 500², Explosion48 720²) */
+const EX12 = seq('Explosion12', 8), EX30 = seq('Explosion30', 7), EX35 = seq('Explosion35', 8), EX48 = seq('Explosion48', 14);
+/** Для GameScene.preload: [ключ, путь от public] */
+export const FROSTNOVA_LOAD: [string, string][] = [
+  ...[...seq('Explosion12', 8), ...seq('Explosion30', 8), ...seq('Explosion35', 8), ...seq('Explosion48', 14)]
+    .map((k): [string, string] => [k, `vfx/frostnova/orig/${k}.png`]),
+];
 
 function textures() {
   const tx = W.scene.textures;
@@ -95,7 +103,7 @@ class Frostnova extends DataSpell {
         const x = P.x, y = P.y;
         for (let n = 0; n < 3; n++) {
           const k = 1 + 0.5 * n;
-          this.nova(x, y, this.dmg * k, this.area * k, 1.33, 3.3);
+          this.nova(x, y, this.dmg * k, this.area * k, 1.33, 3.3, false, 0, true);
           if (n < 2) yield 0.33;
         }
       } else if (id === 87) {
@@ -112,7 +120,7 @@ class Frostnova extends DataSpell {
   }
 
   /** Взрыв 12/30/35/87: урон + заморозка по квадрату в первом окне */
-  private nova(x: number, y: number, dmg: number, area: number, base: number, coll: number, abs = false, rot = 0) {
+  private nova(x: number, y: number, dmg: number, area: number, base: number, coll: number, abs = false, rot = 0, frames35 = false) {
     const half = (coll * base * area / 2) * U;
     const hitSet = new Set<number>();
     this.boxHit(x, y, rot, half, hitSet, (e) => {
@@ -121,7 +129,17 @@ class Frostnova extends DataSpell {
     });
     // Абсолютный ноль: ещё 0.03 с коллайдер ×1.25 без урона — только заморозка (список задетых тот же)
     if (abs) this.hits.push({ x, y, t: 0, half: half * 1.25, dmg: 0, hits: hitSet, kind: 'abs', done: false });
-    W.fx.puff(x, y, 500 * base * area * PX, 0xffffff, abs ? 0.42 : 0.48, T.ice, rot);
+    const sc = base * area * PX;
+    if (base === 1.45) {
+      // Снежное цветение (слияние, вне беты): прежняя заглушка
+      W.fx.puff(x, y, 500 * base * area * PX, 0xffffff, 0.48, T.ice, rot);
+    } else if (abs) {
+      // Explosion30_Animation: кадр 01 держится оба окна (0.03 + 0.03), далее 02..07 по 0.06 с, 08 не показывается
+      W.fx.anim(x, y, EX30, 0.06, 0.06, sc);
+    } else {
+      // Explosion_Animation: 8 кадров по 0.06 с (12 — основа, 35 — Ледниковый период)
+      W.fx.anim(x, y, frames35 ? EX35 : EX12, 0.06, 0.06, sc);
+    }
   }
 
   /** Землетрясение (48) / Большой разлом (91): оглушение вместо заморозки, коллайдер включён 0.12 с */
@@ -132,7 +150,8 @@ class Frostnova extends DataSpell {
     this.quakeHit(h);
     this.hits.push(h);
     // картинка: Explosion48 720 px × 0.875 × Area; Explosion91 — размер кадров не разобран (заглушка по коллайдеру)
-    W.fx.puff(x, y, rift ? half * 2.2 : 720 * scale * this.area * PX, 0xffffff, rift ? 1.4 : 0.9, T.quake);
+    if (rift) W.fx.puff(x, y, half * 2.2, 0xffffff, 1.4, T.quake);
+    else W.fx.anim(x, y, EX48, 0.06, 0.06, scale * this.area * PX);   // Explosion48_Animation: 14 кадров по 0.06 с
   }
 
   private quakeHit(h: Hit) {

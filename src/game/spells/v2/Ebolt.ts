@@ -1,5 +1,3 @@
-import Phaser from 'phaser';
-import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
@@ -17,42 +15,18 @@ const TK = 0.03;
 const CHILD = 0.6;
 const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 
-// ——— заглушки по меркам спрайтов (рисуем с Денисом позже): px спрайта оригинала / ширина текстуры ———
-const T = { orb: 'eb_orb', spark: 'eb_spark', flare: 'eb_flare', boom: 'eb_boom' };
-const PXS: Record<string, number> = { eb_orb: 256 / 64, eb_spark: 356 / 64, eb_flare: 245 / 64, eb_boom: 277 / 64 };
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // Incinerate2 (сгусток): белое ядро в мягком ореоле
-  make(T.orb, 64, 64, (g) => {
-    for (let i = 0; i < 5; i++) { g.fillStyle(0xdfe8ff, 0.08 + i * 0.06); g.fillCircle(32, 32, 30 - i * 4); }
-    g.fillStyle(0xffffff, 1); g.fillCircle(32, 32, 9);
-  });
-  // Incinerate7 (искра): звёздочка
-  make(T.spark, 64, 64, (g) => {
-    g.fillStyle(0xbfe0ff, 0.3); g.fillCircle(32, 32, 16);
-    g.fillStyle(0xffffff, 1);
-    g.fillTriangle(32, 6, 36, 32, 28, 32); g.fillTriangle(32, 58, 36, 32, 28, 32);
-    g.fillTriangle(6, 32, 32, 28, 32, 36); g.fillTriangle(58, 32, 32, 28, 32, 36);
-  });
-  // Incinerate6 (вспышка): тёплый сгусток
-  make(T.flare, 64, 64, (g) => {
-    for (let i = 0; i < 5; i++) { g.fillStyle(0xffd8b0, 0.08 + i * 0.06); g.fillCircle(32, 32, 30 - i * 4); }
-    g.fillStyle(0xffffff, 1); g.fillCircle(32, 32, 10);
-  });
-  // Explosion33: светлое кольцо
-  make(T.boom, 64, 64, (g) => {
-    g.fillStyle(0xffffff, 0.25); g.fillCircle(32, 32, 30);
-    g.lineStyle(4, 0xffffff, 0.9); g.strokeCircle(32, 32, 24);
-    g.fillStyle(0xffffff, 0.8); g.fillCircle(32, 32, 10);
-  });
-}
-
 type Mode = 'a' | 'back' | 'spark' | 'flare' | 'c3' | 'c9' | 'c29';
+
+// ——— кадры оригинала (холсты Unity: Incinerate2/17 256², Incinerate7 460², Incinerate6 256², Explosion33 300²; PPU 100) ———
+const O = 'vfx/ebolt/orig/';
+const seq = (pre: string, n: number, k = 'eb_') => Array.from({ length: n }, (_, i) => `${k}${pre}_${String(i + 1).padStart(2, '0')}`);
+const ORB = seq('Incinerate2', 3), BACK = seq('Incinerate17', 3), SPARK = seq('Incinerate7', 4), FLARE = seq('Incinerate6', 3), BOOM = seq('Explosion33', 9);
+/** список загрузки (GameScene.preload): [ключ, путь от public] */
+export const EBOLT_LOAD: [string, string][] = [
+  ...[ORB, BACK, SPARK, FLARE, BOOM].flat().map((k): [string, string] => [k, `${O}${k.slice(3)}.png`]),
+];
+/** кадры пули по режиму (спрайт Sprite_Bullet01..03 / 01..04) */
+const FRAMES: Record<Mode, string[]> = { a: ORB, back: BACK, spark: SPARK, flare: FLARE, c3: ORB, c9: ORB, c29: FLARE };
 
 /**
  * #16 Энергетическая пуля — 1:1 по коду оригинала (docs/orig/spells/ebolt.md, карточка tasks/ebolt.md):
@@ -68,8 +42,6 @@ type Mode = 'a' | 'back' | 'spark' | 'flare' | 'c3' | 'c9' | 'c29';
 class Ebolt extends DataSpell {
   private co: Co | null = null;
   private bullets = new OrigBullets();
-  private fx: { img: Phaser.GameObjects.Image; t: number; life: number }[] = [];
-  private pool: Phaser.GameObjects.Image[] = [];
 
   private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
   private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 3.3) * this.cdGlobal); }
@@ -80,27 +52,18 @@ class Ebolt extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     if (!this.co) this.co = new Co(this.loop());
   }
 
   destroy() {
     this.bullets.destroy();
-    for (const f of this.fx) f.img.destroy();
-    for (const i of this.pool) i.destroy();
-    this.fx = []; this.pool = []; this.co = null;
+    this.co = null;
   }
 
   update(dt: number) {
     if (!this.co) this.onChange();
     this.co!.update(dt);
     this.bullets.update(dt);
-    for (let i = this.fx.length - 1; i >= 0; i--) {
-      const f = this.fx[i];
-      f.t += dt;
-      f.img.setAlpha(Math.max(0, 1 - f.t / f.life));
-      if (f.t >= f.life) { f.img.setVisible(false); this.pool.push(f.img); this.fx[i] = this.fx[this.fx.length - 1]; this.fx.pop(); }
-    }
   }
 
   // ———— корутины ————
@@ -147,19 +110,19 @@ class Ebolt extends DataSpell {
   /** Bullet_Create + BulletAttack (кейсы 16 / 66 / 36 / 33 / 20 / 28 / 89) */
   private fire(mode: Mode, ang: number, child?: { x: number; y: number; size: number; speed: number }) {
     const P = W.player, S = this.size;
-    let size = S, speed = this.mSpeed, tex = T.orb, root = 0.575, coll = 1.45, val = 0.905, tint = 0xffffff;
+    let size = S, speed = this.mSpeed, root = 0.575, coll = 1.45, val = 0.905, tint = 0xffffff;
     let time = this.time * rnd(0.8, 1.1), area = 1, x = P.x, y = P.y, wait = 0;
     switch (mode) {
-      case 'back': time = this.time * rnd(0.7, 1.0); tint = 0xd8f0ff; break;
-      case 'spark': tex = T.spark; root = 0.522; coll = 1.6; tint = 0xd0e4ff; break;
-      case 'flare': { const k = rnd(0.5, 1.0); size = S * k; area = k; speed *= rnd(0.75, 1.35); tex = T.flare; break; }
+      case 'back': time = this.time * rnd(0.7, 1.0); break;
+      case 'spark': root = 0.522; coll = 1.6; break;
+      case 'flare': { const k = rnd(0.5, 1.0); size = S * k; area = k; speed *= rnd(0.75, 1.35); break; }
       case 'c3': {
         size = S * rnd(0.45, 0.85); speed *= rnd(0.65, 0.7); val = 0.985;
         const off = rnd(-0.5, 0.5) * U; x += -Math.sin(ang) * off; y += Math.cos(ang) * off; break;
       }
       case 'c9': root = 0.85 / CHILD; coll = 1.2; val = 0.96; area = rnd(0.7, 1.0); tint = 0xc8b0ff; break;
       case 'c29': {
-        size = S * rnd(0.5, 1.0); time = this.time * rnd(0.5, 1.5); tex = T.flare; tint = 0xfff0c0;
+        size = S * rnd(0.5, 1.0); time = this.time * rnd(0.5, 1.5); tint = 0xfff0c0;
         const off = rnd(0.25, 4.5) * U; x += Math.cos(ang) * off; y += Math.sin(ang) * off; wait = rnd(0.03, 0.4); break;
       }
     }
@@ -173,9 +136,10 @@ class Ebolt extends DataSpell {
     const fadeN = mode === 'spark' ? 3 : 4, fadeA = mode === 'spark' ? 0.25 : 0.2;
     this.bullets.fire({
       x, y, ang, sp: 0, life: mode === 'c29' ? wait + time + fadeN * TK : 99, // остальные гаснут сами (фаза 2)
-      tex, scaleX: sc * PXS[tex], tint,
+      // Sprite_Bullet03 стоит до начала цикла кадров; холст в px оригинала → масштаб = мировой scale
+      tex: FRAMES[mode][FRAMES[mode].length - 1], scaleX: sc, tint, normal: true,
       hl: 0, hw: half, pierce: 999, dmg, src: this.def.id,
-      data: { acc: 0, n: 0, ratio: 1, up: 0.05, phase: 0, m: 0, half, turnT: 0, speed, val, time, wait, boomT: 0, boomN: 0, area },
+      data: { acc: 0, n: 0, fn: 0, ratio: 1, up: 0.05, phase: 0, m: 0, half, turnT: 0, speed, val, time, wait, boomT: 0, boomN: 0, area },
       step: (b) => this.move(b, mode, fadeN, fadeA),
       onEnd: (b) => {
         if (mode === 'flare' || mode === 'c29') this.explode(b.x, b.y, b.dmg * 2, b.data.area);
@@ -222,9 +186,16 @@ class Ebolt extends DataSpell {
         b.img.setAlpha(Math.max(0, 1 - fadeA * d.m));
         if (d.m >= fadeN) { b.life = 0; return; }
       }
+      // смена кадров по ApplyTimeNum (:102): 0→01, 2→02, 4→03 и сброс (период 5 тиков); фазы «вперёд» и «разворот», со 4-го тика
+      if (mode !== 'spark' && d.phase < 2 && d.n > 3) {
+        const fr = FRAMES[mode], k = d.fn;
+        if (k === 0) b.img.setTexture(fr[0]); else if (k === 2) b.img.setTexture(fr[1]); else if (k === 4) b.img.setTexture(fr[2]);
+        d.fn = k === 4 ? 0 : k + 1;
+      }
       // 498 Искра: цикл 19 тиков (мигание), сброс списка попаданий на n=8 и n=18
       if (mode === 'spark' && d.phase === 0) {
         const c = (d.n - 1) % 19;
+        b.img.setTexture(c < 5 ? SPARK[0] : c < 10 ? SPARK[1] : c < 15 ? SPARK[2] : SPARK[3]);
         b.img.setVisible(!(c >= 3 && c < 5) && !(c >= 8 && c < 10) && !(c >= 13 && c < 15) && c !== 18);
         if (c === 8 || c === 18) b.hits.clear();
       }
@@ -236,13 +207,11 @@ class Ebolt extends DataSpell {
     }
   }
 
-  /** взрыв ID 33 / 89 / 28: квадрат 1.35·Area ед., урон в 1-й кадр; картинка 157·Area px, 9 кадров × 0.06 с */
+  /** взрыв ID 33 / 89 / 28: квадрат 1.35·Area ед., урон в 1-й кадр; Explosion33_01..09 по 0.06 с, localScale = Area (холст 300 px) */
   private explode(x: number, y: number, dmg: number, area: number) {
     const half = (1.35 * area / 2) * U;
     boxDamage(x, y, 0, half, half, dmg, this.def.id);
-    const img = (this.pool.pop() ?? W.scene.add.image(0, 0, T.boom)).setTexture(T.boom).setVisible(true).setPosition(x, y)
-      .setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setScale((157 * area * PX) / 64).setAlpha(1);
-    this.fx.push({ img, t: 0, life: 9 * 0.06 });
+    W.fx.anim(x, y, BOOM, 0.06, 0.06, area * PX);
   }
 }
 

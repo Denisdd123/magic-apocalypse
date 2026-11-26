@@ -1,5 +1,5 @@
-import Phaser from 'phaser';
 import { SPELL_BY_ID } from '../../../data/spells_data';
+import type Phaser from 'phaser';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { boxDamage, Co, PX, TICK, U } from './_orig';
@@ -10,47 +10,21 @@ const RANGE = 23;
 const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 const DEG = Math.PI / 180;
 
-// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { bolt: 'th_bolt', ring: 'th_ring', b38: 'th_b38', judg: 'th_judg' };
+// ——— кадры оригинала (холсты Unity: ThunderA/B 256×1024, ThunderD 512×1024, Explosion7 512², Explosion38 240×308, Explosion58 700²) ———
+const O = 'vfx/thunder/orig/';
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+const A0 = 'ThunderA0', B_BOLT = ['ThunderB0', 'ThunderB1', 'ThunderB2'], D_BOLT = Array.from({ length: 6 }, (_, i) => `ThunderD${i}`);
+const EX7 = seq('Explosion7', 8), EX38 = seq('Explosion38', 8), EX58 = seq('Explosion58', 7);
+/** список загрузки (GameScene.preload): [ключ, путь] */
+export const THUNDER_LOAD: [string, string][] = [
+  A0, ...B_BOLT, ...D_BOLT, ...EX7, ...EX38, ...EX58,
+].map((k): [string, string] => [k, `${O}${k}.png`]);
 
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // ThunderA0 256×1024 × (1.1, 1.4) → пропорция 0.196: рисуем 100×512, белая ломаная сверху вниз
-  make(T.bolt, 100, 512, (g) => {
-    const pts: [number, number][] = [[50, 0]];
-    for (let y = 28; y < 512; y += 28) pts.push([50 + (Math.random() * 2 - 1) * 22, y]);
-    pts.push([50, 512]);
-    for (const [w, a] of [[14, 0.12], [6, 0.35], [2.5, 1]] as const) {
-      g.lineStyle(w, 0xffffff, a);
-      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
-      for (const p of pts) g.lineTo(p[0], p[1]);
-      g.strokePath();
-    }
-  });
-  // Explosion7 512 px (рисуем 128): белое кольцо с мягкой кромкой
-  make(T.ring, 128, 128, (g) => {
-    g.lineStyle(10, 0xffffff, 0.15); g.strokeCircle(64, 64, 52);
-    g.lineStyle(5, 0xffffff, 0.4); g.strokeCircle(64, 64, 52);
-    g.lineStyle(2, 0xffffff, 1); g.strokeCircle(64, 64, 52);
-    g.fillStyle(0xffffff, 0.25); g.fillCircle(64, 64, 22);
-  });
-  // Explosion38 240×308 (рисуем 60×77): вытянутое белое пятно
-  make(T.b38, 60, 77, (g) => {
-    g.fillStyle(0xffffff, 0.18); g.fillEllipse(30, 38.5, 58, 75);
-    g.fillStyle(0xffffff, 0.45); g.fillEllipse(30, 42, 36, 46);
-    g.fillStyle(0xffffff, 1); g.fillEllipse(30, 46, 16, 20);
-  });
-  // Explosion58 700 px (рисуем 128): широкое кольцо Суда
-  make(T.judg, 128, 128, (g) => {
-    for (let i = 0; i < 5; i++) { g.lineStyle(14 - i * 3, 0xffffff, 0.1 + i * 0.18); g.strokeCircle(64, 64, 56); }
-    g.fillStyle(0xffffff, 0.3); g.fillCircle(64, 64, 30);
-  });
-}
+/** Explosion58_AnimationA: сетка 0.03 с; кадры 01×2, пусто, 02×2, 03×2, пусто, 04×2, 05×2, пусто, 06×2, 07×2 (0 = пустой спрайт) */
+const EX58_SEQ = [0, 0, -1, 1, 1, 2, 2, -1, 3, 3, 4, 4, -1, 5, 5, 6, 6];
+const EX58_FR = EX58_SEQ.map((i) => EX58[Math.max(0, i)]);
+/** ThunderD_AnimationA: [кадр D (-1 пусто), пауза с] */
+const D_SEQ: [number, number][] = [[0, 0.08], [-1, 0.03], [1, 0.08], [2, 0.08], [-1, 0.03], [3, 0.08], [4, 0.08], [5, 0.08]];
 
 /** Взрыв с окнами урона: [конец окна (с), половина стороны квадрата, урон]; список задетых общий на все окна */
 interface Boom { x: number; y: number; t: number; hits: Set<number>; win: [number, number, number][]; i: number }
@@ -81,7 +55,6 @@ class Thunder extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     const k = this.kind;
     if (!this.co || k !== this.mode) { this.mode = k; this.co = new Co(k === 417 ? this.loopC() : this.loopA()); }
   }
@@ -142,16 +115,16 @@ class Thunder extends DataSpell {
   private strike(x: number, y: number) {
     const s = 0.35 * this.area() + 0.35;
     this.addBoom(x, y, [[0.06, 1.5 * s / 2 * U, this.dmg]]);
-    this.bolt(x, y, 1);
-    W.fx.puff(x, y, 512 * PX * s, 0xffffff, 8 * 0.06, T.ring, Math.random() * 361 * DEG);
+    this.bolt(x, y, 'A');
+    this.ring(x, y, EX7, 0.06, s * PX);
   }
 
   /** ID 38 (Гром): квадрат 0.9 × 0.88·Area; Spec01 > 0 — через 4 тика следующий удар рядом (±0.6 ед.) */
   private clap(x: number, y: number, spec: number) {
     const s = 0.88 * this.area();
     this.addBoom(x, y, [[0.06, 0.9 * s / 2 * U, this.dmg]]);
-    this.bolt(x, y, 1);
-    W.fx.puff(x, y, 308 * PX * s, 0xffffff, 8 * 0.06, T.b38);
+    this.bolt(x, y, 'B');
+    W.fx.anim(x, y, EX38, 0.06, 0.06, s * PX);
     if (spec > 0) {
       const nx = x + (Math.random() * 1.2 - 0.6) * U, ny = y + (Math.random() * 1.2 - 0.6) * U;
       this.later(4 * TICK, () => this.clap(nx, ny, spec - 1));
@@ -162,8 +135,9 @@ class Thunder extends DataSpell {
   private blast(x: number, y: number) {
     const s = 0.45 * this.area() + 0.75;
     this.addBoom(x, y, [[0.03, 2.25 * s / 2 * U, this.dmg]]);
-    this.bolt(x, y, 1);
-    W.fx.puff(x, y, 512 * PX * s, 0xffffff, 0.03 + 7 * 0.05, T.ring, Math.random() * 361 * DEG);
+    this.bolt(x, y, 'C');
+    // кадры Explosion7_01..08 (Explosion41_Animation берёт SpriteList_ExplosionNN[7]): 0.03 + 7×0.05 с, 1-й кадр белый, дальше (0, 1, 0.9)
+    this.ring(x, y, EX7, 0.05, s * PX, 0.03, (img, n) => { if (n >= 1) img.setTint(0x00ffe6); else img.clearTint(); });
   }
 
   /** ID 58 (Суд): k = 0.4·(Area − 1) + 1; квадрат 1.65·k (полный урон 0.03 с), затем ×2 и урон ×0.5 ещё 0.03 с */
@@ -172,13 +146,58 @@ class Thunder extends DataSpell {
     const k = 0.4 * (area - 1) + 1, s = 1.25 * k;
     const half = 1.65 * k / 2 * U;
     this.addBoom(x, y, [[0.03, half, this.dmg], [0.06, half * 2, this.dmg * 0.5]]);
-    this.bolt(x, y, 1);
-    W.fx.puff(x, y, 700 * PX * s, 0xffffd9, 7 * 0.05, T.judg);
+    this.bolt(x, y, 'D');
+    // Explosion58_AnimationA: цвет (1, 1, 0.85), сетка 0.03 с с пустыми кадрами
+    const sc = s * PX;
+    W.fx.anim(x, y, EX58_FR, 0.03, 0.03, sc, sc, {
+      hook: (img, t) => {
+        const n = Math.min(EX58_SEQ.length - 1, t < 0.03 ? 0 : 1 + Math.floor((t - 0.03) / 0.03));
+        img.setTint(0xffffd9).setAlpha(EX58_SEQ[n] < 0 ? 0 : 1);
+      },
+    });
   }
 
-  /** разряд с неба: спрайт 160×814 px (× k), центр на 7.2 ед. выше цели, 9 тиков α 1 → 0.04 */
-  private bolt(x: number, y: number, k: number) {
-    W.fx.puff(x, y - 7.2 * U, 1024 * 1.4 * PX * k, 0xffffff, 9 * TICK, T.bolt);
+  /** кольцо Explosion7 (1-й кадр dt0, остальные dt), случайный поворот 0..360 (Euler z = Random.Range(0, 361)) */
+  private ring(x: number, y: number, fr: string[], dt: number, sc: number, dt0 = dt, tint?: (img: Phaser.GameObjects.Image, n: number) => void) {
+    const rot = Math.random() * 361 * DEG;
+    W.fx.anim(x, y, fr, dt0, dt, sc, sc, { hook: (img, _t, n) => { img.setRotation(rot); tint?.(img, n); } });
+  }
+
+  /** разряд с неба: Sprite_Thunder pos (0, 7.2 ед.), scale (1.1, 1.4); альфа по тикам 0.03 с.
+   *  A — ThunderA0, α 1 − 0.12·i (9 тиков); B (416) — ThunderB0..2 случайный, α 1 − 0.15·i (4 тика), затем 0.4 − 0.1·i (4 тика);
+   *  C (417) — ThunderA0, 1-й тик белый α 1, затем (0, 1, 0.9) α 1 − 0.125·i, i = 1..7; D (418) — ThunderD0..5 по ThunderD_AnimationA */
+  private bolt(x: number, y: number, kind: 'A' | 'B' | 'C' | 'D') {
+    const by = y - 7.2 * U, sx = 1.1 * PX, sy = 1.4 * PX;
+    const fx = W.fx;
+    if (kind === 'D') {
+      // сетка 0.01 с не нужна: паузы кратны 0.01 — разворачиваем в таблицу кадров по времени
+      const keys: string[] = [], T: number[] = [];
+      let t = 0;
+      for (const [f, w] of D_SEQ) { keys.push(f < 0 ? D_BOLT[0] : D_BOLT[f]); T.push(f < 0 ? -1 : t); t += w; }
+      const ends: number[] = []; t = 0; for (const [, w] of D_SEQ) { t += w; ends.push(t); }
+      fx.anim(x, by, keys, 0.06, 0.06, sx, sy, {
+        last: 0.12,
+        hook: (img, tt) => {
+          let i = ends.findIndex((e) => tt < e - 1e-9); if (i < 0) i = ends.length - 1;
+          img.setTexture(keys[i]).setAlpha(T[i] < 0 ? 0 : 1);
+        },
+      });
+      return;
+    }
+    const tex = kind === 'B' ? B_BOLT[(Math.random() * 3) | 0] : A0;
+    const n = kind === 'A' ? 9 : 8;
+    fx.anim(x, by, [tex], n * TICK, n * TICK, sx, sy, {
+      last: n * TICK,
+      hook: (img, t) => {
+        const i = Math.min(n - 1, Math.floor(t / TICK + 1e-6));
+        let a: number;
+        if (kind === 'A') a = 1 - 0.12 * i;
+        else if (kind === 'B') a = i < 4 ? 1 - 0.15 * i : 0.4 - 0.1 * (i - 4);
+        else a = i === 0 ? 1 : 1 - 0.125 * i;
+        img.setAlpha(a);
+        if (kind === 'C' && i > 0) img.setTint(0x00ffe6); else img.clearTint();
+      },
+    });
   }
 
   private addBoom(x: number, y: number, win: [number, number, number][]) {

@@ -18,6 +18,11 @@ import { CLOAK_LOAD } from './spells/v2/Cloak';
 import { INCINERATE_LOAD } from './spells/v2/Incinerate';
 import { RAY_LOAD } from './spells/v2/Ray';
 import { FLASH_LOAD } from './spells/v2/Flash';
+import { EBOLT_LOAD } from './spells/v2/Ebolt';
+import { ESHOCK_LOAD } from './spells/v2/Eshock';
+import { THUNDER_LOAD } from './spells/v2/Thunder';
+import { METEOR_LOAD } from './spells/v2/Meteor';
+import { FROSTNOVA_LOAD } from './spells/v2/Frostnova';
 
 /** картинки, без которых нельзя начинать бой */
 const CRITICAL = /^v2\/(spell_fx|world|spell_icons|passives)\//;
@@ -76,6 +81,11 @@ export class GameScene extends Phaser.Scene {
     for (const [k, p] of INCINERATE_LOAD) this.load.image(k, p); // Испепеление (vfx/incinerate/orig)
     for (const [k, p] of RAY_LOAD) this.load.image(k, p);       // Магический луч (vfx/ray/orig)
     for (const [k, p] of FLASH_LOAD) this.load.image(k, p);     // Вспышка (vfx/flash/orig)
+    for (const [k, p] of EBOLT_LOAD) this.load.image(k, p);     // Энергопуля (vfx/ebolt/orig)
+    for (const [k, p] of ESHOCK_LOAD) this.load.image(k, p);    // Электрический удар (vfx/eshock/orig)
+    for (const [k, p] of THUNDER_LOAD) this.load.image(k, p);   // Молния (vfx/thunder/orig)
+    for (const [k, p] of METEOR_LOAD) this.load.image(k, p);    // Метеор (vfx/meteor/orig)
+    for (const [k, p] of FROSTNOVA_LOAD) this.load.image(k, p); // Ледяные иглы (vfx/frostnova/orig)
   }
 
   /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */
