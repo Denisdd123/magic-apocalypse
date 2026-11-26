@@ -256,7 +256,7 @@ class Cyclone extends DataSpell {
           break;
         case 'orbit': {
           // центр вращается −1.95° за тик 0.03
-          const a = -1.95 * DEG, c = Math.cos(a), s = Math.sin(a);
+          const a = 1.95 * DEG, c = Math.cos(a), s = Math.sin(a);   // Unity −1.95° (по часовой) = на экране (y вниз) угол растёт
           const ox = w.ox * c - w.oy * s; w.oy = w.ox * s + w.oy * c; w.ox = ox;
           break;
         }
