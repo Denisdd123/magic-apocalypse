@@ -190,7 +190,7 @@ class Meteor extends DataSpell {
    * Камень летит от (x, y) − dir·startU, шаг stepU за тик (tick с), nSteps шагов, затем onLand.
    * dir — экранный угол полёта. scale — масштаб спрайта MeteorA (360×200).
    */
-  private fall(x: number, y: number, ang: number, startU: number, stepU: number, nSteps: number, tick: number, scale: number, onLand: () => void, tex: string = T.rock) {
+  private fall(x: number, y: number, ang: number, startU: number, stepU: number, nSteps: number, tick: number, scale: number, onLand: () => void, tex: string = T.rock, noTrail = false) {
     const c = Math.cos(ang), s = Math.sin(ang);
     const rock = this.img(tex, DEPTH.top, true).setRotation(tex === T.rock ? ang : 0).setScale(PX * 4 * scale);
     let i = 0, acc = 0, trail = 0;
@@ -201,7 +201,7 @@ class Meteor extends DataSpell {
       while (acc >= tick && i < nSteps) { acc -= tick; i++; }
       place();
       // TrailRenderer 0.45 с
-      if (trail >= TICK) { trail = 0; W.fx.puff(rock.x, rock.y, 16 * scale * PX * 4, 0xffa040, 0.45, T.dot); }
+      if (!noTrail && trail >= TICK) { trail = 0; W.fx.puff(rock.x, rock.y, 16 * scale * PX * 4, 0xffa040, 0.45, T.dot); }
       if (i >= nSteps) { onLand(); return false; }
       return true;
     });
@@ -245,7 +245,7 @@ class Meteor extends DataSpell {
       this.explode(x, y, area * pw, dmg, ex);
       // MeteorLand 6: Size = ApplyExplosionArea·0.38 (0x7360fc), scale = Size·1.45, спрайт MeteorLand03
       this.scorch(x, y, area * pw * 0.38 * 1.45, 485, 83, 0x333333);
-    });
+    }, T.rock, true);   // ExplosionAttack 93: Trail выключен
   }
 
   /** 5 Военный климат (Com01, ID 25, MeteorD): поток в ±4.6 × ±5.8 ед., пауза PSpeed'·Random(0.2, 1.0) */
