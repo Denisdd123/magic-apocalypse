@@ -52,7 +52,21 @@ function textures() {
   });
 }
 
-type Kind = 'a' | 'c' | 'b' | 'orbit' | 'neutron' | 'typhoon' | 'super' | 'hole';
+/** кадры оригинала (полные холсты Unity: TornadoA 400², C 600², B0 428² / B1..3 600², H 720², Incinerate15 220×148) */
+const DIR = 'vfx/cyclone/orig/';
+const FA = [1, 2, 3, 4].map((i) => `cy_TornadoA${i}`);
+const FC = [1, 2, 3, 4].map((i) => `cy_TornadoC${i}`);
+const FB = [0, 1, 2, 3].map((i) => `cy_TornadoB${i}`);
+const FH = [1, 2, 3].map((i) => `cy_TornadoH${i}`);
+const FL = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => `cy_Incinerate15_0${i}`);
+export const CYCLONE_LOAD: [string, string][] = [...FA, ...FC, ...FB, ...FH, ...FL]
+  .map((k): [string, string] => [k, `${DIR}${k.slice(3)}.png`]);
+/** ElectricD_Animation: [кадр (-1 пусто), длительность, сдвиг +0.2 ед. на этом шаге] */
+const ELEC: [number, number, number][] = [[0, 0.03, 0], [1, 0.03, 1], [-1, 0.03, 0], [2, 0.06, 1], [3, 0.06, 1],
+  [-1, 0.03, 0], [4, 0.06, 1], [5, 0.05, 1], [6, 0.04, 1], [7, 0.03, 1]];
+const ELEC_T = ELEC.map((_, i) => ELEC.slice(0, i).reduce((s, e) => s + e[1], 0));
+
+type Kind ='a' | 'c' | 'b' | 'orbit' | 'neutron' | 'typhoon' | 'super' | 'hole';
 
 interface Wind {
   kind: Kind; x: number; y: number;
@@ -209,7 +223,7 @@ class Cyclone extends DataSpell {
         tex = T.b; v = 0; grow = 0;
         // 39 (Пустота): точка маг ± (3.8, 5.5); 104 (Чёрная дыра): Bullet_Create case 0x68 — позиция мага
         if (kind === 'b') { x += rnd(-3.8, 3.8) * U; y += rnd(-5.5, 5.5) * U; sc = S * 0.25; coll = 3.75; expand = 0.03; fade = 8; fadeA = 0.09375; }
-        else { sc = S * 0.1 + 0.1; coll = 6; expand = 0.055; life += 1.0; fade = 20; tint = 0x8040c0; }
+        else { sc = S * 0.1 + 0.1; coll = 6; expand = 0.055; life += 1.0; fade = 20; tint = this.hasOrig() ? 0xffffff : 0x8040c0; }
         break;
       case 'orbit': tex = T.b; sc = S * 0.25 + 0.15; coll = 2.35; v = 0; grow = 0; tint = 0xff42ff; break;
       case 'neutron': sc = S * 0.12 + 0.3 + 0.25 * S * (this.num - 1); coll = 5; v = 2.5; grow = 0; tint = 0xffe0a0; break;
@@ -291,7 +305,22 @@ class Cyclone extends DataSpell {
     return true;
   }
 
+  private hasOrig() { return W.scene.textures.exists(FA[0]); }
+
   private draw(w: Wind, a: number) {
+    // кадры оригинала (если загружены): масштаб = localScale × PX на px холста
+    if (this.hasOrig() && (w.kind === 'a' || w.kind === 'c' || w.kind === 'b' || w.kind === 'hole')) {
+      let f: string;
+      if (w.kind === 'a') f = FA[((w.n % 4) + 4) % 4];                           // AnimationA: 01..04 по тику
+      else if (w.kind === 'c') {                                                 // AnimationC: 0→01, 7→02, 14→03, 21(и −6..−1)→04
+        const c = ((w.n % 28) + 28) % 28;
+        f = FC[c >= 21 ? 3 : c >= 14 ? 2 : c >= 7 ? 1 : 0];
+      } else if (w.kind === 'b') {                                               // AnimationB: 00 на 0.09 с, затем период 5 тиков: 01 01 02 01 03
+        f = w.t < 0.09 ? FB[0] : FB[[1, 1, 2, 1, 3][Math.floor((w.t - 0.09) / TC) % 5]];
+      } else f = FH[[0, 0, 1, 1, 2][Math.floor(w.t / TC) % 5]];                  // AnimationH: 0→01, 2→02, 4→03, период 5 тиков
+      w.img.setTexture(f).setPosition(w.x, w.y).setScale(PX * w.sc).setRotation(w.h).setAlpha(Math.max(0, a));
+      return;
+    }
     const [px, tw] = PXS[w.tex];
     let k = 1;
     if (w.kind === 'c') { const f = ((w.n % 28) + 28) % 28; k = f >= 21 || f < 0 ? 1.22 : 1; }
@@ -305,19 +334,35 @@ class Cyclone extends DataSpell {
     for (let j = 0; j < 2; j++) {
       const a = Math.random() * Math.PI * 2;
       const L = 2.35 * this.size * w.sc; // ед.
+      const orig = this.hasOrig(), flip = Math.random() < 0.5 ? -1 : 1;
       this.bolts.fire({
-        x: w.x, y: w.y, ang: a, sp: 0, life: 0.42, tex: T.l,
-        scaleX: (L * 100) / PXS[T.l][1] / 1, scaleY: (L * 100 * 0.12) / 12,
+        x: w.x, y: w.y, ang: a, sp: 0, life: 0.42, tex: orig ? FL[0] : T.l,
+        // оригинал: корень scale = L (Size·2.35·масштаб сферы), спрайт 220 px на локальной позиции 0.9, случайный flipY
+        scaleX: orig ? L : (L * 100) / PXS[T.l][1] / 1, scaleY: orig ? L * flip : (L * 100 * 0.12) / 12,
         hl: (L / 2) * U, hw: (L * 0.06) * U, cx: 0, pierce: 999, dmg: w.dmg, src: this.def.id,
-        tint: 0xcfeaff, data: { off: 0 },
+        tint: orig ? undefined : 0xcfeaff, data: { off: 0 },
         step: (b) => {
           // ElectricD: 10 шагов по 0.042 с, сдвиг +0.2 ед. на шаг; коллайдер ≈0.35 с; следует за сферой
           b.data.off = Math.min(10, Math.floor(b.t / 0.042)) * 0.2 * U;
-          b.x = w.x + Math.cos(b.ang) * (b.data.off + (L / 2) * U);
-          b.y = w.y + Math.sin(b.ang) * (b.data.off + (L / 2) * U);
+          const cc = b.data.off + (L / 2) * U;   // центр зоны урона (механика не менялась)
+          if (orig) {
+            // картинка: ElectricD_Animation — шаги/пустые кадры, +0.1 при создании и +0.2 ед. на шаг, центр спрайта 0.9·L от корня
+            let s = 0;
+            while (s < ELEC.length - 1 && b.t >= ELEC_T[s + 1]) s++;
+            let shift = 0.1;
+            for (let i = 0; i <= s; i++) shift += ELEC[i][2] * 0.2;
+            const vc = (shift + 0.9 * L) * U;
+            const fr = ELEC[s][0];
+            b.img.setVisible(fr >= 0);
+            if (fr >= 0) b.img.setTexture(FL[fr]);
+            b.x = w.x + Math.cos(b.ang) * vc; b.y = w.y + Math.sin(b.ang) * vc;
+            b.cx = cc - vc;                      // коллайдер остаётся там же, где был
+          } else {
+            b.x = w.x + Math.cos(b.ang) * cc; b.y = w.y + Math.sin(b.ang) * cc;
+          }
           if (b.t > 0.35) b.hl = 0;
         },
-        alpha: (b) => 1 - Math.max(0, b.t - 0.3) / 0.12,
+        alpha: orig ? undefined : (b) => 1 - Math.max(0, b.t - 0.3) / 0.12,
       });
     }
   }

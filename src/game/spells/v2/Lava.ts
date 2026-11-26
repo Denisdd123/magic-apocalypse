@@ -5,7 +5,12 @@ import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Co, PX, U } from './_orig';
-import { GA, LAVA_DIAM, ensureGroupA } from './_groupA';
+/** кадры лужи MeteorLand4A/B/C (полный холст 512 px, PPU 100); грузятся в GameScene.preload */
+export const LAVA_LOAD: [string, string][] = [
+  ['lv_a', 'vfx/lava/orig/MeteorLand4A.png'],
+  ['lv_b', 'vfx/lava/orig/MeteorLand4B.png'],
+  ['lv_c', 'vfx/lava/orig/MeteorLand4C.png'],
+];
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 /** радиус круга точек и шаг 30° (Play_LavaField) */
@@ -17,9 +22,8 @@ const MELT = 0.05, MELT_MAX = 6;
 /** 148 Сера (эффект 593): LavaFieldSizeExpandRatioNum = 0.03 (StartInformation_B @0x11cac70). У свойства 535 роста нет: его эффект 591 — это КД +50 % */
 const SULFUR_EXPAND = 0.03;
 
-// ——— вид: магма-клякса 2.2 (_groupA, 2 кадра) как заглушка; мерка — видимая часть MeteorLand4 ≈420 px ———
-const T = { a: GA.lava[0], b: GA.lava[1], c: GA.lava[0] };
-const VIS = 420;
+// ——— вид: MeteorLand4A/B/C, холст 512 px: в игре localScale × PX на px холста ———
+const T = { a: 'lv_a', b: 'lv_b', c: 'lv_c' };
 
 type Kind = 'base' | 'furnace' | 'sun';
 
@@ -63,7 +67,6 @@ class Lava extends DataSpell {
 
   onChange() {
     super.onChange();
-    ensureGroupA();
     if (!this.co) this.co = new Co(this.loop());
   }
 
@@ -159,7 +162,7 @@ class Lava extends DataSpell {
     const ph = p.t % 0.45, frame = ph < 0.15 ? 0 : ph < 0.3 ? 1 : 2;
     const k = Math.round(Math.min(1, c) * 255);
     p.img.setTexture(frame === 0 ? T.a : frame === 1 ? T.b : T.c).setPosition(p.x, p.y)
-      .setScale((VIS * PX * p.sc) / LAVA_DIAM).setAlpha(Math.max(0, Math.min(1, a))).setTint((k << 16) | (k << 8) | k);
+      .setScale(PX * p.sc).setAlpha(Math.max(0, Math.min(1, a))).setTint((k << 16) | (k << 8) | k);
     // урон: коллайдер ON в окне кадра A, пока AttackON; список очищается в начале цикла
     if (ph < dt) p.hits.clear();
     if (frame === 0 && p.t >= APPEAR && p.t < end) {

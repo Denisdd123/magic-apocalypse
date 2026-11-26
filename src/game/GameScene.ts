@@ -23,6 +23,12 @@ import { ESHOCK_LOAD } from './spells/v2/Eshock';
 import { THUNDER_LOAD } from './spells/v2/Thunder';
 import { METEOR_LOAD } from './spells/v2/Meteor';
 import { FROSTNOVA_LOAD } from './spells/v2/Frostnova';
+import { BLIZZARD_LOAD } from './spells/v2/Blizzard';
+import { LAVA_LOAD } from './spells/v2/Lava';
+import { EZONE_LOAD } from './spells/v2/Ezone';
+import { CYCLONE_LOAD } from './spells/v2/Cyclone';
+import { TSUNAMI_LOAD } from './spells/v2/Tsunami';
+import { ARMAGEDDON_LOAD } from './spells/v2/Armageddon';
 
 /** картинки, без которых нельзя начинать бой */
 const CRITICAL = /^v2\/(spell_fx|world|spell_icons|passives)\//;
@@ -86,6 +92,12 @@ export class GameScene extends Phaser.Scene {
     for (const [k, p] of THUNDER_LOAD) this.load.image(k, p);   // Молния (vfx/thunder/orig)
     for (const [k, p] of METEOR_LOAD) this.load.image(k, p);    // Метеор (vfx/meteor/orig)
     for (const [k, p] of FROSTNOVA_LOAD) this.load.image(k, p); // Ледяные иглы (vfx/frostnova/orig)
+    for (const [k, p] of BLIZZARD_LOAD) this.load.image(k, p);  // Метель (vfx/blizzard/orig)
+    for (const [k, p] of LAVA_LOAD) this.load.image(k, p);      // Лавовое поле (vfx/lava/orig)
+    for (const [k, p] of EZONE_LOAD) this.load.image(k, p);     // Электрозона (vfx/ezone/orig)
+    for (const [k, p] of CYCLONE_LOAD) this.load.image(k, p);   // Вихрь (vfx/cyclone/orig)
+    for (const [k, p] of TSUNAMI_LOAD) this.load.image(k, p);   // Цунами (vfx/tsunami/orig)
+    for (const [k, p] of ARMAGEDDON_LOAD) this.load.image(k, p); // Армагеддон (vfx/armageddon/orig)
   }
 
   /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */

@@ -27,13 +27,21 @@ const COLORS: Record<Kind, [number, number, number]> = {
   phoenix: [0xff5a1a, 0xfff0b0, 0xc01808],    // Incinerate33
   glacium: [0xbff0ff, 0xffffff, 0x80c8f0],    // Incinerate44
 };
-const texKey = (k: Kind, f: number) => `ts_${k}_${f}`;
+/** кадры оригинала (Incinerate4 / 9 / 8; холсты 800×300, 1280×300, 800×300; PPU 100, pivot центр → масштаб = localScale × PX) */
+const REAL: Partial<Record<Kind, number>> = { water: 4, ice: 9, lava: 8 };
+const texKey = (k: Kind, f: number) => (REAL[k] ? `tsu_Incinerate${REAL[k]}_0${f + 1}` : `ts_${k}_${f}`);
+/** список загрузки (GameScene.preload): [ключ, путь от public] */
+export const TSUNAMI_LOAD: [string, string][] = Object.values(REAL).flatMap((n) =>
+  [1, 2, 3].map((f): [string, string] => [`tsu_Incinerate${n}_0${f}`, `vfx/tsunami/orig/Incinerate${n}_0${f}.png`]));
+/** множитель масштаба: заглушки нарисованы в 1/4 размера, кадры оригинала — в полный */
+const kk = (k: Kind) => (REAL[k] ? 1 : K);
 /** длина видимой части кадров 01..03 (720 / 685 / 644 из 800) */
 const FRAME_LEN = [0.9, 0.856, 0.805];
 
 function textures() {
   const tx = W.scene.textures;
   for (const kind of Object.keys(COLORS) as Kind[]) {
+    if (REAL[kind]) continue;
     const [body, crest, tail] = COLORS[kind];
     FRAME_LEN.forEach((len, f) => {
       const key = texKey(kind, f);
@@ -160,7 +168,7 @@ class Tsunami extends DataSpell {
   private baseWave(kind: Kind, x: number, y: number, ang: number, step: number, sc: number, life: number, o: Partial<OBullet> = {}): OBullet {
     const b = this.bullets.fire({
       x, y, ang, sp: (step * this.flow / TICK) * U, life,
-      tex: texKey(kind, 0), scaleX: K * sc,
+      tex: texKey(kind, 0), scaleX: kk(kind) * sc,
       hl: 1.7 * sc * U, hw: 1.4 * sc * U, cx: 1.1 * sc * U,
       pierce: 999, dmg: this.dmg * this.sumDmg, src: this.def.id, ...o,
     });

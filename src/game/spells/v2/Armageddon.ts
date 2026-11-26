@@ -5,40 +5,15 @@ import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { Co, PX } from './_orig';
 
-// ——— заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { star: 'ar_star', land: 'ar_land' };
-/** Armageddon1..9: ширина кадра 140 → 41 px (звезда сжимается) */
-const STAR_W = [140, 128, 116, 104, 92, 79, 66, 53, 41];
-/** ArmageddonLandA 1010 px × scale 2.5 (рисуем 256) */
-const LAND_PX = 1010, LAND_TW = 1010;
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // белая лучистая звезда 140×94 (рисуем 70×47)
-  make(T.star, 70, 47, (g) => {
-    g.fillStyle(0xffffff, 0.3); g.fillEllipse(35, 23.5, 40, 30);
-    g.fillStyle(0xffffff, 1);
-    g.fillTriangle(0, 23.5, 35, 20, 35, 27); g.fillTriangle(70, 23.5, 35, 20, 35, 27);
-    g.fillTriangle(35, 0, 32, 23.5, 38, 23.5); g.fillTriangle(35, 47, 32, 23.5, 38, 23.5);
-    g.fillCircle(35, 23.5, 7);
-  });
-  // сеть трещин-молний (белая)
-  make(T.land, LAND_TW, LAND_TW, (g) => {
-    let seed = 7;
-    const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    g.lineStyle(2, 0xffffff, 0.9);
-    for (let k = 0; k < 14; k++) {
-      let a = (k / 14) * Math.PI * 2, x = 505, y = 505;
-      g.beginPath(); g.moveTo(x, y);
-      for (let s = 0; s < 9; s++) { a += (r() - 0.5) * 0.9; x += Math.cos(a) * 55; y += Math.sin(a) * 55; g.lineTo(x, y); }
-      g.strokePath();
-    }
-  });
-}
+// ——— кадры оригинала (холсты: Armageddon1..9 200×1280, ArmageddonLandA 1024²; PPU 100, pivot центр) ———
+const STAR = Array.from({ length: 9 }, (_, i) => `ar_Armageddon${i + 1}`);
+const LAND = 'ar_ArmageddonLandA';
+/** список загрузки (GameScene.preload): [ключ, путь от public] */
+export const ARMAGEDDON_LOAD: [string, string][] = [
+  ...STAR.map((k): [string, string] => [k, `vfx/armageddon/orig/${k.slice(3)}.png`]),
+  [LAND, 'vfx/armageddon/orig/ArmageddonLandA.png'],
+];
+function textures() { /* кадры грузит GameScene (ARMAGEDDON_LOAD) */ }
 
 /** 479: шаги возврата потолка HP каждую 1 с: 4 × 0.05, 2 × 0.03, далее 0.01 до 1.0 */
 const APO_STEP = (t: number) => (t <= 4 ? 0.05 : t <= 6 ? 0.03 : 0.01);
@@ -117,8 +92,8 @@ class Armageddon extends DataSpell {
     if (!this.ground) {
       this.ground = sc.add.rectangle(0, 0, 4000, 4000, 0xffffe6).setScrollFactor(0).setDepth(DEPTH.zone - 1).setVisible(false);
       this.front = sc.add.rectangle(0, 0, 4000, 4000, 0xffffff).setScrollFactor(0).setDepth(DEPTH.top).setVisible(false);
-      this.star = sc.add.image(0, 0, T.star).setDepth(DEPTH.top).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
-      this.land = sc.add.image(0, 0, T.land).setDepth(DEPTH.zone).setVisible(false);
+      this.star = sc.add.image(0, 0, STAR[0]).setDepth(DEPTH.top).setScale(PX).setVisible(false);
+      this.land = sc.add.image(0, 0, LAND).setDepth(DEPTH.zone).setVisible(false);
     }
     // Ф1: пол бледнеет (1, 1, 0.9) α = i·0.003, 25 × 0.05 с
     this.ground!.setVisible(true);
@@ -126,7 +101,7 @@ class Armageddon extends DataSpell {
     // Ф2: звезда у мага сжимается, 9 кадров × 0.03 с, затем 0.08
     const sx = P.x, sy = P.y;
     for (let k = 0; k < 9; k++) {
-      this.star!.setVisible(true).setPosition(sx, sy).setScale((STAR_W[k] * PX) / 70).setAlpha(1);
+      this.star!.setTexture(STAR[k]).setVisible(true).setPosition(sx, sy).setAlpha(1);
       yield 0.03;
     }
     yield 0.08;
@@ -136,7 +111,7 @@ class Armageddon extends DataSpell {
     yield 0.05;
     this.destroyOn = true;
     this.destroyAll();
-    this.land!.setVisible(true).setPosition(P.x, P.y).setScale((LAND_PX * PX * 2.5) / LAND_TW).setAlpha(0.75);
+    this.land!.setVisible(true).setPosition(P.x, P.y).setScale(2.5 * PX).setAlpha(0.75);
     this.fxLand = new Co(this.landAnim());
     if (this.hasProp(480) && this.casts % 4 === 0) P.heal(W.stats.maxHp);
     // Ф4: белый экран α 0.75 гаснет по 0.0375 за 0.03 с; на 11-м шаге зона OFF

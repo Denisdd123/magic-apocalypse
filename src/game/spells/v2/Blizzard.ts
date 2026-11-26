@@ -14,7 +14,20 @@ const ASPEED = 0.083;
 const SLOW_STEP = 0.03;
 
 // ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже); [ключ, ширина, высота, во сколько раз меньше спрайта] ———
-const T = { needle: 'bz_needle', star: 'bz_star', c: 'bz_c', d: 'bz_d', burst: 'bz_burst', fire: 'bz_fire' };
+const T = { c: 'bz_c', d: 'bz_d', burst: 'bz_burst', fire: 'bz_fire' };
+/** кадры оригинала (холсты Unity: BlizzardA/B 280×120, Explosion17/34/50 — 380×380; PPU 100 → масштаб = localScale × PX) */
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+const NEEDLE = ['bz_BlizzardA1', 'bz_BlizzardA2', 'bz_BlizzardA3'], STAR = ['bz_BlizzardB1', 'bz_BlizzardB2', 'bz_BlizzardB3'];
+const EX17F = seq('bz_Explosion17', 7), EX34F = seq('bz_Explosion34', 10), EX50F = seq('bz_Explosion50', 14);
+/** список загрузки (GameScene.preload): [ключ, путь от public]; Explosion50 — общие файлы с Испепелением */
+export const BLIZZARD_LOAD: [string, string][] = [
+  ...[...NEEDLE, ...STAR].map((k): [string, string] => [k, `vfx/blizzard/orig/${k.slice(3)}.png`]),
+  ...[...EX17F, ...EX34F].map((k): [string, string] => [k, `vfx/blizzard/orig/${k.slice(3)}.png`]),
+  ...EX50F.map((k): [string, string] => [k, `vfx/incinerate/orig/${k.slice(3)}.png`]),
+];
+/** кадр сосульки меняется каждые 0.04 с (BlizzardA/B_AnimationA) */
+const NEEDLE_DT = 0.04;
+
 function textures() {
   const tx = W.scene.textures;
   const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
@@ -22,17 +35,6 @@ function textures() {
     const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
     draw(g); g.generateTexture(key, w, h); g.destroy();
   };
-  // BlizzardA1 201×16 (рисуем 100×8 = ×2): тонкая игла, остриё справа
-  make(T.needle, 100, 8, (g) => {
-    g.fillStyle(0x8fd8ff, 0.35); g.fillEllipse(50, 4, 98, 7);
-    g.fillStyle(0xdff6ff, 1); g.fillTriangle(10, 3, 99, 4, 10, 5);
-  });
-  // BlizzardB1 175×43 (×2): падающая звезда
-  make(T.star, 88, 22, (g) => {
-    g.fillStyle(0x9fe0ff, 0.3); g.fillEllipse(44, 11, 86, 18);
-    g.fillStyle(0xe8f8ff, 1); g.fillEllipse(56, 11, 52, 8);
-    g.fillStyle(0xffffff, 1); g.fillCircle(78, 11, 7);
-  });
   // BlizzardC1 168×22 (×2)
   make(T.c, 84, 11, (g) => { g.fillStyle(0x9fe0ff, 0.4); g.fillEllipse(42, 5.5, 82, 10); g.fillStyle(0xffffff, 1); g.fillTriangle(6, 4, 83, 5.5, 6, 7); });
   // BlizzardD1 126×126 (×2): снежинка-кристалл
@@ -58,9 +60,9 @@ function textures() {
 interface Vis { img: Phaser.GameObjects.Image; t: number; step: (v: Vis, dt: number) => boolean }
 
 /** параметры взрыва: scale = Area·base + plus; коллайдер — квадрат coll × scale; px — видимый размер кадра оригинала */
-interface Ex { base: number; plus: number; coll: number; px: number; tex: string; tint: number }
-const EX17: Ex = { base: 0.7, plus: 0.2, coll: 2.05, px: 222, tex: T.burst, tint: 0xd8f2ff };
-const EX34: Ex = { base: 0.65, plus: 0.25, coll: 2.5, px: 321, tex: T.burst, tint: 0xe8f8ff };
+interface Ex { base: number; plus: number; coll: number; px: number; tex: string; tint: number; frames?: string[] }
+const EX17: Ex = { base: 0.7, plus: 0.2, coll: 2.05, px: 222, tex: T.burst, tint: 0xd8f2ff, frames: EX17F };
+const EX34: Ex = { base: 0.65, plus: 0.25, coll: 2.5, px: 321, tex: T.burst, tint: 0xe8f8ff, frames: EX34F };
 const EX81: Ex = { base: 0.3, plus: 0, coll: 4, px: 255, tex: T.burst, tint: 0xbfe6ff };
 
 /**
@@ -186,14 +188,15 @@ class Blizzard extends DataSpell {
 
   // ———— падения ————
   /** сосулька от (x, y) − dir·start ед., шаг step ед. за тик, n тиков; затем onLand */
-  private fall(x: number, y: number, ang: number, start: number, step: number, n: number, tex: string, k: number, spin: number, onLand: () => void) {
+  private fall(x: number, y: number, ang: number, start: number, step: number, n: number, tex: string, k: number, spin: number, onLand: () => void, frames?: string[]) {
     const c = Math.cos(ang), s = Math.sin(ang);
-    const im = this.img(tex, DEPTH.top, true).setRotation(spin ? Math.random() * 6.28 : ang).setScale(PX * k);
+    const im = this.img(tex, DEPTH.top, !frames).setRotation(spin ? Math.random() * 6.28 : ang).setScale(PX * k);
     let i = 0, acc = 0;
     const place = () => im.setPosition(x - c * (start - step * i) * U, y - s * (start - step * i) * U);
     place();
-    this.addVis(im, (_v, dt) => {
+    this.addVis(im, (v0, dt) => {
       acc += dt;
+      if (frames) im.setTexture(frames[Math.floor(v0.t / NEEDLE_DT) % 3]);
       while (acc >= TICK && i < n) { acc -= TICK; i++; }
       place();
       if (spin) im.rotation += spin * dt;
@@ -205,13 +208,13 @@ class Blizzard extends DataSpell {
   /** ID 17: маг + (±2.72, ±3.45) ед., угол Random(−70°, −75°), 29 × 0.65 ед. */
   private shard() {
     const x = W.player.x + rnd(-2.72, 2.72) * U, y = W.player.y - rnd(-3.45, 3.45) * U;
-    this.fall(x, y, rnd(70, 75) * DEG, 20, 0.65, 29, T.needle, 2, 0, () => this.explode(x, y, this.dmg, EX17, true));
+    this.fall(x, y, rnd(70, 75) * DEG, 20, 0.65, 29, NEEDLE[0], 1, 0, () => this.explode(x, y, this.dmg, EX17, true), NEEDLE);
   }
 
   /** 507 (ID 34): scale 1.5, 37 × 0.5 ед. (1.11 с) */
   private star() {
     const x = W.player.x + rnd(-2.72, 2.72) * U, y = W.player.y - rnd(-3.45, 3.45) * U;
-    this.fall(x, y, rnd(70, 75) * DEG, 20, 0.5, 37, T.star, 2 * 1.5, 0, () => this.explode(x, y, this.dmg, EX34, true));
+    this.fall(x, y, rnd(70, 75) * DEG, 20, 0.5, 37, STAR[0], 1.5, 0, () => this.explode(x, y, this.dmg, EX34, true), STAR);
   }
 
   /** 15 (ID 81): маг + (±3.5, ±5.5) ед., сосулька C под −72…−78°, 33 × 0.55 ед., scale 2 */
@@ -226,6 +229,12 @@ class Blizzard extends DataSpell {
     const sc = this.area * ex.base + ex.plus, half = (ex.coll / 2) * sc * U;
     const hits = new Set<number>();
     const onHit = freeze ? this.freezeHit : null;
+    if (ex.frames) {
+      // Explosion_Animation: кадр 1 (коллайдер) 0.06 с, дальше по 0.06 с; холст 380×380 → scale = (Area·Base + Plus)·PX
+      this.hitBox(x, y, half, dmg, hits, onHit);   // окно коллайдера 0.06 с — урон разово в 1-й кадр
+      W.fx.anim(x, y, ex.frames, 0.06, 0.06, sc * PX);
+      return;
+    }
     const im = this.img(ex.tex, DEPTH.fx, true).setPosition(x, y).setTint(ex.tint).setRotation(Math.random() * 6.28);
     const full = (ex.px / 90) * PX * sc;
     this.addVis(im, (v, dt) => {
@@ -258,8 +267,7 @@ class Blizzard extends DataSpell {
   private fire() {
     const x = W.player.x + rnd(-1.8, 1.8) * U, y = W.player.y - rnd(-1.9, 1.9) * U;
     const sc = 0.665 * 0.9, half = (2.25 / 2) * sc * U, base = this.dmg;
-    const im = this.img(T.fire, DEPTH.fx, true).setPosition(x, y);
-    const full = (206 / 90) * PX * sc;
+    const im = this.img(EX50F[0], DEPTH.fx, false).setPosition(x, y).setScale(PX * sc);
     let n = 0, t0 = 0, hits = new Set<number>(), dmg = base * 0.9;
     this.addVis(im, (v) => {
       const d = 0.054 - 0.004 * n, f = Math.floor((v.t - t0) / d) + 1;   // номер кадра 1..15
@@ -269,7 +277,8 @@ class Blizzard extends DataSpell {
         return true;
       }
       if (f >= 4 && f < 6) boxDamage(x, y, 0, half, half, dmg, this.def.id, hits);
-      im.setScale(full * Math.min(1, f / 7)).setAlpha(f <= 7 ? 1 : Math.max(0, 1 - (f - 7) / 8));
+      // кадры Explosion50_01..14, 15-е ожидание — пустое; масштаб и цвет по коду постоянные
+      im.setVisible(f <= 14); if (f <= 14) im.setTexture(EX50F[f - 1]);
       return true;
     });
   }

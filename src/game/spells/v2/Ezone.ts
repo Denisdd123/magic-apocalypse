@@ -8,12 +8,17 @@ import { Co, PX, U } from './_orig';
 
 const DEG = Math.PI / 180;
 
-// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { zone: ['ez_a', 'ez_b', 'ez_c'], fire: 'ez_fire', arc: 'ez_arc', ice: 'ez_ice' };
-/** ElectricZone1A 676 px — рисуем 169 (×4) */
-const ZONE_PX = 676, ZONE_TEX = 169;
-/** FireRing7..14 ≈ 489 px — рисуем 128 */
-const FIRE_PX = 489;
+// ——— кадры оригинала (холст 720×720, PPU 100) + заглушки слияний 20 / 36 ———
+const T = { zone: ['ez_1a', 'ez_1b', 'ez_1c'], zone3: ['ez_3a', 'ez_3b', 'ez_3c'], arc: 'ez_arc', ice: 'ez_ice' };
+const FIRE = Array.from({ length: 14 }, (_, i) => `ez_fr${i + 1}`);
+const ZONE_PX = 720;
+const D = 'vfx/ezone/orig/';
+/** ключи → пути (от public) для GameScene.preload */
+export const EZONE_LOAD: [string, string][] = [
+  ...['A', 'B', 'C'].map((l, i): [string, string] => [T.zone[i], `${D}ElectricZone1${l}.png`]),
+  ...['A', 'B', 'C'].map((l, i): [string, string] => [T.zone3[i], `${D}ElectricZone3${l}.png`]),
+  ...FIRE.map((k, i): [string, string] => [k, `${D}FireRing${i + 1}.png`]),
+];
 
 function textures() {
   const tx = W.scene.textures;
@@ -22,30 +27,6 @@ function textures() {
     const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
     draw(g); g.generateTexture(key, w, h); g.destroy();
   };
-  // кольцо рваных белых зигзагов, центр пустой (3 кадра)
-  const c = ZONE_TEX / 2;
-  T.zone.forEach((key, f) => make(key, ZONE_TEX, ZONE_TEX, (g) => {
-    for (const [w, a] of [[4, 0.18], [1.5, 1]] as const) {
-      g.lineStyle(w, 0xffffff, a);
-      g.beginPath();
-      const n = 36;
-      for (let i = 0; i <= n; i++) {
-        const ang = (i / n) * Math.PI * 2 + f * 0.11;
-        const r = 72 + (((i * 7 + f * 5) % 9) - 4) * 1.6;
-        const x = c + Math.cos(ang) * r, y = c + Math.sin(ang) * r;
-        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-      }
-      g.strokePath();
-    }
-  }));
-  // FireRing: оранжево-красное кольцо, жёлтые искры
-  make(T.fire, 128, 128, (g) => {
-    g.lineStyle(14, 0xff3a10, 0.25); g.strokeCircle(64, 64, 54);
-    g.lineStyle(7, 0xff7a20, 0.7); g.strokeCircle(64, 64, 54);
-    g.lineStyle(2.5, 0xffe070, 1); g.strokeCircle(64, 64, 54);
-    g.fillStyle(0xffe070, 1);
-    for (let i = 0; i < 14; i++) { const a = i * 2.39; g.fillCircle(64 + Math.cos(a) * 40, 64 + Math.sin(a) * 40, 1.5); }
-  });
   // Incinerate27 (заряд-дуга слияния 20): дуга 128×64
   make(T.arc, 128, 64, (g) => {
     for (const [w, a] of [[8, 0.2], [3, 0.6], [1.5, 1]] as const) {
@@ -237,7 +218,7 @@ class Ezone extends DataSpell {
   private zoneFrame(c: Coll) {
     const cul = this.cul;
     const tint = this.hasProp(426) ? 0x00ffc7 : this.hasCombo(57) ? 0xadf7ff : 0xffffff;
-    this.placeZone(c, this.box * cul, T.zone[this.aniF], ZONE_PX, cul, tint);
+    this.placeZone(c, this.box * cul, (this.hasCombo(37) ? T.zone3 : T.zone)[this.aniF], ZONE_PX, cul, tint);
   }
 
   // ———— Play_ElectricZone_Com04_Active (57 Разрушитель): N·(2·3 кадра по 0.075 + 0.03) работы, затем 0.4 + 5 с ————
@@ -261,10 +242,8 @@ class Ezone extends DataSpell {
       for (let f = 0; f < 14; f++) {
         const cul = this.cul, P = W.player;
         c.x = P.x; c.y = P.y; c.a = 0; c.hl = c.hw = FIRE_COLL[f] * cul / 2 * U;
-        // спрайт растёт из точки (FireRing1 ≈ 140 px) до полного к кадру 7, к кадру 14 гаснет
-        const k = Math.min(1, (f + 1) / 7), a = f < 11 ? 1 : (14 - f) / 4;
-        c.img?.setTexture(T.fire).setVisible(true).setPosition(P.x, P.y).setAlpha(a).clearTint()
-          .setDisplaySize(FIRE_PX * PX * cul * k, FIRE_PX * PX * cul * k);
+        c.img?.setTexture(FIRE[f]).setVisible(true).setPosition(P.x, P.y).setAlpha(1).clearTint()
+          .setDisplaySize(ZONE_PX * PX * cul, ZONE_PX * PX * cul);
         yield 0.05;
       }
       c.on = false; c.hl = 0; c.img?.setVisible(false);

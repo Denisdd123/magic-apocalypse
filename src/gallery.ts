@@ -336,6 +336,47 @@ function build() {
   imgTile(g, fn(35, 8), '399 Ледниковый период', 280, 60, 300);
   imgTile(g, fn(48, 14), '400 Землетрясение', 300, 60, 300);
 
+  g = section('blizzard-game', 'Метель — сейчас в игре',
+    'Сосулька падает под углом (кадры по 0.04 с), удар 7 × 0.06 с. 507 Падающая звезда — своя игла и удар 34 (2-й кадр пустой). 508 Пожар — три огненных взрыва 50 подряд.');
+  const bz = (n: string, c: number, pad = true, dir = 'blizzard') => Array.from({ length: c }, (_, i) => `vfx/${dir}/orig/${n}${pad ? String(i + 1).padStart(2, '0') : i + 1}.png`);
+  imgTile(g, bz('BlizzardA', 3, false), 'сосулька', 160, 40);
+  imgTile(g, bz('Explosion17_', 7), 'удар, 7 × 0.06 с', 200, 60, 300);
+  imgTile(g, bz('BlizzardB', 3, false), '507 Падающая звезда', 160, 40);
+  imgTile(g, bz('Explosion34_', 10), '507: удар', 200, 60, 300);
+  imgTile(g, bz('Explosion50_', 14, true, 'incinerate'), '508 Пожар', 200, 50, 300);
+
+  g = section('lava-game', 'Лавовое поле — сейчас в игре',
+    'Огненная лужа: кадры A→B→C по 0.15 с, проявляется 0.66 с, урон раз в 0.45 с, гаснет 0.66 с. В игре ≈247 px при размере 1.');
+  imgTile(g, ['A', 'B', 'C'].map((c) => `vfx/lava/orig/MeteorLand4${c}.png`), 'лужа', 247, 150);
+
+  g = section('ezone-game', 'Электрозона — сейчас в игре',
+    'Кольцо молний вокруг мага, кадры A/B/C по 0.09 с (дрожит). 426 ЭМИ — бирюзовое. 427 Огненная аура — огненное кольцо 14 × 0.05 с. Слияние 37 Эффект Мейснера — свои кадры.');
+  const ez = (n: string[]) => n.map((x) => `vfx/ezone/orig/${x}.png`);
+  imgTile(g, ez(['ElectricZone1A', 'ElectricZone1B', 'ElectricZone1C']), 'база и 426', 245, 90);
+  imgTile(g, ez(Array.from({ length: 14 }, (_, i) => `FireRing${i + 1}`)), '427 Огненная аура', 245, 50, 300);
+  imgTile(g, ez(['ElectricZone3A', 'ElectricZone3B', 'ElectricZone3C']), 'слияние 37 Эффект Мейснера', 245, 90);
+
+  g = section('cyclone-game', 'Вихрь — сейчас в игре',
+    'Вихрь виляет и растёт, кадры по 0.033 с. 462 Электрическая сфера — шар пульсирует и пускает 2 молнии. 463 Космические пустоты — тёмная воронка. Слияние 50 Чёрная дыра — свои 3 кадра.');
+  const cy = (n: string[]) => n.map((x) => `vfx/cyclone/orig/${x}.png`);
+  imgTile(g, cy(['TornadoA1', 'TornadoA2', 'TornadoA3', 'TornadoA4']), 'база', 100, 33);
+  imgTile(g, cy(['TornadoC1', 'TornadoC2', 'TornadoC3', 'TornadoC4']), '462 Электрическая сфера', 140, 210);
+  imgTile(g, cy(Array.from({ length: 8 }, (_, i) => `Incinerate15_0${i + 1}`)), '462: молния, ≈0.42 с', 130, 50, 300);
+  imgTile(g, cy(['TornadoB0', 'TornadoB1', 'TornadoB2', 'TornadoB3']), '463 Космические пустоты', 200, 60);
+  imgTile(g, cy(['TornadoH1', 'TornadoH2', 'TornadoH3']), 'слияние 50 Чёрная дыра', 220, 60);
+
+  g = section('tsunami-game', 'Цунами — сейчас в игре',
+    'Волна идёт вдоль движения, кадры 01-02-03-02 по 0.07–0.09 с. 434 Полюс — ледяная волна. 436 Великое извержение — свои кадры. 435 — те же, что база.');
+  const ts = (n: number) => [1, 2, 3, 2].map((i) => `vfx/tsunami/orig/Incinerate${n}_0${i}.png`);
+  imgTile(g, ts(4), 'база и 435', 370, 80);
+  imgTile(g, ts(9), '434 Полюс', 370, 80);
+  imgTile(g, ts(8), '436 Великое извержение', 370, 80);
+
+  g = section('armageddon-game', 'Армагеддон — сейчас в игре',
+    'Звезда падает и сжимается в точку (9 × 0.03 с), белая вспышка экрана, трещины на земле гаснут.');
+  imgTile(g, Array.from({ length: 9 }, (_, i) => `vfx/armageddon/orig/Armageddon${i + 1}.png`), 'звезда', 60, 30, 500);
+  imgTile(g, ['vfx/armageddon/orig/ArmageddonLandA.png'], 'трещины', 260, 1000);
+
   g = section('vfx', 'Огненный шар (старая проба)',
     'Шар нарисован слоями по меркам оригинала: красная кайма → золото → бледный → крем, языки-капсулы назад (research/vfx/fireball/ball_draw.py), 6 кадров по 0.06 с. ' +
     'Взрыв — из редактора Effekseer, 9 кадров по 0.06 с; «плавно» — 18 кадров. Размер «в игре»: шар 148×77, взрыв 218 px.');
