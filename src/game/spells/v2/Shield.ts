@@ -29,6 +29,11 @@ function textures() {
 interface Field { t: number; next: number; hits: Set<number>; half: number; dmg: number }
 /** DestroyField_Animation: 4 удара */
 const FIELD_T = [0, 0.18, 0.39, 0.6];
+/** Explosion83_Animation_A (@0x11abb2c): коллайдер по кадрам (ед. × масштаб Area·0.35 + 0.65), паузы кадров; на 10-м — OFF */
+const Q_SIZE = [4.5, 5, 5.5, 6.2, 6.5, 6.7, 6.9, 7.1, 7.3, 7.5];
+const Q_WAIT = [0.04, 0.05, 0.05, 0.06, 0.06, 0.06, 0.06, 0.07, 0.07, 0.08, 0.08, 0.09];
+const Q_END = Q_WAIT.map((_, i) => Q_WAIT.slice(0, i + 1).reduce((a, b) => a + b, 0));
+interface Quantum { x: number; y: number; t: number; f: number; dmg: number; hits: Set<number> }
 
 /**
  * #6 Щит — 1:1 по коду оригинала (docs/orig/spells/shield.md, карточка tasks/shield.md):
@@ -49,6 +54,7 @@ class Shield extends DataSpell {
   private img: Phaser.GameObjects.Image | null = null;
   private animT = 0;
   private fields: Field[] = [];
+  private quanta: Quantum[] = [];
   private readonly guard = () => this.absorb();
 
   get maxCharges() { return Math.max(1, Math.round(this.stat('count', MAX_BASE))); }
@@ -73,6 +79,7 @@ class Shield extends DataSpell {
     this.img?.destroy(); this.img = null;
     this.co = null;
     this.fields.length = 0;
+    this.quanta.length = 0;
   }
 
   // ———— Play_Shield ————
@@ -128,10 +135,10 @@ class Shield extends DataSpell {
     const sizePct = this.pctOf('size') + W.stats.size * 100;
     const area = (100 + sizePct + 33 * N) / 100;
     const dmg = this.dmgOf(500, 2 * sizePct + 33 * N);
-    // коллайдер Explosion83 не разобран (карточка «Нерешённое») — заглушка по масштабу картинки Area·0.35 + 0.65
-    const half = (area * 0.35 + 0.65) * U;
-    boxDamage(P.x, P.y, 0, half, half, dmg, this.def.id);
-    W.fx.burst(P.x, P.y, half * 1.3, 0xd8e4ff, 0.5, 'ring');
+    // ExplosionAttack 0x53: масштаб Area·0.35 + 0.65; взрыв стоит на месте (не едет за магом)
+    const f = area * 0.35 + 0.65;
+    this.quanta.push({ x: P.x, y: P.y, t: 0, f, dmg, hits: new Set() });
+    W.fx.burst(P.x, P.y, 7.5 * f * U * 0.5, 0xd8e4ff, Q_END[Q_END.length - 1], 'ring');
   }
 
   update(dt: number) {
@@ -148,6 +155,15 @@ class Shield extends DataSpell {
         boxDamage(P.x, P.y, 0, f.half, f.half, f.dmg, this.def.id, f.hits);
       }
       if (f.next >= FIELD_T.length) { this.fields[i] = this.fields[this.fields.length - 1]; this.fields.pop(); }
+    }
+
+    // Explosion83_Animation_A: коллайдер растёт 4.5 → 7.5 ед. (кадры 1–9 ON), каждому врагу — 1 раз (список чистится один раз)
+    for (let i = this.quanta.length - 1; i >= 0; i--) {
+      const q = this.quanta[i];
+      q.t += dt;
+      const k = Q_END.findIndex((e) => q.t < e);
+      if (k >= 0 && k < 9) { const h = (Q_SIZE[k] / 2) * q.f * U; boxDamage(q.x, q.y, 0, h, h, q.dmg, this.def.id, q.hits); }
+      if (k < 0) { this.quanta[i] = this.quanta[this.quanta.length - 1]; this.quanta.pop(); }
     }
 
     // Play_Shield_Motion: кадры набора Shield{n} по 0.3 с (цикл 1.2 с); заглушка — лёгкая пульсация

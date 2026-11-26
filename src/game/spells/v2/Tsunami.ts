@@ -78,6 +78,10 @@ class Tsunami extends DataSpell {
   /** FreezeResistance врагов (по id): 1 → ×0.67 после каждой заморозки */
   private frzRes = new Map<number, number>();
   private fan: number[] = [];
+  /** артефакт 146: накопленный множитель урона, перезарядки и число накоплений */
+  private sumDmg = 1;
+  private sumCool = 1;
+  private sumN = 0;
 
   /** TsunamiSize = (100 + AreaU)% */
   private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
@@ -109,6 +113,10 @@ class Tsunami extends DataSpell {
       const P = W.player, bx = P.x, by = P.y;
       yield 0.5;
       const n = this.count;
+      // 146 Волшебная флейта (эффект 265 = 12 %): 3 накопления (+12 % урона, КД ×0.88), 4-й запуск — сброс
+      const flute = (W.stats.artFx[265] ?? 0) / 100;
+      if (this.fusion || flute <= 0 || this.sumN > 2) { this.sumDmg = 1; this.sumCool = 1; this.sumN = 0; }
+      else { this.sumDmg += flute; this.sumCool *= 1 - flute; this.sumN++; }
       if (this.hasCombo(61)) {
         // ID 123: кольцо, все в одном кадре
         const a0 = rnd(0, 90);
@@ -143,7 +151,7 @@ class Tsunami extends DataSpell {
           yield lava ? 0.095 + rnd(-0.03, 0.03) : 0.123 + rnd(-0.03, 0.06);
         }
       }
-      yield this.pSpeed + 0.5;
+      yield this.pSpeed * this.sumCool + 0.5;
     }
   }
 
@@ -154,7 +162,7 @@ class Tsunami extends DataSpell {
       x, y, ang, sp: (step * this.flow / TICK) * U, life,
       tex: texKey(kind, 0), scaleX: K * sc,
       hl: 1.7 * sc * U, hw: 1.4 * sc * U, cx: 1.1 * sc * U,
-      pierce: 999, dmg: this.dmg, src: this.def.id, ...o,
+      pierce: 999, dmg: this.dmg * this.sumDmg, src: this.def.id, ...o,
     });
     if (kind === 'lava') b.img.setBlendMode(Phaser.BlendModes.NORMAL);
     return b;

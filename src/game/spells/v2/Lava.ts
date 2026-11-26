@@ -14,8 +14,8 @@ const RING = 4.0, STEP = 0.5236;
 const GAP = 0.3;
 /** 533: SV02 = HitDamageRatioNum (эффект 592 = 5 → 0.05), не больше 6 стопок */
 const MELT = 0.05, MELT_MAX = 6;
-/** 535: LavaFieldSizeExpandRatioNum (эффект 591 = 50 → 0.5, как 592 = 5 → 0.05) */
-const EXPAND_535 = 0.5;
+/** 148 Сера (эффект 593): LavaFieldSizeExpandRatioNum = 0.03 (StartInformation_B @0x11cac70). У свойства 535 роста нет: его эффект 591 — это КД +50 % */
+const SULFUR_EXPAND = 0.03;
 
 // ——— вид: магма-клякса 2.2 (_groupA, 2 кадра) как заглушка; мерка — видимая часть MeteorLand4 ≈420 px ———
 const T = { a: GA.lava[0], b: GA.lava[1], c: GA.lava[0] };
@@ -118,8 +118,9 @@ class Lava extends DataSpell {
 
   private make(kind: Kind, x: number, y: number, ang: number) {
     const S = this.size;
-    let sc = S * 0.5 + 0.35, coll = 2.5, expand = this.hasProp(535) ? EXPAND_535 * 0.33 : 0, dmgExpand = 0, v = 0;
-    if (kind === 'furnace') { sc = S * 0.35 + 0.025; coll = 5; expand = 0.08 * 0.33; dmgExpand = 0.25 * 0.33; }
+    const sulfur = (W.stats.artFx[593] ?? 0) > 0 ? SULFUR_EXPAND : 0;
+    let sc = S * 0.5 + 0.35, coll = 2.5, expand = sulfur * 0.33, dmgExpand = 0, v = 0;
+    if (kind === 'furnace') { sc = S * 0.35 + 0.025; coll = 5; expand = (sulfur + 0.08) * 0.33; dmgExpand = 0.25 * 0.33; }
     if (kind === 'sun') { sc = S * 0.15 + 0.35; coll = 3.65; v = 0.04; }
     const img = (this.spare.pop() ?? W.scene.add.image(0, 0, T.a)).setTexture(T.a).setVisible(true)
       .setDepth(DEPTH.zone).setPosition(x, y).setAlpha(0).setTint(0x000000).setRotation(0);

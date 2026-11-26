@@ -145,7 +145,7 @@ class Ebolt extends DataSpell {
   }
 
   /** Bullet_Create + BulletAttack (кейсы 16 / 66 / 36 / 33 / 20 / 28 / 89) */
-  private fire(mode: Mode, ang: number) {
+  private fire(mode: Mode, ang: number, child?: { x: number; y: number; size: number; speed: number }) {
     const P = W.player, S = this.size;
     let size = S, speed = this.mSpeed, tex = T.orb, root = 0.575, coll = 1.45, val = 0.905, tint = 0xffffff;
     let time = this.time * rnd(0.8, 1.1), area = 1, x = P.x, y = P.y, wait = 0;
@@ -163,6 +163,10 @@ class Ebolt extends DataSpell {
         const off = rnd(0.25, 4.5) * U; x += Math.cos(ang) * off; y += Math.sin(ang) * off; wait = rnd(0.03, 0.4); break;
       }
     }
+    // 131 Хекстековый модуль (эффект 499 = 22 %): время ×0.6, в конце — две дочерние пули ±40° (Size, Speed ×0.8); 499 «Вспышка» не делится
+    let split = false;
+    if (child) { size = child.size; speed = child.speed; x = child.x; y = child.y; wait = 0; }
+    else if (mode !== 'flare' && (W.stats.artFx[499] ?? 0) >= 1 + Math.floor(Math.random() * 100)) { split = true; time *= 0.6; }
     const sc = size * root * CHILD;        // мировой масштаб сгустка
     const half = (coll * sc / 2) * U;
     const dmg = this.dmg;
@@ -175,6 +179,7 @@ class Ebolt extends DataSpell {
       step: (b) => this.move(b, mode, fadeN, fadeA),
       onEnd: (b) => {
         if (mode === 'flare' || mode === 'c29') this.explode(b.x, b.y, b.dmg * 2, b.data.area);
+        if (split) for (const s of [40, -40]) this.fire(mode, b.ang + s * DEG, { x: b.x, y: b.y, size: size * 0.8, speed: speed * 0.8 });
       },
     });
   }

@@ -49,6 +49,9 @@ const game = new Phaser.Game({
   scene: [GameScene],
 });
 
+// отладка (только dev): ручной шаг цикла, если вкладка в фоне и requestAnimationFrame не идёт
+if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;
+
 let last = '';
 function onResize() {
   fitHost();

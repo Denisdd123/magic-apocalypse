@@ -88,6 +88,8 @@ class Cyclone extends DataSpell {
   private bolts = new OrigBullets();
   /** слияния 39/50: КД после окончания вихря */
   private alive = 0;
+  /** артефакт 141: счётчик вихрей до усиленного */
+  private powerN = 0;
 
   private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
   private get pSpeed(): number { return Math.max(0.2, this.cdOrig(this.data.base.cd ?? 3.5) * this.cdGlobal); }
@@ -167,6 +169,15 @@ class Cyclone extends DataSpell {
     }
   }
 
+  /** 141 Опахало (эффект 410 = 5): каждый 6-й вихрь — урон ×2, размер ×1.75 (в коде; Пустоты и слияние 50 — ×1.5) */
+  private power(kind: Kind): [number, number] {
+    const n = W.stats.artFx[410] ?? 0;
+    if (n < 1 || (kind !== 'a' && kind !== 'c' && kind !== 'b' && kind !== 'hole')) return [1, 1];
+    if (this.powerN < n) { this.powerN++; return [1, 1]; }
+    this.powerN = 0;
+    return [2, kind === 'a' || kind === 'c' ? 1.75 : 1.5];
+  }
+
   // ———— создание (TornadoAttack) ————
   private make(kind: Kind, ang: number) {
     const P = W.player, S = this.size;
@@ -184,12 +195,14 @@ class Cyclone extends DataSpell {
       case 'typhoon': sc = S * 0.1 + 0.35; coll = 3.5; grow = 0.01; tint = 0xd0f0ff; break;
       case 'super': sc = S * 0.18 + 0.25; coll = 7; v = 0; grow = 0; break;
     }
+    const [pd, ps] = this.power(kind);
+    sc *= ps; grow *= ps; expand *= ps;
     const img = (this.pool.pop() ?? W.scene.add.image(0, 0, tex)).setTexture(tex).setVisible(true)
       .setDepth(DEPTH.zone).setBlendMode(kind === 'b' || kind === 'hole' ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD)
       .setTint(tint).setAlpha(0.75).setRotation(ang);
     const w: Wind = {
       kind, x, y, h0: ang, h: ang, t: 0, life, fade, fadeA, sc, coll, grow, expand, v,
-      dmg: this.dmg, hitT: 0.3, hitK: 1, acc: 0, n: 0, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
+      dmg: this.dmg * pd, hitT: 0.3, hitK: 1, acc: 0, n: 0, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
     };
     this.winds.push(w);
     this.draw(w, 0.75);

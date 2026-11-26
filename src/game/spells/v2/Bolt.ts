@@ -31,7 +31,8 @@ interface Phantom { img: Phaser.GameObjects.Image; ox: number; oy: number; co: C
  * Пуля: 9.67 ед/с, 81 тик, прозрачность 2.4 − t, коллайдер 0.2×0.075 ед., дымок раз в 0.06 с, вспышка попадания 0.36 с.
  * Свойства: 362 Стрела (кейс 3), 363 Петарда (кейс 8 + взрыв 8), 364 Раскол (кейс 10, 3 цели),
  * 365 Непрерывная атака (числа), 366 Лихорадка (Play_WildShot), 367 Двойник (3 фантома стреляют вместо мага).
- * Слияния: 33 Аватар, 42 Фейерверк (кейс 98), 54 Бластер (кейс 108) — числа из библии, вид сверить в партии 6.
+ * Слияния (партия 6): 33 Аватар (6 фантомов, Num = 1, +33 %·(N−1), ×1.5 при 362, ×9.99), 42 Фейерверк (кейс 98 + взрыв 98),
+ * 54 Бластер (кейс 108: каждая 6-я пуля мага — луч ×7). Множители ×5/×9.99 и размер +50 % — моды слияния.
  */
 class Bolt extends DataSpell {
   private bullets = new OrigBullets();
@@ -82,7 +83,11 @@ class Bolt extends DataSpell {
     const ms = this.hasProp(362) ? 50 : 14.5 * Math.max(0, 1 + this.pctOf('speed') / 100);
     return (ms * 0.02 / TICK) * U;
   }
-  private get bulletDmg(): number { return this.dmgOf(this.data.base.dmgPct ?? 500, this.avatar ? 33 * (this.numRaw - 1) : 0); }
+  /** Аватар (@0x11dc5f0): +33 % за каждую пулю до сжатия Num, ×1.5 при 362, ×9.99 всегда (×9.99 — мод слияния) */
+  private get bulletDmg(): number {
+    const d = this.dmgOf(this.data.base.dmgPct ?? 500, this.avatar ? 33 * (this.numRaw - 1) : 0);
+    return this.avatar && this.hasProp(362) ? d * 1.5 : d;
+  }
 
   // ———————— жизненный цикл ————————
   onChange() {
@@ -263,7 +268,8 @@ class Bolt extends DataSpell {
 
   /**
    * Бластер, каждая 6-я пуля (кейс 108, Spec01 = 2): ×7, луч Incinerate20 впереди на 5.35 ед.,
-   * коллайдер растёт 1 → 2.2 → 4.5 → 6.1 → 5.5 → 4.5 → 3.0 (× 1.8), 10 кадров. Длительность кадра — 0.05 с (оценка до партии 6).
+   * коллайдер растёт 1 → 2.2 → 4.5 → 6.1 → 5.5 → 4.5 → 3.0 (× 1.8), 10 кадров. Пауза кадра = BulletSpeed = 0.05 с (0x3d4ccccd),
+   * как у копья 99 (пауза = BulletSpeed). Кадры Incinerate20 рисуем с Денисом.
    */
   private blasterBeam(o: Pt, ang: number, S: number, dmg: number) {
     const sx = 1.8, sy = 0.45 * S + 4.0, fr = 0.05, fwd = 5.35 * U;

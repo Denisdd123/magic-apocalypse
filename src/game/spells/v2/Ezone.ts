@@ -119,8 +119,9 @@ class Ezone extends DataSpell {
   private get aDelay(): number {
     const base = this.data.base.tick ?? 0.25;
     const k = this.tickSec / base;
-    if (this.hasCombo(20)) return 0.02 * k + 0.03;
-    return Math.max(0.088, base * k);
+    const bat = 1 - (W.stats.artFx[296] ?? 0) / 100;   // 130 Батарея: интервал −15 %
+    if (this.hasCombo(20)) return 0.02 * k * bat + 0.03;
+    return Math.max(0.088, base * k * bat);
   }
   private get kind(): number {
     for (const c of [20, 36, 57]) if (this.hasCombo(c)) return c;

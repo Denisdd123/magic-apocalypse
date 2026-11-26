@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SPELL_BY_ID } from '../../../data/spells_data';
+import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
 import { boxDamage, Co, OrigBullets, PX, TICK, U } from './_orig';
@@ -80,7 +81,8 @@ class Fireball extends DataSpell {
   /** скорость, наших ед./с */
   private get speed(): number { return (MSPEED * this.speedMul * 0.02 / TICK) * U; }
   private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 1.5) * this.cdGlobal); }
-  private get pierce(): number { return Math.round(this.stat('pierce', 0)); }
+  /** +1 от артефакта 138 Лук феникса (эффект 183) */
+  private get pierce(): number { return Math.round(this.stat('pierce', 0) + (W.stats.artFx[183] ?? 0)); }
   private get num(): number { return this.count; }
 
   onChange() {
@@ -146,8 +148,14 @@ class Fireball extends DataSpell {
       tint: gas ? 0x9cff7a : undefined,
       hl: (gas ? 10 : 0.1375 * U / PX) * PX * S, hw: (gas ? 4 : 0.153 * U / PX) * PX * S,
       pierce: this.pierce, dmg, src: this.def.id, alpha: (b) => 2.4 - b.t,
-      onHit: (b) => { this.explode(b.x, b.y, b.dmg, area); return true; },
+      onHit: (b, e) => { this.directHit(e, b.dmg); this.explode(b.x, b.y, b.dmg, area); return true; },
     });
+  }
+
+  /** 138 Лук феникса (эффект 198 = 50): прямое попадание ещё +50 % урона шара */
+  private directHit(e: Enemy, dmg: number) {
+    const r = (W.stats.artFx[198] ?? 0) / 100;
+    if (r > 0) W.enemies.damage(e, dmg * r, 0, 0, this.def.id);
   }
 
   /** Созвездие (ID 75): направление — на случайную точку рамки, шар — дочерний объект мага, 100 тиков + 5 шагов гашения */
@@ -171,7 +179,7 @@ class Fireball extends DataSpell {
         }
         b.x = W.player.x + d.ox; b.y = W.player.y + d.oy;
       },
-      onHit: (b) => { this.explode(b.x, b.y, b.dmg, area); return true; },
+      onHit: (b, e) => { this.directHit(e, b.dmg); this.explode(b.x, b.y, b.dmg, area); return true; },
     });
   }
 

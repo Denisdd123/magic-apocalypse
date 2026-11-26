@@ -116,7 +116,8 @@ class Cloak extends DataSpell {
         P.x = sx + (ox + Math.random() - 0.5) * U;
         P.y = sy - (oy + Math.random() - 0.5) * U;
       }
-      this.boom(P.x, P.y, true, r * 3);
+      // GhostDamage ×= r·3 (@0x11dddb0); «×3» уже в модах слияния (эффект 1062) — здесь только r
+      this.boom(P.x, P.y, true, r);
       this.active = (n - i) * 0.12 + 0.01;
       yield 0.12;
     }

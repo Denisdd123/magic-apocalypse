@@ -89,6 +89,9 @@ const DEF_BY_OID = (oid: number) => SPELLS.find((d) => d.id === KEY_BY_ID[oid]);
 const randInt = (a: number, b: number) => a + Math.floor(Math.random() * (b - a)); // Random.Range(int): b не включается
 /** Слияния 26–28 в оригинале закрыты до зоны 4 (Game_AreaMaxNum ≤ 3) — решение Дениса 2026-11-26: в 3.0 открыты всегда. 60 не делаем. */
 
+/** Демо 3.0 beta (решение Дениса 2026-11-26): игроку предлагаются только эти слияния, остальные включим позже */
+const BETA_MERGES = new Set([2, 8, 18, 26, 28, 33, 35, 37, 40, 42, 43, 50, 53, 54]);
+
 export class SpellBook {
   spells = new Map<string, Spell>();
   passives = new Map<string, number>();
@@ -215,6 +218,7 @@ export class SpellBook {
     }
     const out: number[] = [];
     for (let j = 1; j <= 63; j++) {
+      if (!BETA_MERGES.has(j)) continue;
       const m = MERGE[j];
       if (!m || !m.traitA || !m.traitB) continue;
       if (!learned.includes(m.traitA) || !learned.includes(m.traitB) || learned.includes(10000 + j)) continue;
@@ -377,16 +381,15 @@ export class SpellBook {
     this.applyCombo(c);
   }
 
-  /** Слияние: основа получает модификаторы и механику слияния, донор исчезает (вид/механика — партия 6) */
+  /** Слияние: основа получает модификаторы и механику слияния. Донор ОСТАЁТСЯ: в оригинале ветка
+   *  AbilityStatApply ≥ 10001 (@0x1210a00+) только применяет эффекты ID_01..; Learn донора не трогается,
+   *  его свойства лишь не участвуют в других слияниях (Create_Ability, levelup.md §2). */
   applyCombo(c: ComboData) {
     this.fusions.add(c.id);
     const base = this.spells.get(KEY_BY_ID[c.base.spell]) as DataSpell | undefined;
     if (base) { base.fusion = c; base.onChange(); }
     else this.globalCombos.add(c.id);
     for (const m of c.mods) if (m.stat === 'revive' && m.op === 'add') W.stats.revives += m.v;
-    const dk = KEY_BY_ID[c.donor.spell];
-    const donor = dk ? this.spells.get(dk) : undefined;
-    if (donor) { donor.destroy(); this.spells.delete(dk); this.consumed.add(dk); }
   }
 
   /** Очарование выбранного заклинания */

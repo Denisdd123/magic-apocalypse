@@ -90,6 +90,9 @@ class Meteor extends DataSpell {
   private jobs: Job[] = [];
   private bag: number[] = [];
   private lastCell = -1;
+  /** артефакт 129: счётчик залпов; артефакт 140: идёт дополнительный залп */
+  private powerN = 0;
+  private extraCast = false;
 
   /** Area = (100 + AreaU)% */
   private get area(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
@@ -144,6 +147,10 @@ class Meteor extends DataSpell {
     for (;;) {
       if (this.hasCombo(41)) yield* this.flameStorm();
       else {
+        // 129 Небесный календарь (эффект 336 = 3): каждый 4-й залп — урон и взрыв ×1.5
+        const calN = W.stats.artFx[336] ?? 0;
+        let pw = 1;
+        if (calN >= 1) { if (this.powerN < calN) this.powerN++; else { this.powerN = 0; pw = 1.5; } }
         const big = this.hasProp(445) || this.hasCombo(35);
         const n = this.hasCombo(35) ? 3 : this.hasProp(445) ? 1 : this.count;
         const ds = this.hasCombo(35) ? 0.3 : this.hasProp(444) ? 0.1 : 0.15;
@@ -152,12 +159,19 @@ class Meteor extends DataSpell {
         for (let i = 0; i < n; i++) {
           const [cx, cy] = this.cell();
           const x = W.player.x + cx * U, y = W.player.y - cy * U;
-          if (this.hasCombo(35)) this.impact(x, y, area, i === 0);
-          else if (big) this.asteroid(x, y, area);
-          else if (this.hasProp(443)) this.volcano(x, y, area, i);
-          else this.fallA(x, y, area);
+          if (this.hasCombo(35)) this.impact(x, y, area, i === 0, pw);
+          else if (big) this.asteroid(x, y, area, pw);
+          else if (this.hasProp(443)) this.volcano(x, y, area, i, pw);
+          else this.fallA(x, y, area, pw);
           if (i + 1 < n) yield ds;
         }
+        // 140 Портал (эффект 338 = 20%): весь залп повторяется ещё раз, без цепочки
+        if (!this.extraCast && (W.stats.artFx[338] ?? 0) >= 1 + Math.floor(Math.random() * 100)) {
+          this.extraCast = true;
+          yield this.hasCombo(35) ? 0.9 : 0.33;
+          continue;
+        }
+        this.extraCast = false;
       }
       yield this.pSpeed;
     }
@@ -194,42 +208,42 @@ class Meteor extends DataSpell {
   }
 
   /** MeteorA_AnimationB: угол Random(−75°, −68°) (экран: вниз-вправо), старт 20 ед., 26 × 0.7015 ед. */
-  private fallA(x: number, y: number, area: number) {
+  private fallA(x: number, y: number, area: number, pw: number) {
     const ang = rnd(68, 75) * DEG;
     this.fall(x, y, ang, 20, 0.7015, 26, TICK, 1.25, () => {
-      this.explode(x, y, area, this.dmg, EX9);
-      this.scorch(x, y, area * 1.1, 227, 118, 0x1a1a1a);
+      this.explode(x, y, area * pw, this.dmg * pw, EX9);
+      this.scorch(x, y, area * pw * 1.1, 227, 118, 0x1a1a1a);
     });
   }
 
   /** 443 (ID 32, MeteorB): без падения, wait SV01·0.15, взрыв + лавовый кратер на 0.92 ед. ниже */
-  private volcano(x: number, y: number, area: number, i: number) {
-    const dmg = this.dmg;
+  private volcano(x: number, y: number, area: number, i: number, pw: number) {
+    const dmg = this.dmg * pw;
     this.after(i * 0.15, () => {
-      this.explode(x, y, area, dmg, EX32);
-      this.crater(x, y + 0.92 * U, area, dmg * 0.25);
+      this.explode(x, y, area * pw, dmg, EX32);
+      this.crater(x, y + 0.92 * U, area * pw, dmg * 0.25);
     });
   }
 
   /** 445 (ID 54, MeteorC): local(i) = (−4.88 + 0.22i, 9.76 − 0.44i), i = 1..22 по 0.03 с; камень Area·0.38 */
-  private asteroid(x: number, y: number, area: number) {
+  private asteroid(x: number, y: number, area: number, pw: number) {
     const ang = Math.atan2(0.44, 0.22);   // экран: вниз-вправо, наклон 2:1
     const L = Math.hypot(4.88, 9.76);
     this.fall(x, y, ang, L, Math.hypot(0.22, 0.44), 22, TICK, area * 0.38, () => {
-      this.explode(x, y, area, this.dmg, EX54);
-      this.scorch(x, y, area * 1.1, 485, 83, 0x333333);
+      this.explode(x, y, area * pw, this.dmg * pw, EX54);
+      this.scorch(x, y, area * pw * 1.1, 485, 83, 0x333333);
     }, T.rockC);
   }
 
   /** 35 (ID 93, MeteorE): поле повёрнуто на 15–21° против часовой, старт +11 ед. по up, 22 × 0.48 ед. */
-  private impact(x: number, y: number, area: number, first: boolean) {
+  private impact(x: number, y: number, area: number, first: boolean, pw: number) {
     const th = Math.floor(rnd(15, 22)) * DEG;
     // up Unity (−sin θ, cos θ) → экран (−sin θ, −cos θ); полёт — обратно
     const ang = Math.atan2(Math.cos(th), Math.sin(th));
-    const dmg = this.dmg * (first ? 1.5 : 1), ex = first ? { ...EX93, plus: 0.9 } : EX93;
+    const dmg = this.dmg * (first ? 1.5 : 1) * pw, ex = first ? { ...EX93, plus: 0.9 } : EX93;
     this.fall(x, y, ang, 11, 0.48, 22, TICK, (first ? 0.45 : 0) + area * 0.3 + 0.2, () => {
-      this.explode(x, y, area, dmg, ex);
-      this.scorch(x, y, area * 1.45, 485, 83, 0x333333);
+      this.explode(x, y, area * pw, dmg, ex);
+      this.scorch(x, y, area * pw * 1.45, 485, 83, 0x333333);
     });
   }
 
