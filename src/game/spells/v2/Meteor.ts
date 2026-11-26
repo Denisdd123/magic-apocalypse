@@ -168,7 +168,7 @@ class Meteor extends DataSpell {
         // 140 Портал (эффект 338 = 20%): весь залп повторяется ещё раз, без цепочки
         if (!this.extraCast && (W.stats.artFx[338] ?? 0) >= 1 + Math.floor(Math.random() * 100)) {
           this.extraCast = true;
-          yield this.hasCombo(35) ? 0.9 : 0.33;
+          yield 0.33;   // обычный Play_Meteor (и у слияния 35); 0.9 — только ульта 35
           continue;
         }
         this.extraCast = false;
