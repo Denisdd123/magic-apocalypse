@@ -110,11 +110,11 @@ class Fireball extends DataSpell {
     for (;;) {
       if (this.hasCombo(46)) { yield* this.blackDeath(); yield this.pSpeed; continue; }
       if (this.hasCombo(6)) { this.demonEq(); yield this.pSpeed; continue; }
-      if (this.hasCombo(8) || this.hasProp(373)) {
+      if (!this.hasCombo(8) && this.hasProp(373)) {
         // Play_IsConstellation: шары по одному через 0.1 с, цель не выбирается
         if (!W.enemies.list.some((e) => e.alive)) { yield 0.1; continue; }
         for (let i = 1; i <= this.num; i++) {
-          if (this.hasCombo(8)) this.pandemonium(); else this.constellation(i);
+          this.constellation(i);
           if (i < this.num) yield 0.1;
         }
         yield this.pSpeed;
@@ -128,7 +128,9 @@ class Fireball extends DataSpell {
       for (let i = 1; i <= this.num; i++) {
         const t = list[i - 1];
         if (!t || t.d > RANGE) break;
-        this.shoot(Math.atan2(t.e.y - P.y, t.e.x - P.x), this.power(i));
+        const a = Math.atan2(t.e.y - P.y, t.e.x - P.x);
+        // 8 Пандемониум: обычный Play_Fireball (залп в цели), пуля 27
+        if (this.hasCombo(8)) this.pandemonium(a); else this.shoot(a, this.power(i));
       }
       yield this.pSpeed;
     }
@@ -197,18 +199,31 @@ class Fireball extends DataSpell {
     }
   }
 
-  /** Пандемониум (ID 27): рыщет (+Random(3,8)° за тик, 0.022·Speed ед. за тик), при исчезновении — взрыв ×3 */
-  private pandemonium() {
-    const P = W.player, S = this.size, dmg = this.dmg;
-    const life = 100 * 0.025 + 0.005;
+  /**
+   * Пандемониум (ID 27, C_Battle_AllyBullet.c:19446): курс на цель, каждый тик pos += right·Speed·0.022 и
+   * rotation.z += RotationRan (Random.Range(3, 8) — целое, один раз на шар); Apply_ExplosionID = 0 — при касании
+   * не взрывается, прямой урон = Attack·FireballDirectDamageRatio (только арт. 138), пробой всех; коллайдер 1.35×1.05.
+   * Жизнь = ConstellationTime·0.025 + 0.005, ConstellationTime = round(100·(100 + FireballTimeRatio + MTimeU)%).
+   * В конце — ExplosionAttack 27, урон FirstAttack·3. FireballDamage ветки = (Pierce·3 + 4)·урон (StartInformation_B
+   * @0x11da604) — ×4 уже пришло модом слияния (881), поэтому ×(3P + 4)/4.
+   */
+  private pandemonium(ang: number) {
+    const P = W.player, S = this.size;
+    const dmg = this.dmg * (this.pierce * 3 + 4) / 4;
+    const ct = Math.round(100 + this.pctOf('duration') + W.stats.duration * 100);
+    const life = ct * 0.025 + 0.005;
+    const rot = (3 + Math.floor(Math.random() * 5)) * Math.PI / 180;
+    const sy = S * 0.18 + 0.09;   // localScale.y (x — S·k + 0.1, k не прочитан: HOLES)
     this.bullets.fire({
-      x: P.x, y: P.y, ang: Math.random() * Math.PI * 2, sp: 0, life,
+      x: P.x, y: P.y, ang, sp: 0, life,
       tex: T.ball, scaleX: 0.5 * K_BALL * S, scaleY: 0.45 * K_BALL * S, tint: 0xd8e4ff, src: this.def.id,
+      hl: 0.675 * sy * U, hw: 0.525 * sy * U, pierce: 999, dmg: 0,
+      onHit: (_b, e) => { this.directHit(e, dmg); return true; },
       data: { acc: 0 },
       step: (b) => {
         while (b.data.acc + TICK <= b.t) {
           b.data.acc += TICK;
-          b.ang += (3 + Math.random() * 5) * Math.PI / 180;
+          b.ang += rot;
           const v = 0.022 * MSPEED * this.speedMul * U;
           b.x += Math.cos(b.ang) * v; b.y += Math.sin(b.ang) * v;
         }

@@ -90,7 +90,7 @@ const randInt = (a: number, b: number) => a + Math.floor(Math.random() * (b - a)
 /** Слияния 26–28 в оригинале закрыты до зоны 4 (Game_AreaMaxNum ≤ 3) — решение Дениса 2026-11-26: в 3.0 открыты всегда. 60 не делаем. */
 
 /** Демо 3.0 beta (решение Дениса 2026-11-26): игроку предлагаются только эти слияния, остальные включим позже */
-const BETA_MERGES = new Set([2, 8, 18, 26, 28, 33, 35, 37, 40, 42, 43, 50, 53, 54]);
+const BETA_MERGES = new Set([2, 8, 18, 26, 28, 33, 35, 37, 40, 42, 43, 50, 53, 54, 62]);
 
 export class SpellBook {
   spells = new Map<string, Spell>();

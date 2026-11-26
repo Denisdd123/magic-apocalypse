@@ -243,7 +243,8 @@ class Meteor extends DataSpell {
     const dmg = this.dmg * (first ? 1.5 : 1) * pw, ex = first ? { ...EX93, plus: 0.9 } : EX93;
     this.fall(x, y, ang, 11, 0.48, 22, TICK, (first ? 0.45 : 0) + area * 0.3 + 0.2, () => {
       this.explode(x, y, area * pw, dmg, ex);
-      this.scorch(x, y, area * pw * 1.45, 485, 83, 0x333333);
+      // MeteorLand 6: Size = ApplyExplosionArea·0.38 (0x7360fc), scale = Size·1.45, спрайт MeteorLand03
+      this.scorch(x, y, area * pw * 0.38 * 1.45, 485, 83, 0x333333);
     });
   }
 

@@ -65,6 +65,8 @@ interface Wind {
   v: number;
   dmg: number; hitT: number; hitK: number;
   acc: number; n: number;
+  /** 104: ApplyCulVar (альфа) и UnitApply_StunTime (тают каждый тик) */
+  cul: number; stun: number;
   ox: number; oy: number;
   img: Phaser.GameObjects.Image;
   tex: string;
@@ -124,10 +126,12 @@ class Cyclone extends DataSpell {
 
   // ———— корутины каста ————
   private *loop(): Generator<number, void, unknown> {
+    if (this.hasCombo(50)) { yield* this.blackHole(); return; }
     yield this.pSpeed;
     for (;;) {
-      if (this.hasCombo(39) || this.hasCombo(50)) {
-        this.make(this.hasCombo(39) ? 'super' : 'hole', 0);
+      if (this.hasCombo(50)) { yield* this.blackHole(); return; }
+      if (this.hasCombo(39)) {
+        this.make('super', 0);
         yield 0.1;
         while (this.alive) yield 0.1;
         yield this.pSpeed;
@@ -169,6 +173,22 @@ class Cyclone extends DataSpell {
     }
   }
 
+  /**
+   * 50 Чёрная дыра — Play_Tornado_Com05 (C_Battle_AllyUnit.c:28568): wait PSpeed + 1.0; серия Num дыр
+   * через TornadoDelay 0.35 с (ID 104, в точке мага); после последней — wait PSpeed + TornadoTime + 1.8
+   * (допкаст AddCastRan у нас не реализован ни у кого — база 0). Расписание жёсткое, конца дыр не ждёт.
+   */
+  private *blackHole(): Generator<number, void, unknown> {
+    yield this.pSpeed + 1.0;
+    for (;;) {
+      for (let i = 0; i < this.num; i++) {
+        this.make('hole', 0);
+        if (i < this.num - 1) yield VOID_DELAY;
+      }
+      yield this.pSpeed + this.durSec + 1.8;
+    }
+  }
+
   /** 141 Опахало (эффект 410 = 5): каждый 6-й вихрь — урон ×2, размер ×1.75 (в коде; Пустоты и слияние 50 — ×1.5) */
   private power(kind: Kind): [number, number] {
     const n = W.stats.artFx[410] ?? 0;
@@ -186,9 +206,10 @@ class Cyclone extends DataSpell {
     switch (kind) {
       case 'c': tex = T.c; v = 3.0 * 0.022 / TC; grow = 0; break;
       case 'b': case 'hole':
-        x += rnd(-3.8, 3.8) * U; y += rnd(-5.5, 5.5) * U; tex = T.b; v = 0; grow = 0;
-        if (kind === 'b') { sc = S * 0.25; coll = 3.75; expand = 0.03; fade = 8; fadeA = 0.09375; }
-        else { sc = S * 0.1 + 0.1; coll = 6; expand = 0.055; life += 1.0; tint = 0x8040c0; }
+        tex = T.b; v = 0; grow = 0;
+        // 39 (Пустота): точка маг ± (3.8, 5.5); 104 (Чёрная дыра): Bullet_Create case 0x68 — позиция мага
+        if (kind === 'b') { x += rnd(-3.8, 3.8) * U; y += rnd(-5.5, 5.5) * U; sc = S * 0.25; coll = 3.75; expand = 0.03; fade = 8; fadeA = 0.09375; }
+        else { sc = S * 0.1 + 0.1; coll = 6; expand = 0.055; life += 1.0; fade = 20; tint = 0x8040c0; }
         break;
       case 'orbit': tex = T.b; sc = S * 0.25 + 0.15; coll = 2.35; v = 0; grow = 0; tint = 0xff42ff; break;
       case 'neutron': sc = S * 0.12 + 0.3 + 0.25 * S * (this.num - 1); coll = 5; v = 2.5; grow = 0; tint = 0xffe0a0; break;
@@ -202,7 +223,7 @@ class Cyclone extends DataSpell {
       .setTint(tint).setAlpha(0.75).setRotation(ang);
     const w: Wind = {
       kind, x, y, h0: ang, h: ang, t: 0, life, fade, fadeA, sc, coll, grow, expand, v,
-      dmg: this.dmg * pd, hitT: 0.3, hitK: 1, acc: 0, n: 0, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
+      dmg: this.dmg * pd, hitT: 0.3, hitK: 1, acc: 0, n: 0, cul: kind === 'hole' ? 1.1 : 0.75, stun: 0.35, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
     };
     this.winds.push(w);
     this.draw(w, 0.75);
@@ -225,8 +246,13 @@ class Cyclone extends DataSpell {
           w.sc *= 0.9933;
           if (w.n === 21) { this.ballLightning(w); w.n = -6; }
           break;
-        case 'b': case 'hole':
+        case 'b':
           if (w.t >= 0.09) { w.sc += w.expand; w.expand *= 0.998; }
+          break;
+        case 'hole':
+          // Tornado_AnimationH: пока жив — CulVar ×0.9935, StunTime ×0.92, Expand ×0.99; scale += Expand всегда
+          w.sc += w.expand;
+          if (w.t <= w.life) { w.cul *= 0.9935; w.stun *= 0.92; w.expand *= 0.99; }
           break;
         case 'orbit': {
           // центр вращается −1.95° за тик 0.03
@@ -249,12 +275,18 @@ class Cyclone extends DataSpell {
       let d = w.dmg;
       if (w.kind === 'super') { d *= w.hitK; w.hitK += w.t > w.life ? 0.3 : 0.1; }
       boxDamage(w.x, w.y, w.h, h, h, d, this.def.id, new Set());
-      if (w.kind === 'hole') W.enemies.grid.query(w.x, w.y, h, (e) => { W.enemies.stun(e, 0.33); });
+      if (w.kind === 'hole' && w.stun > 0.001) {
+        const st = w.stun;
+        W.enemies.grid.query(w.x, w.y, h * 1.42, (e) => {
+          if (Math.abs(e.x - w.x) <= h + e.r && Math.abs(e.y - w.y) <= h + e.r) W.enemies.stun(e, st);
+        });
+      }
     }
     // жизнь + затухание
     const over = w.t - w.life;
     if (over >= w.fade * TC) return false;
-    this.draw(w, over < 0 ? 0.75 : 0.75 - w.fadeA * (Math.floor(over / TC) + 1));
+    if (w.kind === 'hole') this.draw(w, Math.min(1, w.cul) * (over < 0 ? 1 : 1 - 0.05 * (Math.floor(over / TC) + 1)));
+    else this.draw(w, over < 0 ? 0.75 : 0.75 - w.fadeA * (Math.floor(over / TC) + 1));
     return true;
   }
 
