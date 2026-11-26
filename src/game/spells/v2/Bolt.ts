@@ -21,6 +21,19 @@ const COL_ARROW = 0x8cf2ff;     // (0.55, 0.95, 1)
 const COL_CRACKER = 0xfffaab;   // (1, 0.98, 0.67)
 const COL_BLASTER = 0xccd1ff;   // (0.8, 0.82, 1)
 
+// ——— кадры оригинала (полные холсты Unity, public/vfx/bolt/orig; мелкие — сглажены ×4, суффикс _s, масштаб /4) ———
+const O = 'vfx/bolt/orig/';
+const seq = (pre: string, n: number, suf = '') => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}${suf}`);
+const B1 = 'Bullet1_01_s', SM1 = seq('BulletSmoke1', 3, '_s'), HIT1 = seq('Bullet1Hit', 6);
+const ARROW = seq('Incinerate3', 3), SM3 = ['BulletSmoke3_04'];
+const B8 = 'Bullet8_01', SM8 = seq('BulletSmoke8', 3), EX8 = seq('Explosion8', 8);
+const B10 = 'Bullet10_01', SM10 = seq('BulletSmoke10', 3), HIT10 = seq('Bullet10Hit', 6);
+const EX98 = seq('Explosion98', 11), BEAM = seq('Incinerate20', 10);
+/** список загрузки (GameScene.preload): [ключ, путь] */
+export const BOLT_LOAD: [string, string][] = [
+  ...[B1, ...SM1, ...ARROW, ...SM3, B8, ...SM8, ...EX8, B10, ...SM10, ...HIT1, ...HIT10, ...EX98, ...BEAM].map((k): [string, string] => [k, `${O}${k}.png`]),
+];
+
 type Pt = { x: number; y: number };
 interface Phantom { img: Phaser.GameObjects.Image; ox: number; oy: number; co: Co; t: number; phase: number }
 
@@ -201,32 +214,35 @@ class Bolt extends DataSpell {
         break;
       case 8: // Петарда: светло-жёлтая, 66 тиков, при касании — взрыв 8 (урон только взрывом)
         this.bullets.fire({
-          x: o.x + cs * 0.15 * U, y: o.y + sn * 0.15 * U, ang, tex: OT.cracker, scaleX: S, tint: COL_CRACKER, sp: v,
+          x: o.x + cs * 0.15 * U, y: o.y + sn * 0.15 * U, ang, tex: B8, scaleX: S, tint: COL_CRACKER, sp: v, normal: true,
           life: 66 * TICK, dmg, hl: 0.2 * S * U, hw: 0.05 * S * U, alpha: fade, smokeDt: 0.06, smokeTint: COL_CRACKER, src,
+          smokeFrames: SM8, smokeScale: PX,
           onHit: (b) => { this.explosion8(b.x, b.y, b.dmg, S); return true; },
         });
         break;
       case 98: { // Фейерверк: пуля без коллайдера летит 4…27 тиков и взрывается
         const f = FIRE[(Math.random() * 9) | 0], steps = 3 + ((Math.random() * 24) | 0);
         this.bullets.fire({
-          x: o.x + cs * 0.15 * U, y: o.y + sn * 0.15 * U, ang, tex: OT.cracker, scaleX: 1.2 * S, scaleY: 1.1 * S, tint: f.tint,
-          sp: v * 0.9, life: (steps + 1) * TICK, smokeDt: 0.06, smokeTint: f.tint, src,
+          x: o.x + cs * 0.15 * U, y: o.y + sn * 0.15 * U, ang, tex: B8, scaleX: 1.2 * S, scaleY: 1.1 * S, tint: f.tint, normal: true,
+          sp: v * 0.9, life: (steps + 1) * TICK, smokeDt: 0.06, smokeTint: f.tint, smokeFrames: SM8, smokeScale: PX, src,
           onEnd: (b) => this.explosion98(b.x, b.y, dmg * f.k, S * f.area, f.tint, f.k === 9),
         });
         break;
       }
       case 10: // Раскол: крупнее, вспышка Bullet10Hit — на враге
         this.bullets.fire({
-          x: o.x, y: o.y, ang, tex: OT.split, scaleX: S, sp: v, life: 81 * TICK, dmg,
-          hl: 0.25 * S * U, hw: 0.05 * S * U, cx: 0.2 * S * U, alpha: fade, smokeDt: 0.06, src,
-          onHit: (_b, e) => { W.fx.burst(e.x, e.y, 1.0 * U, 0xffffff, 0.36, 'spark'); },
+          x: o.x, y: o.y, ang, tex: B10, scaleX: S, sp: v, life: 81 * TICK, dmg, normal: true,
+          hl: 0.25 * S * U, hw: 0.05 * S * U, cx: 0.2 * S * U, alpha: fade, smokeDt: 0.06, smokeFrames: SM10, smokeScale: PX, src,
+          // BulletHitStart(10): scale 1, поворот 0, 6 кадров по 0.06 с, в позиции врага
+          onHit: (_b, e) => { W.fx.anim(e.x, e.y, HIT10, 0.06, 0.06, PX); },
         });
         break;
       default: // кейс 1: белая пуля
         this.bullets.fire({
-          x: o.x, y: o.y, ang, tex: OT.bolt, scaleX: S, sp: v, life: 81 * TICK, dmg,
-          hl: 0.1 * S * U, hw: 0.0375 * S * U, alpha: fade, smokeDt: 0.06, src,
-          onHit: (b) => { W.fx.burst(b.x, b.y, 63 * PX, 0xffffff, 0.36, 'spark'); },
+          x: o.x, y: o.y, ang, tex: B1, scaleX: S / 4, sp: v, life: 81 * TICK, dmg, normal: true,
+          hl: 0.1 * S * U, hw: 0.0375 * S * U, alpha: fade, smokeDt: 0.06, smokeFrames: SM1, smokeScale: PX / 4, src,
+          // BulletHitStart(1): scale 1, случайный поворот, 6 кадров по 0.06 с, в позиции пули
+          onHit: (b) => { const r = Math.random() * Math.PI * 2; W.fx.anim(b.x, b.y, HIT1, 0.06, 0.06, PX, PX, { hook: (img) => { img.setRotation(r); } }); },
         });
     }
   }
@@ -238,11 +254,12 @@ class Bolt extends DataSpell {
   private arrow(o: Pt, ang: number, _S: number, v: number, dmg: number, sx: number, sy: number, fwd: number, tint: number) {
     const cs = Math.cos(ang), sn = Math.sin(ang), grow = 4 * TICK;
     this.bullets.fire({
-      x: o.x + cs * fwd * U, y: o.y + sn * fwd * U, ang, tex: OT.arrow, scaleX: sx, scaleY: sy, tint, sp: v,
-      moveAt: grow, life: grow + 66 * TICK, dmg, pierce: 999, hw: 0.15 * sy * U, smokeDt: 0.06, smokeTint: tint, src: this.def.id,
+      x: o.x + cs * fwd * U, y: o.y + sn * fwd * U, ang, tex: ARROW[0], scaleX: sx, scaleY: sy, tint, sp: v, normal: true,
+      moveAt: grow, life: grow + 66 * TICK, dmg, pierce: 999, hw: 0.15 * sy * U, smokeDt: 0.06, smokeTint: tint, smokeFrames: SM3, smokeScale: PX, src: this.def.id,
       alpha: (b) => (b.t < TICK ? 0 : 2.4 - (b.t - grow)),
       step: (b) => {
         const f = Math.min(3, Math.floor(b.t / TICK)); // 0..3
+        b.img.setTexture(ARROW[Math.max(1, f) - 1]); // Incinerate3_00 (пустой) → _01, _02, _03; кадр 0 невидим (alpha 0)
         const len = [0.2, 0.65, 1.2, 1.2][f], c = [-0.45, -0.2, 0, 0][f];
         b.hl = (len / 2) * sx * U; b.cx = c * sx * U;
         b.img.setScale(PX * sx * [0.1, 0.4, 0.75, 1][f], PX * sy);
@@ -254,7 +271,9 @@ class Bolt extends DataSpell {
   private explosion8(x: number, y: number, dmg: number, area: number) {
     const a = Math.random() * Math.PI * 2, h = 0.825 * area * U;
     boxDamage(x, y, a, h, h, dmg, this.def.id);
-    W.fx.burst(x, y, 1.875 * area * U, COL_CRACKER, 0.31);
+    // Explosion8_01..08: 1-й кадр 0.03 с, дальше по 0.04 с (0.31 с), localScale 0.75·Area, случайный поворот
+    const r = a;
+    W.fx.anim(x, y, EX8, 0.03, 0.04, 0.75 * area * PX, 0.75 * area * PX, { hook: (img) => { img.setRotation(r); } });
   }
 
   /** Взрыв 98 (Фейерверк): квадрат 4 × 0.35·Area ед., урон 7 кадров по 0.039 с (r = 1: 0.05 с) */
@@ -263,7 +282,9 @@ class Bolt extends DataSpell {
     this.bullets.fire({
       x, y, ang: Math.random() * Math.PI * 2, tex: OT.smoke, scaleX: 0, life: 7 * fr, dmg, pierce: 999, hl: h, hw: h, src: this.def.id,
     });
-    W.fx.burst(x, y, h * 1.25, tint, 11 * fr);
+    // Explosion98_01..11 по fr с, localScale 0.35·Area, случайный поворот; кадры 1–7 окрашены, 8–11 — как есть
+    const r = Math.random() * Math.PI * 2, sc = 0.35 * area * PX;
+    W.fx.anim(x, y, EX98, fr, fr, sc, sc, { hook: (img, _t, n) => { img.setRotation(r); if (n < 7) img.setTint(tint); else img.clearTint(); } });
   }
 
   /**
@@ -275,9 +296,8 @@ class Bolt extends DataSpell {
     const sx = 1.8, sy = 0.45 * S + 4.0, fr = 0.05, fwd = 5.35 * U;
     const lens = [1, 2.2, 4.5, 6.1, 5.5, 4.5, 3.0];
     this.bullets.fire({
-      x: o.x + Math.cos(ang) * fwd, y: o.y + Math.sin(ang) * fwd, ang, tex: OT.arrow, scaleX: sx * 3.5, scaleY: sy * 0.6,
+      x: o.x + Math.cos(ang) * fwd, y: o.y + Math.sin(ang) * fwd, ang, tex: BEAM[0], scaleX: sx, scaleY: sy, frames: BEAM, frameDt: fr, normal: true,
       tint: 0xe6ebff, life: 10 * fr, dmg, pierce: 999, hl: 0.5 * sx * U, hw: 0.375 * sy * U, src: this.def.id,
-      alpha: (b) => 1 - b.t / (10 * fr) * 0.6,
       step: (b) => { const f = Math.floor(b.t / fr); b.hl = f < 7 ? (lens[f] / 2) * sx * U : 0; },
     });
     smoke(o.x, o.y, 0xe6ebff);

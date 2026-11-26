@@ -12,19 +12,23 @@ const MAX_BASE = 2;
 const DIVINE = 0.2;
 /** метка 12: эти враги переживают касание щита (ID 16, 26, 33 и боссы 41–46) */
 const SURVIVE = new Set([16, 26, 33, 41, 42, 43, 44, 45, 46]);
-/** Shield1..5: условный цвет набора по числу зарядов (кадры рисуем с Денисом позже) */
-const SET_TINT = [0xffffff, 0xffffff, 0xbfe4ff, 0xffe9a0, 0xd8b0ff];
-const TEX = 'sh_bubble';
+const two = (n: number) => String(n).padStart(2, '0');
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}${two(i + 1)}`);
+/** Shield{n}_01..04: набор n = число зарядов (1..5), 128 px, кадры по 0.3 с */
+const SH = [1, 2, 3, 4, 5].map((n) => seq(`sh${n}_`, 4));
+/** Explosion53_01..09 (поле разрушения), Explosion83_01..12 (квантовый взрыв), холсты 720 px */
+const EX53 = seq('shE53_', 9), EX83 = seq('shE83_', 12);
+/** DestroyField_Animation (@0x129ad70): 16 состояний; кадр 1,2 (по 0.06), пусто 0.06, кадр 3, пусто 0.03, 4, пусто 0.06, 5, пусто 0.03, 6, пусто 0.06, 7, пусто 0.03, 8, пусто 0.03, 9.
+ *  Всё кратно 0.03 с → шаг 0.03, -1 = спрайт скрыт (в оригинале — пустой спрайт Z_Database list[0]) */
+const FIELD_SEQ = [0, 0, 1, 1, -1, -1, 2, 2, -1, 3, 3, -1, -1, 4, 4, -1, 5, 5, -1, -1, 6, 6, -1, 7, 7, -1, 8, 8];
+/** Explosion83_Animation_A: цвет кадров 1–8 (R,G,B), дальше остаётся цвет 8-го кадра */
+const Q_TINT = [0xffffff, 0xffffe6, 0xffffcc, 0xffcc1a, 0xffbf1a, 0xffb214, 0xffa608, 0xff8c03];
 
-function textures() {
-  if (W.scene.textures.exists(TEX)) return;
-  // Shield*_0x 128×128: тонкое светлое кольцо-пузырь
-  const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-  g.lineStyle(3, 0xffffff, 0.9); g.strokeCircle(64, 64, 58);
-  g.lineStyle(1.5, 0xffffff, 0.5); g.strokeCircle(64, 64, 52);
-  g.fillStyle(0xffffff, 0.08); g.fillCircle(64, 64, 57);
-  g.generateTexture(TEX, 128, 128); g.destroy();
-}
+export const SHIELD_LOAD: [string, string][] = [
+  ...[1, 2, 3, 4, 5].flatMap((n) => [1, 2, 3, 4].map((k): [string, string] => [`sh${n}_${two(k)}`, `vfx/shield/orig/Shield${n}_${two(k)}.png`])),
+  ...EX53.map((k, i): [string, string] => [k, `vfx/shield/orig/Explosion53_${two(i + 1)}.png`]),
+  ...EX83.map((k, i): [string, string] => [k, `vfx/shield/orig/Explosion83_${two(i + 1)}.png`]),
+];
 
 interface Field { t: number; next: number; hits: Set<number>; half: number; dmg: number }
 /** DestroyField_Animation: 4 удара */
@@ -66,11 +70,10 @@ class Shield extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     if (this.hasCombo(18)) { removeGuard(this.guard); this.charges = 0; }
     else addGuard(this.guard, 0);
     if (this.charges > this.maxCharges) this.charges = this.maxCharges;
-    if (!this.img) this.img = W.scene.add.image(0, 0, TEX).setDepth(DEPTH.projectile).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
+    if (!this.img) this.img = W.scene.add.image(0, 0, SH[0][0]).setDepth(DEPTH.projectile).setVisible(false);
     if (!this.co) this.co = new Co(this.hasCombo(18) ? this.quantumLoop() : this.loop());
   }
 
@@ -126,7 +129,11 @@ class Shield extends DataSpell {
   private field() {
     const half = (4 * 1.11 * this.area / 2) * U;
     this.fields.push({ t: 0, next: 0, hits: new Set(), half, dmg: this.dmgOf(500) });
-    W.fx.burst(W.player.x, W.player.y, half * 1.2, 0x9fb8ff, 0.84, 'ring', W.player);
+    // Explosion53_01..09, 28 шагов по 0.03 с (≈0.84 с), localScale = Area·1.11, едет за магом (дочерний объект Obj_UnitDestroyFieldMid)
+    const s = 1.11 * this.area * PX;
+    W.fx.anim(W.player.x, W.player.y, FIELD_SEQ.map((k) => EX53[Math.max(0, k)]), 0.03, 0.03, s, s, {
+      hook: (img, t, n) => { img.setPosition(W.player.x, W.player.y).setVisible(FIELD_SEQ[n] >= 0); },
+    });
   }
 
   /** Квантовый взрыв (ID 83): N = MaxNum; урон +2·размер +33·N %, Area +33·N % */
@@ -138,7 +145,14 @@ class Shield extends DataSpell {
     // ExplosionAttack 0x53: масштаб Area·0.35 + 0.65; взрыв стоит на месте (не едет за магом)
     const f = area * 0.35 + 0.65;
     this.quanta.push({ x: P.x, y: P.y, t: 0, f, dmg, hits: new Set() });
-    W.fx.burst(P.x, P.y, 7.5 * f * U * 0.5, 0xd8e4ff, Q_END[Q_END.length - 1], 'ring');
+    // Explosion83_01..12: паузы Q_WAIT, цвет кадров 1–8 по Q_TINT (Explosion83_Animation_A). Animation_B — тёмная подложка Sprite_EffectGround_ShieldA (не рисуем, HOLES)
+    W.fx.anim(P.x, P.y, EX83, Q_WAIT[0], 0.06, f * PX, f * PX, {
+      last: 0.13,
+      hook: (img, t) => {
+        const k = Math.min(Q_END.findIndex((e) => t < e) < 0 ? 11 : Q_END.findIndex((e) => t < e), 11);
+        img.setTexture(EX83[k]).setTint(Q_TINT[Math.min(k, 7)]);
+      },
+    });
   }
 
   update(dt: number) {
@@ -166,14 +180,14 @@ class Shield extends DataSpell {
       if (k < 0) { this.quanta[i] = this.quanta[this.quanta.length - 1]; this.quanta.pop(); }
     }
 
-    // Play_Shield_Motion: кадры набора Shield{n} по 0.3 с (цикл 1.2 с); заглушка — лёгкая пульсация
+    // Play_Shield_Motion: кадры набора Shield{n} (n = число зарядов) по 0.3 с, цикл 1.2 с; 128 px × PX
     const img = this.img;
     if (img) {
       img.setVisible(this.charges > 0);
       if (this.charges > 0) {
         this.animT += dt;
         const fr = Math.floor(this.animT / 0.3) % 4;
-        img.setPosition(P.x, P.y).setScale(PX * (1 + fr * 0.02)).setTint(SET_TINT[Math.min(this.charges, 5) - 1]).setAlpha(0.85);
+        img.setTexture(SH[Math.min(this.charges, 5) - 1][fr]).setPosition(P.x, P.y).setScale(PX);
       }
     }
   }

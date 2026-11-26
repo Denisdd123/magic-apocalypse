@@ -10,31 +10,14 @@ const HOPS: [number, number][] = [
   [3.25, 6], [0, 6], [-3.25, 6], [3.25, 3.25], [0, 3.25], [-3.25, 3.25],
   [3.25, -3.25], [0, -3.25], [-3.25, -3.25], [3.25, -6], [0, -6], [-3.25, -6],
 ];
-const TX_BALL = 'cl_e18ball', TX_RING = 'cl_e18ring';
-
-function textures() {
-  const tx = W.scene.textures;
-  if (!tx.exists(TX_BALL)) {
-    // Explosion18_01: белый шар ~221 px
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    for (let i = 0; i < 6; i++) { g.fillStyle(0xffffff, 0.12 + i * 0.12); g.fillCircle(112, 112, 110 - i * 12); }
-    g.generateTexture(TX_BALL, 224, 224); g.destroy();
-  }
-  if (!tx.exists(TX_RING)) {
-    // Explosion18_02..08: белое кольцо с шипами, видимая часть ~353×398 в 500 px
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    const c = 250;
-    g.lineStyle(6, 0xffffff, 1); g.strokeEllipse(c, c, 340, 384);
-    g.fillStyle(0xffffff, 1);
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      const r0x = 170, r0y = 192, l = i % 2 ? 14 : 24;
-      const x = c + ca * r0x, y = c + sa * r0y;
-      g.fillTriangle(x + ca * l, y + sa * l, x - sa * 4, y + ca * 4, x + sa * 4, y - ca * 4);
-    }
-    g.generateTexture(TX_RING, 500, 500); g.destroy();
-  }
-}
+const O = 'vfx/cloak/orig/';
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+/** кадры оригинала: Explosion18_01..08 (холст 500²; 9–15 пустые), Explosion96_01..11 (холст 520²) */
+const EX18 = seq('Explosion18', 8), EX96 = seq('Explosion96', 11);
+const GROUND = 'GhostEffectGround', FLASH = 'UI_WhiteGround';
+export const CLOAK_LOAD: [string, string][] = [
+  ...[...EX18, ...EX96, GROUND, FLASH].map((k): [string, string] => [k, `${O}${k}.png`]),
+];
 
 /**
  * #11 Маскировка — 1:1 по коду оригинала (docs/orig/spells/cloak.md):
@@ -52,10 +35,13 @@ class Cloak extends DataSpell {
   /** осталось перезарядки, с (для HUD) */
   cdLeft = 0;
   private co: Co | null = null;
-  private ground: Phaser.GameObjects.Rectangle | null = null;
+  private ground: Phaser.GameObjects.Image | null = null;
+  private flash: Phaser.GameObjects.Image | null = null;
+  /** время вспышки земли GhostExplosionA_Animation, -1 = нет */
+  private flashT = -1;
   private killsAt = 0;
   private manaOn = false;
-  private booms: { ball: Phaser.GameObjects.Image; ring: Phaser.GameObjects.Image; x: number; y: number; t: number; hits: Set<number>; dmg: number; half: number; area: number; small: boolean }[] = [];
+  private booms: { x: number; y: number; t: number; hits: Set<number>; dmg: number; half: number }[] = [];
 
   /** GhostDelay = PSpeed + 0.5 (PSpeed 45 с × свои проценты × общий множитель) */
   get cdTotal() {
@@ -66,7 +52,6 @@ class Cloak extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     // StartInformation_B: при изучении — StartCoroutine("Play_Ghost") (один раз)
     if (!this.co) this.co = new Co(this.run());
   }
@@ -127,7 +112,7 @@ class Cloak extends DataSpell {
     const P = W.player;
     P.ghost = on;
     P.speedBuff = on ? 0.15 : 0;
-    this.ground?.setVisible(on);
+    this.ground?.setVisible(on && !this.hasCombo(40));
     const harvest = on && this.hasProp(454);
     if (harvest !== this.manaOn) { W.stats.xpGain += harvest ? 0.33 : -0.33; this.manaOn = harvest; }
     this.killsAt = W.kills;
@@ -139,43 +124,53 @@ class Cloak extends DataSpell {
     const dmg = this.dmgOf(50000) * mul;
     // 18: коллайдер 4 × 1.8·Area = 7.2 ед.; 96: 4.25 × 0.35 × Random(0.85, 1.25)·0.9
     const half = small ? 4.25 * 0.35 * (0.85 + Math.random() * 0.4) * 0.9 * area * U / 2 : 4 * 1.8 * area * U / 2;
-    let b = this.booms.find((o) => o.t < 0);
-    if (!b) {
-      b = { ball: W.scene.add.image(0, 0, TX_BALL).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD),
-        ring: W.scene.add.image(0, 0, TX_RING).setDepth(DEPTH.fx).setBlendMode(Phaser.BlendModes.ADD),
-        x: 0, y: 0, t: 0, hits: new Set(), dmg: 0, half: 0, area: 1, small };
-      this.booms.push(b);
+    this.booms.push({ x, y, t: 0, hits: new Set(), dmg, half });
+    if (small) {
+      // Explosion96_Animation (вариант A): 11 кадров по 0.035 с, 1-й белый, со 2-го цвет (0.45, 0.84, 1);
+      // localScale = Plus + Area·0.35, Plus = Random(0.85, 1.25)·0.9
+      const sc = (0.35 * area + (0.85 + Math.random() * 0.4) * 0.9) * PX;
+      W.fx.anim(x, y, EX96, 0.035, 0.035, sc, sc, { hook: (img, _t, n) => { if (n >= 1) img.setTint(0x73d6ff); else img.clearTint(); } });
+    } else {
+      // Explosion18_Animation: 8 кадров по 0.06 с (9–15 пустые), localScale Area·1.8; GhostExplosionA — вспышка земли
+      const sc = 1.8 * area * PX;
+      W.fx.anim(x, y, EX18, 0.06, 0.06, sc, sc);
+      this.flashT = 0;
     }
-    Object.assign(b, { x, y, t: 0, dmg, half, area, small });
-    b.hits.clear();
-    b.ball.setVisible(true).setPosition(x, y).setTint(small ? 0x73d6ff : 0xffffff);
-    b.ring.setVisible(false).setPosition(x, y).setTint(small ? 0x73d6ff : 0xffffff);
   }
 
   update(dt: number) {
     const P = W.player;
     if (!this.ground) {
-      this.ground = W.scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0.07).setOrigin(0).setDepth(DEPTH.zone).setVisible(false);
+      this.ground = W.scene.add.image(0, 0, GROUND).setOrigin(0).setDepth(DEPTH.zone).setVisible(false);
+      this.flash = W.scene.add.image(0, 0, FLASH).setOrigin(0).setDepth(DEPTH.zone).setVisible(false);
     }
     this.co?.update(dt);
     if (P.ghost) {
       const v = W.scene.cameras.main.worldView;
-      this.ground.setPosition(v.x, v.y).setSize(v.width, v.height);
+      this.ground.setPosition(v.x, v.y).setDisplaySize(v.width, v.height);
       if (this.hasProp(454)) {
         const k = W.kills - this.killsAt;
         if (k > 0) { this.killsAt = W.kills; P.heal(W.stats.maxHp * 0.001 * k); }
       }
     }
-    // Explosion18_Animation: 15 кадров по 0.06 с (видимы 8), коллайдер выкл. перед 8-м
-    for (const b of this.booms) {
-      if (b.t < 0) continue;
+    // коллайдер Explosion18: активен кадры 1–7 по 0.06 с (урон каждому 1 раз)
+    for (let i = this.booms.length - 1; i >= 0; i--) {
+      const b = this.booms[i];
       b.t += dt;
-      const f = Math.floor(b.t / 0.06);
-      const sc = (b.small ? 0.35 : 1.8) * b.area * PX;
-      if (f < 7) boxDamage(b.x, b.y, 0, b.half, b.half, b.dmg, this.def.id, b.hits);
-      b.ball.setVisible(f === 0).setScale(sc);
-      b.ring.setVisible(f >= 1 && f < 8).setScale(sc * (0.75 + 0.25 * Math.min(1, f / 7))).setAlpha(1 - Math.max(0, f - 3) / 5);
-      if (f >= 15) { b.t = -1; b.ball.setVisible(false); b.ring.setVisible(false); }
+      if (b.t < 7 * 0.06) boxDamage(b.x, b.y, 0, b.half, b.half, b.dmg, this.def.id, b.hits);
+      else { this.booms[i] = this.booms[this.booms.length - 1]; this.booms.pop(); }
+    }
+    // GhostExplosionA_Animation: 11 шагов по 0.03 с, альфа 0.25 − 0.025·i, белый спрайт на весь экран (scale 2.0)
+    if (this.flash) {
+      if (this.flashT >= 0) {
+        this.flashT += dt;
+        const i = Math.floor(this.flashT / 0.03);
+        if (i > 10) { this.flashT = -1; this.flash.setVisible(false); }
+        else {
+          const v = W.scene.cameras.main.worldView;
+          this.flash.setVisible(true).setPosition(v.x, v.y).setDisplaySize(v.width, v.height).setAlpha(0.25 - 0.025 * i);
+        }
+      }
     }
   }
 
@@ -183,7 +178,7 @@ class Cloak extends DataSpell {
     if (W.player.ghost) this.setGhost(false);
     this.co = null;
     this.ground?.destroy(); this.ground = null;
-    for (const b of this.booms) { b.ball.destroy(); b.ring.destroy(); }
+    this.flash?.destroy(); this.flash = null;
     this.booms = [];
   }
 }

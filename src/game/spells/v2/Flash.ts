@@ -14,16 +14,16 @@ const RUN: [number, number][] = [[-2.9, 1.0], [-2.28, 2.2], [-1.17, 4.5], [0, 6.
 /** белая вспышка земли: alpha по шагам 0.035 с */
 const GROUND = [0.02, 0.03, 0.04, 0.05, 0.04, 0.03, 0.02];
 
-// ——— заглушка по меркам спрайта (рисуем с Денисом позже): Incinerate12 848×400, рисуем 212×100 ———
-const T = { a: 'fl_a' };
-const SW = 848, TW = 212;
+// ——— кадры оригинала: Incinerate12 (ID 1 и 544 — набор по умолчанию префаба) и Incinerate20 (ID 2 Рагнарок: Int01 = 20), холст 848×400, PPU 100 ———
+const seq = (pre: string) => Array.from({ length: 10 }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+const F12 = seq('Incinerate12'), F20 = seq('Incinerate20');
+/** список загрузки (ключ, путь от public) — подключает GameScene.preload */
+export const FLASH_LOAD: [string, string][] = [...F12, ...F20].map((k): [string, string] => [k, `vfx/flash/orig/${k}.png`]);
+/** набор кадров по режиму (слияния в бете выключены: 7/44 — набор 20 по таблице §12.1, 49/59 — пока 12 вместо 34/37) */
+const framesOf = (m: Mode) => (m === 'rag' || m === 'c7' || m === 'c44' ? F20 : F12);
 function textures() {
   const tx = W.scene.textures;
-  if (tx.exists(T.a)) return;
-  const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-  for (let i = 0; i < 6; i++) { g.fillStyle(0xffffff, 0.06 + i * 0.05); g.fillEllipse(106, 50, 210 - i * 22, 60 - i * 9); }
-  g.fillStyle(0xffffff, 1); g.fillEllipse(110, 50, 150, 6);
-  g.generateTexture(T.a, TW, 100); g.destroy();
+  void tx; // фильтр по умолчанию (LINEAR): гладкие края по STYLE_GUIDE
 }
 
 type Mode = 'a' | 'rag' | 'devil' | 'c7' | 'c44' | 'c49' | 'c59';
@@ -36,6 +36,7 @@ interface Fl {
   d: number; h: number; center: boolean;
   dmg: number; hits: Set<number>; hitsC: Set<number>; live: boolean;
   img: Phaser.GameObjects.Image;
+  frames: string[];
 }
 
 /**
@@ -177,10 +178,10 @@ class Flash extends DataSpell {
       }
     }
     const kx = 1.2 * rx, ky = 1.2 * ry;
-    const img = (this.spare.pop() ?? W.scene.add.image(0, 0, T.a)).setTexture(T.a).setVisible(true)
-      .setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setPosition(x, y).setRotation(ang)
-      .setScale((SW * PX * kx) / TW, (400 * PX * ky) / 100).setTint(tint).setAlpha(1);
-    this.list.push({ mode, x, y, ang, t: 0, kx, ky, d, h, center, dmg, hits: new Set(), hitsC: new Set(), live: mode !== 'c59' || slot < 0, img });
+    const img = (this.spare.pop() ?? W.scene.add.image(0, 0, framesOf(mode)[0])).setTexture(framesOf(mode)[0]).setVisible(true)
+      .setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.NORMAL).setPosition(x, y).setRotation(ang)
+      .setScale(PX * kx, PX * ky).setTint(tint).setAlpha(1);
+    this.list.push({ mode, x, y, ang, t: 0, kx, ky, d, h, center, dmg, hits: new Set(), hitsC: new Set(), live: mode !== 'c59' || slot < 0, img, frames: framesOf(mode) });
     if (groundFx) this.groundT = 0;
   }
 
@@ -189,7 +190,7 @@ class Flash extends DataSpell {
     f.t += dt;
     const fr = Math.floor(f.t / f.d);          // 0..9
     if (fr >= 10) return false;
-    f.img.setAlpha(fr < 7 ? 1 : Math.max(0, 1 - (fr - 6) * 0.3));
+    f.img.setTexture(f.frames[fr]);   // кадры 8–10 уже нарисованы затухающими
     if (fr < 7 && f.live) {
       const [cx, w] = RUN[fr];
       const c = Math.cos(f.ang), s = Math.sin(f.ang);

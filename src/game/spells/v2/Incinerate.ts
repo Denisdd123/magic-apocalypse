@@ -1,5 +1,3 @@
-import Phaser from 'phaser';
-import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
@@ -12,30 +10,11 @@ const ASPEED = 0.07;
 /** AccuracyAim 80 · 0.2 = ±16° */
 const AIM = 16;
 
-// ——— заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { cloud: 'in_cloud', boom: 'in_boom' };
-/** Incinerate1_01..10: кадр 245 px, рисуем 100 */
-const CLOUD_PX = 245, CLOUD_TW = 100;
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // облачко пламени: мягкий вытянутый клуб, светлое ядро смещено вперёд (остриё вправо)
-  make(T.cloud, 100, 100, (g) => {
-    g.fillStyle(0xffffff, 0.18); g.fillEllipse(50, 50, 52, 42);
-    g.fillStyle(0xffffff, 0.45); g.fillEllipse(53, 50, 40, 30);
-    g.fillStyle(0xffffff, 0.9); g.fillEllipse(57, 50, 24, 17);
-  });
-  // Explosion50 (язык Пиромана): огненный клуб
-  make(T.boom, 100, 100, (g) => {
-    g.fillStyle(0xff4a10, 0.45); g.fillCircle(50, 50, 46);
-    g.fillStyle(0xff9a20, 0.9); g.fillCircle(50, 50, 32);
-    g.fillStyle(0xffe890, 1); g.fillCircle(50, 50, 16);
-  });
-}
+// ——— кадры оригинала (холсты Unity: Incinerate1 300×280, Explosion50 380×380; PPU 100 → масштаб = localScale × PX) ———
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+const CLOUD = seq('Incinerate1', 10), EX50 = seq('Explosion50', 14);
+/** список загрузки (GameScene.preload): [ключ, путь от public] */
+export const INCINERATE_LOAD: [string, string][] = [...CLOUD, ...EX50].map((k): [string, string] => [k, `vfx/incinerate/orig/${k}.png`]);
 
 /** вид облачка: стартовый цвет и сдвиг цвета за тик, множители урона/размера, масштаб (sx, sy) = S·k + plus */
 interface Kind { c: [number, number, number]; d: [number, number, number]; pw: number; sz: number; kx: number; ky: number; px: number; py: number; cy: number }
@@ -69,8 +48,7 @@ const rgb = (c: number[]) => {
 class Incinerate extends DataSpell {
   private co: Co | null = null;
   private clouds = new OrigBullets();
-  private booms: { x: number; y: number; t: number; at: number; half: number; dmg: number; img: Phaser.GameObjects.Image | null; life: number; px: number }[] = [];
-  private pool: Phaser.GameObjects.Image[] = [];
+  private booms: { x: number; y: number; t: number; at: number; half: number; dmg: number }[] = [];
 
   private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
   private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 4) * this.cdGlobal); }
@@ -81,15 +59,12 @@ class Incinerate extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     if (!this.co) this.co = new Co(this.loop());
   }
 
   destroy() {
     this.clouds.destroy();
-    for (const b of this.booms) b.img?.destroy();
-    for (const i of this.pool) i.destroy();
-    this.booms = []; this.pool = []; this.co = null;
+    this.booms = []; this.co = null;
   }
 
   update(dt: number) {
@@ -148,18 +123,17 @@ class Incinerate extends DataSpell {
     const life = c19 ? 0.33 : 6 * ani + 4 * 0.03;
     const dmg = this.dmg * pw;
     const pyro = this.hasProp(489) && !c11 && !c19 && !c55;
-    const tw = CLOUD_TW / CLOUD_PX;
     this.clouds.fire({
       x: P.x + c * (fwd + 6.2 * this.rangeK * 0.01 * U), y: P.y + s * (fwd + 6.2 * this.rangeK * 0.01 * U), ang, sp: 0, life,
-      tex: T.cloud, scaleX: sx0 / tw, scaleY: sy0 / tw, tint: rgb(k.c),
+      tex: CLOUD[0], scaleX: sx0, scaleY: sy0, tint: rgb(k.c), normal: true,
       hl: 0.5 * sx0 * U, hw: (k.cy / 2) * sy0 * U, pierce: 999, dmg, src: this.def.id,
       data: { acc: 0, n: 0, sx: sx0, sy: sy0, up: 1.115, v: step, booms: 0 },
-      step: (b) => this.move(b, k, ani, tw, pyro, c55, power),
+      step: (b) => this.move(b, k, ani, pyro, c55, power),
     });
   }
 
   /** Incinerate_Moving + Incinerate_Animation: тик 0.03 */
-  private move(b: OBullet, k: Kind, ani: number, tw: number, pyro: boolean, c55: boolean, power: number) {
+  private move(b: OBullet, k: Kind, ani: number, pyro: boolean, c55: boolean, power: number) {
     const d = b.data;
     while (d.acc + 0.03 <= b.t) {
       d.acc += 0.03; d.n++;
@@ -169,7 +143,7 @@ class Incinerate extends DataSpell {
       d.sx *= d.up; d.sy *= d.up;
       b.x += Math.cos(b.ang) * d.v; b.y += Math.sin(b.ang) * d.v;
       if (b.hl > 0) { b.hl = 0.5 * d.sx * U; b.hw = (k.cy / 2) * d.sy * U; }
-      b.img.setScale((PX * d.sx) / tw, (PX * d.sy) / tw);
+      b.img.setScale(PX * d.sx, PX * d.sy);
       b.img.setTint(rgb([k.c[0] - k.d[0] * d.n, k.c[1] - k.d[1] * d.n, k.c[2] - k.d[2] * d.n]));
       b.img.setAlpha(Math.max(0, 0.9 - 0.045 * d.n));
       // 489 Пироман: после кадра 4 и после кадра 7 — язык; 55: после кадра 5 и после кадра 9 — взрыв
@@ -187,16 +161,21 @@ class Incinerate extends DataSpell {
         this.boom(x, y, (3.5 * 0.75 * this.size / 2) * U, b.dmg, 0, 0, 0);
       }
     }
+    // Incinerate_Animation: 01..06 по BulletAniDeley, 07..10 по 0.03
+    const f = b.t < 6 * ani ? Math.floor(b.t / ani) : 6 + Math.min(3, Math.floor((b.t - 6 * ani) / 0.03));
+    b.img.setTexture(CLOUD[f]);
   }
 
   // ———— взрывы ————
-  private boom(x: number, y: number, half: number, dmg: number, at: number, life: number, px: number) {
-    let img: Phaser.GameObjects.Image | null = null;
+  private boom(x: number, y: number, half: number, dmg: number, at: number, life: number, _px: number) {
+    // язык пламени (Explosion64): Explosion50_01..14, паузы 0.03, 0.03, далее 0.06; BaseScale 0.75 (Area 1)
     if (life > 0) {
-      img = (this.pool.pop() ?? W.scene.add.image(0, 0, T.boom)).setVisible(true).setPosition(x, y)
-        .setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.projectile).setScale((px * U) / 100).setAlpha(1);
+      W.fx.anim(x, y, EX50, 0.03, 0.06, 0.75 * PX, 0.75 * PX, {
+        last: 0.03,
+        hook: (img, t) => { img.setTexture(EX50[t < 0.03 ? 0 : t < 0.06 ? 1 : Math.min(13, 2 + Math.floor((t - 0.06) / 0.06))]); },
+      });
     }
-    this.booms.push({ x, y, t: 0, at, half, dmg, img, life, px });
+    this.booms.push({ x, y, t: 0, at, half, dmg });
   }
 
   private updateBooms(dt: number) {
@@ -205,9 +184,7 @@ class Incinerate extends DataSpell {
       const was = b.t;
       b.t += dt;
       if (was <= b.at && b.t >= b.at) boxDamage(b.x, b.y, 0, b.half, b.half, b.dmg, this.def.id);
-      if (b.img) b.img.setAlpha(Math.max(0, 1 - b.t / b.life));
-      if (b.t >= Math.max(b.life, b.at + 0.01)) {
-        if (b.img) { b.img.setVisible(false); this.pool.push(b.img); }
+      if (b.t >= b.at + 0.01) {
         this.booms[i] = this.booms[this.booms.length - 1]; this.booms.pop();
       }
     }

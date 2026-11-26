@@ -16,14 +16,26 @@ const BD_X = [2, 0, -2], BD_Y = [4.5, 2, -2, -4.5];
 
 // ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
 const T = { ball: 'fb_ball', boom: 'fb_boom', gas: 'fb_gas', star: 'fb_star' };
+/** готовые кадры шара (грузятся в GameScene.preload) */
+const BALL = ['fb_ball_1', 'fb_ball_2', 'fb_ball_3'];
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+/** кадры оригинала (холсты Unity: Explosion6 548², Explosion27 520², Bullet27 400×348) */
+const EX6 = seq('Explosion6', 9), EX27 = seq('Explosion27', 8), B27 = seq('Bullet27', 3);
+/** Газ и Созвездие: взрывы 52 / 75–77 — кадры оригинала; снаряды и дымки сглажены ×4 (smooth_small.py) → масштаб /4 */
+const EX52 = seq('Explosion52', 14), EX75 = [75, 76, 77].map((n) => seq(`Explosion${n}`, 8));
+const B52 = 'Bullet52_01_s', B75 = seq('Bullet75', 3).map((k) => k + '_s');
+const SM52 = seq('BulletSmoke52', 3).map((k) => k + '_s'), SM75 = seq('BulletSmoke75', 3).map((k) => k + '_s');
+/** цвет облака газа со 2-го кадра (Explosion52_Animation_B @0x11a7950) */
+const GAS_TINT = 0x40db14;
 /** во сколько раз текстура меньше спрайта оригинала */
 const K_BALL = 4, K_BOOM = 4, K_STAR = 1;
 
-function textures() {
-  const tx = W.scene.textures;
+/** scene — для галереи (там нет W.scene) */
+export function textures(scene: Phaser.Scene = W.scene) {
+  const tx = scene.textures;
   const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
     if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
     draw(g); g.generateTexture(key, w, h); g.destroy();
   };
   // Bullet6 520×300 (рисуем 130×75): по замеру кадра шар с языками ≈60 % ширины справа от центра, вокруг — бледное красное свечение
@@ -146,8 +158,11 @@ class Fireball extends DataSpell {
     const dmg = this.dmg * power, area = S * power;
     this.bullets.fire({
       x: P.x + c * 0.4 * U, y: P.y + s * 0.4 * U, ang, sp: this.speed, life: 81 * TICK,
-      tex: gas ? T.star : T.ball, scaleX: gas ? 64 / 88 * S : 0.5 * K_BALL * S, scaleY: gas ? 64 / 88 * S : 0.45 * K_BALL * S,
-      tint: gas ? 0x9cff7a : undefined,
+      // шар — нарисованные кадры Bullet6 (холст 340×224, «гладкий»), localScale (0.5, 0.45)·Size, 3 кадра по 0.06 с
+      // газ (кейс 52): Bullet52_01, localScale 1.4·Size, дымок BulletSmoke52 каждые 0.06 с (Play_BulletSmoke)
+      ...(gas
+        ? { tex: B52, scaleX: 1.4 * S / 4, normal: true, smokeDt: 0.06, smokeFrames: SM52, smokeScale: PX / 4 }
+        : { tex: BALL[0], frames: BALL, frameDt: 0.06, scaleX: 0.5 * S, scaleY: 0.45 * S, normal: true }),
       hl: (gas ? 10 : 0.1375 * U / PX) * PX * S, hw: (gas ? 4 : 0.153 * U / PX) * PX * S,
       pierce: this.pierce, dmg, src: this.def.id, alpha: (b) => 2.4 - b.t,
       onHit: (b, e) => { this.directHit(e, b.dmg); this.explode(b.x, b.y, b.dmg, area); return true; },
@@ -167,7 +182,10 @@ class Fireball extends DataSpell {
     const live = 100 * TICK, fade = 5 * TICK;
     this.bullets.fire({
       x: W.player.x, y: W.player.y, ang, sp: 0, life: live + fade,
-      tex: T.star, scaleX: 1.4 * K_STAR * S, hl: 0.175 * U * S, hw: 0.175 * U * S,
+      // Bullet75_01..03 по 0.06 с, дымок BulletSmoke75 раз в 6 тиков (0.18 с), первый на 5-м тике (Constellation_Moving)
+      tex: B75[0], frames: B75, frameDt: 0.06, scaleX: 1.4 * S / 4, normal: true,
+      smokeDt: 0.18, smoke0: 0.12, smokeFrames: SM75, smokeScale: PX / 4,
+      hl: 0.175 * U * S, hw: 0.175 * U * S,
       pierce: this.pierce, dmg: this.dmg * power, src: this.def.id,
       data: { ox: 0, oy: 0, n: 0, acc: 0 },
       alpha: (b) => (b.t < live ? 1 : 1 - 0.2 * Math.floor((b.t - live) / TICK)),
@@ -181,8 +199,17 @@ class Fireball extends DataSpell {
         }
         b.x = W.player.x + d.ox; b.y = W.player.y + d.oy;
       },
-      onHit: (b, e) => { this.directHit(e, b.dmg); this.explode(b.x, b.y, b.dmg, area); return true; },
+      // Bullet_Create кейс 75 передаёт ExplosionID 75 (C_Battle_AllyUnit.c:40371) — свой взрыв, не 6/52
+      onHit: (b, e) => { this.directHit(e, b.dmg); this.explode75(b.x, b.y, b.dmg, area); return true; },
     });
+  }
+
+  /** ExplosionAttack 75 (C_Battle_AllyExplosion.c:26005): ID = Random.Range(75, 78), BaseScale 1.6, коллайдер 1.2,
+   *  кадры Explosion75..77_01..08 по 0.06 с (Explosion_Animation) */
+  private explode75(x: number, y: number, dmg: number, area: number) {
+    const half = (1.2 * 1.6 * area / 2) * U;
+    boxDamage(x, y, 0, half, half, dmg, this.def.id);
+    W.fx.anim(x, y, EX75[Math.floor(Math.random() * 3)], 0.06, 0.06, 1.6 * area * PX);
   }
 
   /** Уравнение демона (ID 26): N шаров по кругу 360/N·k, без цели, пробой 999, 0.6·Speed ед/с, 60 тиков */
@@ -216,7 +243,8 @@ class Fireball extends DataSpell {
     const sy = S * 0.18 + 0.09;   // localScale.y (x — S·k + 0.1, k не прочитан: HOLES)
     this.bullets.fire({
       x: P.x, y: P.y, ang, sp: 0, life,
-      tex: T.ball, scaleX: 0.5 * K_BALL * S, scaleY: 0.45 * K_BALL * S, tint: 0xd8e4ff, src: this.def.id,
+      // кадры Bullet27_01..03 по 0.06 с (счётчик кадров шагает раз в 2 тика); scale.x не прочитан (HOLES) — берём scale.y
+      tex: B27[0], frames: B27, frameDt: 0.06, scaleX: sy, scaleY: sy, normal: true, src: this.def.id,
       hl: 0.675 * sy * U, hw: 0.525 * sy * U, pierce: 999, dmg: 0,
       onHit: (_b, e) => { this.directHit(e, dmg); return true; },
       data: { acc: 0 },
@@ -228,7 +256,8 @@ class Fireball extends DataSpell {
           b.x += Math.cos(b.ang) * v; b.y += Math.sin(b.ang) * v;
         }
       },
-      onEnd: (b) => this.explodeId(b.x, b.y, dmg * 3, S, 0.48, 0.5, 3.3, 8 * 0.035, 0xd8e4ff),
+      // Explosion27_01..08: 1-й кадр 0.06 с, дальше по 0.035 с
+      onEnd: (b) => this.explodeId(b.x, b.y, dmg * 3, S, 0.48, 0.5, 3.3, 8 * 0.035, 0xd8e4ff, [EX27, 0.06, 0.035]),
     });
   }
 
@@ -253,19 +282,33 @@ class Fireball extends DataSpell {
       // Explosion52: BaseScale 0.75, коллайдер 2.15 ед., рост ×(1.03 − 0.001i) каждые 0.06 с, удары 0 / 0.18 / 0.42 с
       const half = (2.15 * 0.75 * area / 2) * U;
       this.addBoom(x, y, dmg, half, [0, 0.18, 0.42], true, false, 0, 0);
-      W.fx.puff(x, y, 170 * area, 0x40db14, 0.81, T.gas);
+      // Explosion52_01..14 по 0.06 с (последний 0.03), localScale Area·0.75, рост ×(1.03 − 0.001i) каждые 0.06 с (26 шагов),
+      // белый 1–2-й кадр, дальше зелёный (0.25, 0.86, 0.08)
+      const s0 = 0.75 * area * PX;
+      W.fx.anim(x, y, EX52, 0.06, 0.06, s0, s0, {
+        last: 0.03,
+        hook: (img, t, n) => {
+          let k = 1;
+          for (let i = 0, steps = Math.min(26, Math.floor(t / 0.06)); i < steps; i++) k *= 1.03 - 0.001 * i;
+          img.setScale(s0 * k);
+          if (n >= 2) img.setTint(GAS_TINT); else img.clearTint();
+        },
+      });
       return;
     }
     const half = (1.68 * area / 2) * U;
     boxDamage(x, y, 0, half, half, dmg, this.def.id);
-    W.fx.puff(x, y, 548 * 0.7 * PX * area, 0xffffff, 0.54, T.boom);
+    // Explosion6_01..09 по 0.06 с, localScale = Area·0.7
+    W.fx.anim(x, y, EX6, 0.06, 0.06, 0.7 * area * PX);
   }
 
-  /** Взрыв слияния: квадрат коллайдер × (Area·BaseScale + Plus), урон один раз */
-  private explodeId(x: number, y: number, dmg: number, area: number, base: number, plus: number, coll: number, life: number, tint: number) {
+  /** Взрыв слияния: квадрат коллайдер × (Area·BaseScale + Plus), урон один раз; anim — кадры оригинала [кадры, 1-й кадр с, шаг с] */
+  private explodeId(x: number, y: number, dmg: number, area: number, base: number, plus: number, coll: number, life: number, tint: number,
+    anim?: [string[], number, number]) {
     const half = (coll * (area * base + plus) / 2) * U;
     boxDamage(x, y, 0, half, half, dmg, this.def.id);
-    W.fx.puff(x, y, half * 2.3, tint, life, T.boom);
+    if (anim) W.fx.anim(x, y, anim[0], anim[1], anim[2], (area * base + plus) * PX);
+    else W.fx.puff(x, y, half * 2.3, tint, life, T.boom);
   }
 
   /** Многократный взрыв: удары в моменты times, список задетых очищается перед каждым */

@@ -166,9 +166,16 @@ export interface OBullet {
   onHit?: (b: OBullet, e: Enemy) => boolean | void;
   onEnd?: (b: OBullet) => void;
   data?: any;
+  /** покадровая анимация (ключи текстур) с шагом frameDt, по кругу */
+  frames?: string[]; frameDt: number;
+  /** дымок кадрами оригинала (BulletSmoke: 3 кадра по 0.05 с) вместо заглушки; smokeScale — масштаб картинки */
+  smokeFrames?: string[]; smokeScale: number;
 }
 
-export type OBulletInit = Partial<OBullet> & { x: number; y: number; ang: number; tex: string; scaleX: number; scaleY?: number; tint?: number };
+/** normal — обычная альфа (как EffectSprite_Mat оригинала); по умолчанию — сложение (старые заглушки) */
+export type OBulletInit = Partial<OBullet> & { x: number; y: number; ang: number; tex: string; scaleX: number; scaleY?: number; tint?: number; normal?: boolean;
+  /** время до первого дымка (по умолчанию smokeDt) */
+  smoke0?: number };
 
 /** Пул снарядов одного заклинания */
 export class OrigBullets {
@@ -186,8 +193,11 @@ export class OrigBullets {
     b.hl = o.hl ?? 0; b.hw = o.hw ?? 0; b.cx = o.cx ?? 0; b.hits.clear();
     b.alpha = o.alpha ?? null; b.smokeDt = o.smokeDt ?? 0; b.smokeT = b.smokeDt; b.smokeTint = o.smokeTint ?? 0xffffff;
     b.src = o.src ?? ''; b.step = o.step; b.onHit = o.onHit; b.onEnd = o.onEnd; b.data = o.data;
+    b.frames = o.frames; b.frameDt = o.frameDt ?? 0.06;
+    b.smokeFrames = o.smokeFrames; b.smokeScale = o.smokeScale ?? PX; b.smokeT = o.smoke0 ?? b.smokeDt;
     b.img.setTexture(o.tex).setVisible(true).setAlpha(1).setPosition(b.x, b.y).setRotation(b.ang)
-      .setScale(PX * o.scaleX, PX * (o.scaleY ?? o.scaleX)).setBlendMode(Phaser.BlendModes.ADD);
+      .setScale(PX * o.scaleX, PX * (o.scaleY ?? o.scaleX))
+      .setBlendMode(o.normal ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
     if (o.tint !== undefined) b.img.setTint(o.tint); else b.img.clearTint();
     return b;
   }
@@ -210,10 +220,16 @@ export class OrigBullets {
       const c = Math.cos(b.ang), s = Math.sin(b.ang);
       if (b.sp && b.t >= b.moveAt) { b.x += c * b.sp * dt; b.y += s * b.sp * dt; }
       b.img.setPosition(b.x, b.y);
+      if (b.frames) b.img.setTexture(b.frames[Math.floor(b.t / b.frameDt) % b.frames.length]);
       if (b.alpha) b.img.setAlpha(Math.max(0, Math.min(1, b.alpha(b))));
       if (b.smokeDt > 0) {
         b.smokeT -= dt;
-        if (b.smokeT <= 0) { b.smokeT += b.smokeDt; smoke(b.x, b.y, b.smokeTint); }
+        if (b.smokeT <= 0) {
+          b.smokeT += b.smokeDt;
+          if (b.smokeFrames) { const tn = b.smokeTint; W.fx.anim(b.x, b.y, b.smokeFrames, 0.05, 0.05, b.smokeScale, b.smokeScale,
+            tn !== 0xffffff ? { hook: (im) => { im.setTint(tn); } } : {}); }
+          else smoke(b.x, b.y, b.smokeTint);
+        }
       }
       if (b.hl > 0) this.collide(b, c, s);
       if (b.alive && b.t >= b.life) this.end(b);

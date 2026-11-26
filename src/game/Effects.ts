@@ -8,6 +8,10 @@ interface Fx {
   vx: number; vy: number; spin: number;
   follow?: { x: number; y: number };
   ox: number; oy: number;
+  /** покадровый эффект: ключи кадров, первый кадр fdt0 с, остальные fdt с (без затухания и роста) */
+  frames?: string[]; fdt0?: number; fdt?: number;
+  /** вызывается каждый кадр покадрового эффекта (рост, смена цвета) */
+  hook?: (img: Phaser.GameObjects.Image, t: number, frame: number) => void;
 }
 
 /** Лёгкие визуальные эффекты (кольца взрывов, искры) с собственным пулом — без tween-ов. */
@@ -37,6 +41,15 @@ export class Effects {
     this.list.push({ img, t: 0, life, s0: k, s1: k, a0, a1: 0, vx: 0, vy: 0, spin: 0, ox: 0, oy: 0 });
   }
 
+  /** Покадровый эффект оригинала (Explosion_Animation): кадры по очереди, обычная альфа, масштаб sx/sy к текстуре */
+  anim(x: number, y: number, frames: string[], fdt0: number, fdt: number, sx: number, sy = sx,
+    o: { last?: number; hook?: Fx['hook'] } = {}) {
+    const img = this.get(frames[0]).setPosition(x, y).setScale(sx, sy).setBlendMode(Phaser.BlendModes.NORMAL);
+    const life = fdt0 + (frames.length - 2) * fdt + (o.last ?? fdt);   // last — пауза последнего кадра
+    this.list.push({ img, t: 0, life, s0: sx, s1: sx, a0: 1, a1: 1, vx: 0, vy: 0, spin: 0, ox: 0, oy: 0, frames, fdt0, fdt, hook: o.hook });
+    o.hook?.(img, 0, 0);
+  }
+
   sparks(x: number, y: number, n: number, tint = 0xffffff, speed = 90) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random());
@@ -53,7 +66,11 @@ export class Effects {
       const e = 1 - (1 - k) * (1 - k);
       if (f.follow) f.img.setPosition(f.follow.x + f.ox, f.follow.y + f.oy);
       else if (f.vx || f.vy) f.img.setPosition(f.img.x + f.vx * dt, f.img.y + f.vy * dt);
-      f.img.setScale(f.s0 + (f.s1 - f.s0) * e).setAlpha(f.a0 + (f.a1 - f.a0) * k);
+      if (f.frames) {
+        const n = f.t < f.fdt0! ? 0 : 1 + Math.floor((f.t - f.fdt0!) / f.fdt!);
+        if (n < f.frames.length) f.img.setTexture(f.frames[n]);
+        f.hook?.(f.img, f.t, Math.min(n, f.frames.length - 1));
+      } else f.img.setScale(f.s0 + (f.s1 - f.s0) * e).setAlpha(f.a0 + (f.a1 - f.a0) * k);
       if (f.spin) f.img.rotation += f.spin * dt;
       if (k >= 1) {
         f.img.setVisible(false);

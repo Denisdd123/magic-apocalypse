@@ -48,6 +48,7 @@ const game = new Phaser.Game({
   input: { keyboard: false, mouse: false, touch: false },
   scene: [GameScene],
 });
+if (import.meta.env.DEV) (window as any).GAME = game; // отладка загрузчика
 
 // отладка (только dev): ручной шаг цикла, если вкладка в фоне и requestAnimationFrame не идёт
 if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;

@@ -9,6 +9,15 @@ import { Projectiles } from './Projectiles';
 import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
 import { ART } from '../data/art';
+import { BOLT_LOAD } from './spells/v2/Bolt';
+import { SPIRIT_LOAD } from './spells/v2/Spirit';
+import { MCIRCLE_LOAD } from './spells/v2/Mcircle';
+import { SHIELD_LOAD } from './spells/v2/Shield';
+import { SATELLITE_LOAD } from './spells/v2/Satellite';
+import { CLOAK_LOAD } from './spells/v2/Cloak';
+import { INCINERATE_LOAD } from './spells/v2/Incinerate';
+import { RAY_LOAD } from './spells/v2/Ray';
+import { FLASH_LOAD } from './spells/v2/Flash';
 
 /** картинки, без которых нельзя начинать бой */
 const CRITICAL = /^v2\/(spell_fx|world|spell_icons|passives)\//;
@@ -45,6 +54,28 @@ export class GameScene extends Phaser.Scene {
   preload() {
     // новая графика 2.0 (art-raw → public/v2, scripts/import_art.py): до меню — только нужное для боя
     for (const [k, p] of Object.entries(ART)) if (CRITICAL.test(p)) this.load.image(k, p);
+    // огненный шар «гладкий» (выбран Денисом 2026-11-26, docs/STYLE_GUIDE.md): 3 кадра Bullet6
+    for (const i of [1, 2, 3]) this.load.image(`fb_ball_${i}`, `vfx/fireball/v3/smooth_0${i}.png`);
+    // кадры оригинала, уже гладкие (полный холст Unity): взрыв шара, пуля и взрыв Пандемониума
+    const o = 'vfx/fireball/orig/', p2 = (i: number) => String(i).padStart(2, '0');
+    for (let i = 1; i <= 9; i++) this.load.image(`Explosion6_${p2(i)}`, `${o}Explosion6_${p2(i)}.png`);
+    for (let i = 1; i <= 8; i++) this.load.image(`Explosion27_${p2(i)}`, `${o}Explosion27_${p2(i)}.png`);
+    for (let i = 1; i <= 3; i++) this.load.image(`Bullet27_${p2(i)}`, `${o}Bullet27_${p2(i)}.png`);
+    // Ядовитый газ и Созвездие: взрывы 52 / 75–77 как есть, мелкие снаряды и дымки — сглаженные ×4 (_s)
+    for (let i = 1; i <= 14; i++) this.load.image(`Explosion52_${p2(i)}`, `${o}Explosion52_${p2(i)}.png`);
+    for (const n of [75, 76, 77]) for (let i = 1; i <= 8; i++) this.load.image(`Explosion${n}_${p2(i)}`, `${o}Explosion${n}_${p2(i)}.png`);
+    for (const k of ['Bullet52_01', 'BulletSmoke52_01', 'BulletSmoke52_02', 'BulletSmoke52_03', 'Bullet75_01', 'Bullet75_02', 'Bullet75_03',
+      'BulletSmoke75_01', 'BulletSmoke75_02', 'BulletSmoke75_03']) this.load.image(k + '_s', `${o}${k}_s.png`);
+    // Магическая пуля: кадры оригинала (vfx/bolt/orig, мелкие сглажены ×4 — _s)
+    for (const [k, p] of BOLT_LOAD) this.load.image(k, `vfx/bolt/orig/${p.split('/').pop()}`);
+    for (const [k, p] of SPIRIT_LOAD) this.load.image(k, p);   // Дух (vfx/spirit/orig)
+    for (const [k, p] of MCIRCLE_LOAD) this.load.image(k, p);  // Магический круг (vfx/mcircle/orig)
+    for (const [k, p] of SHIELD_LOAD) this.load.image(k, p);   // Щит (vfx/shield/orig)
+    for (const [k, p] of SATELLITE_LOAD) this.load.image(k, p); // Спутник (vfx/satellite/orig)
+    for (const [k, p] of CLOAK_LOAD) this.load.image(k, p);    // Маскировка (vfx/cloak/orig)
+    for (const [k, p] of INCINERATE_LOAD) this.load.image(k, p); // Испепеление (vfx/incinerate/orig)
+    for (const [k, p] of RAY_LOAD) this.load.image(k, p);       // Магический луч (vfx/ray/orig)
+    for (const [k, p] of FLASH_LOAD) this.load.image(k, p);     // Вспышка (vfx/flash/orig)
   }
 
   /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */

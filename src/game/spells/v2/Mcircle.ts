@@ -6,44 +6,10 @@ import { DataSpell, defFromData } from '../DataSpell';
 import { PX, U } from './_orig';
 
 const DEG = Math.PI / 180;
-/** кольца: MagicCircle1/2 (A, 282 px, звезда) и MagicCircle4/5 (B, 391 px, руны); scale 0.85, альфа 0.706 */
-const RING_A = 'mc_ringA', RING_B = 'mc_ringB';
-const SCALE0 = 0.85, ALPHA0 = 0.706;
-
-function ringTextures() {
-  const tx = W.scene.textures;
-  if (!tx.exists(RING_A)) {
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    const c = 141, r = 139;
-    g.lineStyle(2, 0xffffff, 1); g.strokeCircle(c, c, r);
-    // шестиконечная звезда, вершины на окружности
-    for (const off of [-90, 90]) {
-      g.beginPath();
-      for (let i = 0; i <= 3; i++) {
-        const a = (off + i * 120) * DEG;
-        if (i === 0) g.moveTo(c + Math.cos(a) * r, c + Math.sin(a) * r); else g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
-      }
-      g.strokePath();
-    }
-    g.generateTexture(RING_A, 282, 282); g.destroy();
-  }
-  if (!tx.exists(RING_B)) {
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    const c = 196;
-    g.lineStyle(2, 0xffffff, 1); g.strokeCircle(c, c, 193); g.strokeCircle(c, c, 163);
-    // пояс «рун»: штрихи, точки, кружки, треугольники между окружностями
-    g.fillStyle(0xffffff, 1);
-    for (let i = 0; i < 64; i++) {
-      const a = (i / 64) * Math.PI * 2, x = c + Math.cos(a) * 178, y = c + Math.sin(a) * 178;
-      const kind = (i * 7) % 5;
-      if (kind === 0) g.fillCircle(x, y, 3);
-      else if (kind === 1) { g.strokeCircle(x, y, 5); }
-      else if (kind === 2) { const t = a + Math.PI / 2; g.lineBetween(x - Math.cos(a) * 7, y - Math.sin(a) * 7, x + Math.cos(a) * 7, y + Math.sin(a) * 7); g.lineBetween(x - Math.cos(t) * 3 - Math.cos(a) * 7, y - Math.sin(t) * 3 - Math.sin(a) * 7, x - Math.cos(t) * 3 + Math.cos(a) * 7, y - Math.sin(t) * 3 + Math.sin(a) * 7); }
-      else if (kind === 3) g.fillTriangle(x + Math.cos(a) * 6, y + Math.sin(a) * 6, x - Math.cos(a + 1) * 5, y - Math.sin(a + 1) * 5, x - Math.cos(a - 1) * 5, y - Math.sin(a - 1) * 5);
-    }
-    g.generateTexture(RING_B, 392, 392); g.destroy();
-  }
-}
+/** кольца оригинала: A = MagicCircle1↔2, B = MagicCircle4↔5 (смена 0.08 с), при слиянии 27 (ComID 1) A/B = 7↔8; холст 520², PPU 100, scale 0.85, альфа 0.706 */
+const MC = (n: number) => `mc_${n}`;
+export const MCIRCLE_LOAD: [string, string][] = [1, 2, 4, 5, 7, 8].map((n) => [MC(n), `vfx/mcircle/orig/MagicCircle${n}.png`]);
+const SCALE0 = 0.85, ALPHA0 = 0.706, FRAME_DT = 0.08;
 
 /**
  * #19 Магический круг — 1:1 по коду оригинала (docs/orig/spells/mcircle.md, Play_MagicCircle d__1106):
@@ -64,6 +30,7 @@ class Mcircle extends DataSpell {
   private b: Phaser.GameObjects.Image | null = null;
   private rotA = 0;
   private rotB = 0;
+  private ft = 0;
   private xpApplied = false;
   private learned = false;
 
@@ -90,9 +57,8 @@ class Mcircle extends DataSpell {
     const synth = this.hasProp(525);
     if (synth !== this.xpApplied) { W.stats.xpGain += synth ? 0.15 : -0.15; this.xpApplied = synth; }
     if (!this.a) {
-      ringTextures();
-      this.a = W.scene.add.image(0, 0, RING_A).setDepth(DEPTH.zone).setVisible(false);
-      this.b = W.scene.add.image(0, 0, RING_B).setDepth(DEPTH.zone).setVisible(false);
+      this.a = W.scene.add.image(0, 0, MC(1)).setDepth(DEPTH.zone).setVisible(false);
+      this.b = W.scene.add.image(0, 0, MC(4)).setDepth(DEPTH.zone).setVisible(false);
     }
     // yield Wait(PSpeed) перед первым кругом
     if (!this.learned) { this.learned = true; this.cdLeft = this.cdTotal; }
@@ -109,6 +75,11 @@ class Mcircle extends DataSpell {
       // Play_MagicCircleEffectA: A −1.5°, B +1.2° за 0.03 с (Unity, против часовой — «+»; на экране y вниз знак меняется)
       this.rotA += (1.5 / 0.03) * dt;
       this.rotB -= (1.2 / 0.03) * dt;
+      // Play_MagicCircleEffectB: кадры меняются каждые 0.08 с
+      this.ft += dt;
+      const f = Math.floor(this.ft / FRAME_DT) & 1;
+      if (perpetual) { this.a!.setTexture(MC(7 + f)); this.b!.setTexture(MC(7 + f)); }
+      else { this.a!.setTexture(MC(1 + f)); this.b!.setTexture(MC(4 + f)); }
       this.place(P.x, P.y);
       if (this.active <= 0) this.end();
       return;

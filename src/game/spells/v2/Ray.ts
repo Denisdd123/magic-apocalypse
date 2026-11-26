@@ -12,21 +12,20 @@ const ASPEED = 0.2;
 const RING_OFF = 0.35;
 const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 
-// ——— заглушки по меркам спрайтов (рисуем с Денисом позже) ———
-const T = { beam: 'ry_beam', beam0: 'ry_beam0', dot: 'ry_dot' };
-/** Incinerate13_03 950×30 (рисуем 190×6 = ÷5); 36_03 908×56 (рисуем 182×12); кружок 13_01 56×55 (рисуем 28) */
-const K_BEAM = 5, K_DOT = 2;
-function textures() {
-  const tx = W.scene.textures;
-  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
-    if (tx.exists(key)) return;
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    draw(g); g.generateTexture(key, w, h); g.destroy();
-  };
-  // луч: ось x — от начала (левый край) вперёд, белая сердцевина в мягкой кромке
-  make(T.beam, 190, 6, (g) => { g.fillStyle(0xffffff, 0.35); g.fillRect(0, 0, 190, 6); g.fillStyle(0xffffff, 1); g.fillRect(0, 2, 190, 2); });
-  make(T.beam0, 182, 12, (g) => { g.fillStyle(0xffffff, 0.3); g.fillRect(0, 0, 182, 12); g.fillStyle(0xffffff, 1); g.fillRect(0, 4, 182, 4); });
-  make(T.dot, 28, 28, (g) => { g.fillStyle(0xffffff, 0.35); g.fillCircle(14, 14, 13); g.fillStyle(0xffffff, 1); g.fillCircle(14, 14, 7); });
+// ——— кадры оригинала (PNG из Resources/spritedata/sprite_bullet, PPU 100, pivot 0.5; холсты: кружок 88², луч 1000×128, 36_03 950×80) ———
+const R = (n: string) => 'ry_' + n;
+const FILES = ['Incinerate13_01', 'Incinerate13_02', 'Incinerate13_03', 'Incinerate13_04', 'Incinerate36_03',
+  'Incinerate14_01', 'Incinerate14_02', 'Incinerate14_03', 'Incinerate14_04', 'Incinerate14_05', 'Incinerate14_06'];
+export const RAY_LOAD: [string, string][] = FILES.map((f) => [R(f), `vfx/ray/orig/${f}.png`]);
+/** ширина холста луча, px */
+const BEAM_W: Record<string, number> = { Incinerate36_03: 950 };
+/** луч Apply_ArcaneRay стоит в локальной (4.95, 0) от точки мага, кружок — в (0.35, 0) */
+const BEAM_CX = 4.95;
+
+/** центр луча — BEAM_CX ед. от мага; объект привязан к кружку (RING_OFF), поэтому origin.x сдвинут */
+function setBeam(img: Phaser.GameObjects.Image, file: string) {
+  const w = (BEAM_W[file] ?? 1000) * PX;
+  img.setTexture(R(file)).setOrigin(0.5 - (BEAM_CX - RING_OFF) * U / w, 0.5);
 }
 
 type Mode = 'a' | 'mirror' | 'hyper' | 'em' | 'c4' | 'c16' | 'c30' | 'c38' | 'c58';
@@ -57,7 +56,6 @@ class Ray extends DataSpell {
 
   onChange() {
     super.onChange();
-    textures();
     if (!this.co) this.co = new Co(this.loop());
   }
 
@@ -131,15 +129,15 @@ class Ray extends DataSpell {
       case 'c58': len = 10.5; thick = 2; sy = 0.5; break;
     }
     const rotating = mode === 'hyper' || mode === 'c16';
-    const dot = this.dots.find((d) => !d.visible) ?? (() => { const d = W.scene.add.image(0, 0, T.dot); this.dots.push(d); return d; })();
+    const dot = this.dots.find((d) => !d.visible) ?? (() => { const d = W.scene.add.image(0, 0, R('Incinerate13_01')); this.dots.push(d); return d; })();
     const dotSc = ((S - 0.5) * 0.8 + 0.5) * 0.7;
-    dot.setVisible(true).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setScale((56 * PX * dotSc) / 28).setAlpha(1);
+    dot.setVisible(true).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.NORMAL).setScale(PX * dotSc).setAlpha(1).clearTint().setTexture(R('Incinerate13_01'));
     const hl = (len / 2) * U, hw = (thick * sy / 2) * U;
     this.beams.fire({
       x: W.player.x + Math.cos(ang) * RING_OFF * U, y: W.player.y + Math.sin(ang) * RING_OFF * U, ang: rotating ? ang + this.rot : ang, sp: 0, life: life + 4 * 0.03,
-      tex: T.beam0, scaleX: 908 / 182, scaleY: (56 / 12) * sy,
+      tex: R('Incinerate36_03'), scaleX: 1, scaleY: sy, normal: true,
       hl, hw, cx: hl, pierce: 1e9, dmg: this.dmg, src: this.def.id,
-      data: { base: ang, n: 0, acc: 0, cyc: 0, dot, life, sy, flick: 0 },
+      data: { base: ang, n: 0, acc: 0, cyc: -1, k: 0, dot, life, sy, flick: 0 },
       step: (b) => this.beamStep(b, mode, rotating),
       onEnd: (b) => b.data.dot.setVisible(false),
     });
@@ -152,14 +150,16 @@ class Ray extends DataSpell {
     const c = Math.cos(b.ang), s = Math.sin(b.ang);
     // луч начинается у кружка (0.35 ед. от мага): изображение с началом в левом крае
     const ox = P.x + c * RING_OFF * U, oy = P.y + s * RING_OFF * U;
-    b.img.setOrigin(0, 0.5);
     d.dot.setPosition(ox, oy);
     const em = mode === 'em' || mode === 'c4';
-    while (d.acc + 0.06 <= b.t) {
-      d.acc += 0.06; d.n++;
-      if (!em) {
-        b.img.setTexture(T.beam).setScale(PX * (950 / 190), PX * (30 / 6) * d.sy);
-        const n = d.n;
+    while (d.acc + 0.06 <= b.t) { d.acc += 0.06; d.n++; }
+    if (!em) {
+      // 0–0.06 с: 36_03 + кружок 13_01; дальше шаги 0.06 с: n нечётный — 13_03/13_01, чётный — 13_04/13_02
+      const n = d.n;
+      setBeam(b.img, n === 0 ? 'Incinerate36_03' : n % 2 ? 'Incinerate13_03' : 'Incinerate13_04');
+      d.dot.setTexture(R(n === 0 || n % 2 ? 'Incinerate13_01' : 'Incinerate13_02'));
+      if (n === 0) { b.img.clearTint(); d.dot.clearTint(); }
+      else {
         let tint: number[];
         if (mode === 'mirror') tint = [0.9, 0.804, 0.2 + 0.02 * n];
         else if (mode === 'hyper') tint = [1, 0.02 * n, 0];
@@ -167,15 +167,23 @@ class Ray extends DataSpell {
         else tint = [0.85 + 0.015 * n, 0.3 + 0.03 * n, 1];
         const k = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
         const col = (k(tint[0]) << 16) | (k(tint[1]) << 8) | k(tint[2]);
-        b.img.setTint(col); d.dot.setTint(col).setScale(d.dot.scaleX * (n % 2 ? 0.92 : 1 / 0.92));
+        b.img.setTint(col); d.dot.setTint(col);
       }
-    }
-    if (em) {
-      // цикл 0.125 с: 0.095 видно, 0.03 пусто; каждые 4 цикла (0.5 с) — повторный урон
-      b.img.setTexture(T.beam).setScale(PX * (950 / 190), PX * (30 / 6) * d.sy).setTint(mode === 'c4' ? 0x59d9ff : 0xc0a0ff);
+    } else {
+      // 517: цикл 0.125 с — k ∈ {1,2,3} (не равен прошлому), кадр 0.095 с (луч 14_0(3+k), кружок 14_0k), затем 0.03 с пусто; каждые 4 цикла — повторный урон
       const cyc = Math.floor(b.t / 0.125);
-      b.img.setVisible(b.t % 0.125 < 0.095);
-      if (cyc !== d.cyc) { d.cyc = cyc; if (cyc % 4 === 0) b.hits.clear(); }
+      if (cyc !== d.cyc) {
+        d.cyc = cyc;
+        let k = 1 + Math.floor(Math.random() * 3);
+        while (k === d.k) k = 1 + Math.floor(Math.random() * 3);
+        d.k = k;
+        setBeam(b.img, `Incinerate14_0${3 + k}`);
+        d.dot.setTexture(R(`Incinerate14_0${k}`));
+        if (mode === 'c4') { b.img.setTint(0x59d9ff); d.dot.setTint(0x59d9ff); } else { b.img.clearTint(); d.dot.clearTint(); }
+        if (cyc % 4 === 0) b.hits.clear();
+      }
+      const vis = b.t % 0.125 < 0.095;
+      b.img.setVisible(vis); d.dot.setVisible(vis);
     }
     if (mode === 'c16') { const k = Math.floor(b.t / 0.25); if (k !== d.flick) { d.flick = k; b.hits.clear(); } }
     // затухание: коллайдер OFF, 4 шага alpha 1 − 0.2·i

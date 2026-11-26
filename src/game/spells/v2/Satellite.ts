@@ -9,6 +9,26 @@ import { ensureOrigTextures, OT, OT_PX, PX, TICK, U } from './_orig';
 /** колонки 02 Спутника (эффект 306 +20) действуют уже при изучении — как у Духа (долг партии 2) */
 const LEARN_BONUS: Mod = { stat: 'dmg', op: 'pct', v: 20, text: 'Урон спутников +20%' };
 
+/** Кадры оригинала (UnitSpirit{ApplyID}Motion A→B→C, Play_Satellite_Motion): public/vfx/satellite/orig. 4 и 6 сглажены ×4 (smooth_small.py) → scale /4 */
+const D = 'vfx/satellite/orig/';
+const SAT_FR = (n: number) => ['A', 'B', 'C'].map((l) => `sat_${n}${l}`);
+export const SATELLITE_LOAD: [string, string][] = [
+  ...([4, 6] as const).flatMap((n) => ['A', 'B', 'C'].map((l): [string, string] => [`sat_${n}${l}`, `${D}UnitSpirit${n}Motion${l}_s.png`])),
+  ...([5, 7, 18] as const).flatMap((n) => ['A', 'B', 'C'].map((l): [string, string] => [`sat_${n}${l}`, `${D}UnitSpirit${n}Motion${l}.png`])),
+  ['sat_ai18', `${D}Afterimage_Spirit18.png`],
+];
+/** вид по ApplyID: кадры, шаг Satellite_AniDelay (с), во сколько раз текстура крупнее холста оригинала */
+interface Look { fr: string[]; dt: number; k: number }
+const LOOK: Record<number, Look> = {
+  4: { fr: SAT_FR(4), dt: 0.1, k: 4 },
+  5: { fr: SAT_FR(5), dt: 0.1, k: 1 },
+  6: { fr: SAT_FR(6), dt: 0.1, k: 4 },
+  7: { fr: SAT_FR(7), dt: 0.08, k: 1 },
+  18: { fr: SAT_FR(18), dt: 0.1, k: 1 },
+};
+/** след Соул Блейд: Play AfterImg01 — каждые 0.045 с, если в пуле ≥ 6 свободных; FadeGhost01 — альфа → 0 за 0.12 с */
+const AI_DT = 0.045, AI_FADE = 0.12, AI_FREE = 6, AI_POOL = 12;
+
 const DEG = Math.PI / 180;
 /** SatelliteRotationVar: градусов за тик */
 const VAR0 = 2.88;
@@ -54,6 +74,8 @@ class Satellite extends DataSpell {
   /** AttackDelay (391 / 32): цикл 0.03 с коллайдер ВКЛ + 0.3 с ВЫКЛ */
   private adT = 0;
   private trailT = 0;
+  /** пул следов Соул Блейд (List_AfterImg_Satellite_Empty) */
+  private ghosts: { img: Phaser.GameObjects.Image; t: number }[] = [];
   private t = 0;
   /** Гиперион: заморожен ли враг вторым солнцем (только первое попадание) */
   private frozen = new Set<number>();
@@ -109,7 +131,7 @@ class Satellite extends DataSpell {
     const fused = this.fusion391;
     const two = this.wisp || this.hasCombo(62);
     const cnt = fused ? (this.hasCombo(32) ? 2 : 1) : two ? n * 2 : n;
-    const tex = this.texKey;
+    const tex = this.look.fr[0];
     const key = `${cnt}|${tex}|${fused}|${two}`;
     if (key === this.key0) return;
     this.key0 = key;
@@ -125,20 +147,41 @@ class Satellite extends DataSpell {
       let h = this.hitStore.get(id);
       if (!h) this.hitStore.set(id, (h = new Set()));
       s.hits = h;
-      s.img.setTexture(tex).setBlendMode(Phaser.BlendModes.ADD);
+      s.img.setTexture(this.frame(0)).setBlendMode(this.stub ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
       if (s.frost) s.img.setTint(0x9fd8ff); else s.img.clearTint();
     });
   }
 
-  private get texKey(): string {
-    if (this.fusion391) return this.hasCombo(32) ? OT.satHyp : OT.satSun;
+  /** слияния 32 и 45 в бету не входят — у них остаются прежние заглушки (одна картинка) */
+  private get stub(): string | null {
+    if (this.hasCombo(32) && this.fusion391) return OT.satHyp;
     if (this.hasCombo(45)) return OT.satMag;
-    if (this.hasCombo(62)) return OT.satBlade;
-    if (this.wisp) return OT.satWisp;
-    return OT.sat;
+    return null;
   }
 
-  destroy() { this.sats.forEach((s) => s.img.destroy()); this.sats = []; this.key0 = ''; }
+  /** ExplosionArea > 0 (ApplyID 5, 128 px): источник значения в данных не найден — пока всегда 0 (вопрос в отчёте) */
+  private get exploding(): boolean { return false; }
+
+  /** ApplyID_Satellite (StartInformation_B): 391 → 7, 62 → 18, 390 → 6, ExplosionArea → 5, иначе 4 */
+  private get applyId(): number {
+    if (this.fusion391) return 7;
+    if (this.hasCombo(62)) return 18;
+    if (this.wisp) return 6;
+    return this.exploding ? 5 : 4;
+  }
+  private get look(): Look { return LOOK[this.applyId]; }
+  /** кадр A→B→C по кругу, шаг Satellite_AniDelay; нет текстуры (галерея без загрузки) — заглушка */
+  private frame(t: number): string {
+    if (this.stub) return this.stub;
+    const L = this.look, key = L.fr[Math.floor(t / L.dt) % 3];
+    if (W.scene.textures.exists(key)) return key;
+    return this.wisp ? OT.satWisp : OT.sat;
+  }
+
+  destroy() {
+    this.sats.forEach((s) => s.img.destroy()); this.sats = []; this.key0 = '';
+    this.ghosts.forEach((g) => g.img.destroy()); this.ghosts = [];
+  }
 
   /** один тик корутины вращения */
   private step(k: number) {
@@ -214,14 +257,18 @@ class Satellite extends DataSpell {
       active = this.adT < TICK;
     }
 
-    const [pxW, pxT] = OT_PX[this.texKey];
-    const texScale = PX * pxW / pxT;
+    const frameKey = this.frame(this.t);
+    const real = !this.stub && W.scene.textures.exists(this.look.fr[0]);
+    // кадры оригинала: масштаб = localScale × PX / k; заглушки — по меркам OT_PX
+    const [pxW, pxT] = OT_PX[frameKey] ?? [1, 1];
+    const texScale = real ? PX / this.look.k : PX * pxW / pxT;
+    this.fadeGhosts(dt);
     let per0 = 0;
     for (const s of this.sats) if (s.ring === 0) per0++;
     const per1 = this.sats.length - per0;
     this.trailT -= dt;
     const trail = this.hasCombo(62) && this.trailT <= 0;
-    if (trail) this.trailT += 0.045;
+    if (trail) this.trailT += AI_DT;
 
     for (const s of this.sats) {
       // угол центра (Unity, град.): 360/n·k + общий поворот; спутник в (−R, 0) локально; экран — y вниз
@@ -233,9 +280,28 @@ class Satellite extends DataSpell {
       const ux = -Math.cos(th), uy = Math.sin(th); // направление от мага к спутнику на экране
       s.x = P.x + ux * R; s.y = P.y + uy * R;
       s.a = Math.atan2(uy, ux);
-      s.img.setPosition(s.x, s.y).setRotation(s.a).setScale(texScale * scX, texScale * scY);
-      if (trail) W.fx.puff(s.x, s.y, (size + 0.8) * 128 * PX, 0xffffff, 0.12, OT.satBlade, s.a, 0.6);
+      s.img.setTexture(frameKey).setPosition(s.x, s.y).setRotation(s.a).setScale(texScale * scX, texScale * scY);
+      if (trail) this.addGhost(s, size);
       if (active) this.collide(s, hl, hw, s.frost ? dmg * 0.8 : dmg);
+    }
+  }
+
+  /** AfterImg01: след берётся из пула, только если свободных ≥ 6; позиция и поворот спутника, размер (Size + 0.8, Size + 0.5) */
+  private addGhost(s: Sat, size: number) {
+    if (!W.scene.textures.exists('sat_ai18')) return;
+    while (this.ghosts.length < AI_POOL) this.ghosts.push({ img: W.scene.add.image(0, 0, 'sat_ai18').setDepth(DEPTH.projectile - 1).setVisible(false), t: AI_FADE });
+    if (this.ghosts.filter((g) => g.t >= AI_FADE).length < AI_FREE) return;
+    const g = this.ghosts.find((x) => x.t >= AI_FADE)!;
+    g.t = 0;
+    g.img.setVisible(true).setAlpha(1).setPosition(s.x, s.y).setRotation(s.a).setScale((size + 0.8) * PX, (size + 0.5) * PX);
+  }
+
+  /** FadeGhost01: альфа до 0 линейно за 0.12 с, затем объект возвращается в пул */
+  private fadeGhosts(dt: number) {
+    for (const g of this.ghosts) {
+      if (g.t >= AI_FADE) continue;
+      g.t += dt;
+      if (g.t >= AI_FADE) g.img.setVisible(false); else g.img.setAlpha(1 - g.t / AI_FADE);
     }
   }
 

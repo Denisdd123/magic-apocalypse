@@ -3,7 +3,7 @@ import { DEPTH } from '../../../config';
 import { SPELL_BY_ID, type Mod } from '../../../data/spells_data';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimAngle, Co, ensureOrigTextures, OrigBullets, OT, origTargets, PX, TICK, U, type OBullet } from './_orig';
+import { aimAngle, Co, OrigBullets, origTargets, PX, TICK, U, type OBullet } from './_orig';
 
 /**
  * Раскладки духов вокруг мага (StartInformation_B, switch по UnitApply_SpiritNum, @0x11d08b0…0x11d7cbc;
@@ -46,7 +46,33 @@ const SWORD_L = [0.5, 2.05, 2.15, 1.5];
 /** Сверхновая 107 (SpiritBullet107_Moving @0x1186ab0): коллайдер (x, y) по тикам 0..6, дальше не меняется; центр x 0.4 */
 const NOVA_COL: [number, number][] = [[0.4, 0.01], [0.4, 0.01], [0.5, 0.02], [0.5, 0.02], [1, 0.03], [1, 0.03], [1, 0.04]];
 
-interface Unit { img: Phaser.GameObjects.Image; flash: Phaser.GameObjects.Image; ox: number; oy: number; shotT: number }
+/** кадры оригинала (холсты Unity). Духи 64 px сглажены ×4 (smooth_small.py, суффикс _s) → в игре масштаб /4 */
+const D = 'vfx/spirit/orig/';
+const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `${pre}_${String(i + 1).padStart(2, '0')}`);
+const UNIT_SET = { base: 1, missile: 2, familiar: 3, blade: 8 } as const;
+const unitFrames = (n: number) => ['A', 'B', 'C', 'D'].map((l) => `sp_u${n}${l}`);
+const UNITS = { 1: unitFrames(1), 2: unitFrames(2), 3: unitFrames(3), 8: unitFrames(8) };
+const SHOT = 'sp_inc5', SHOT_FAM = 'sp_inc10';
+const BLADE = seq('sp_inc18', 8);
+/** кадры копья Incinerate20_01..10 — те же файлы, что у луча Бластера */
+const SPEAR = seq('sp_inc20', 10);
+const SM19 = seq('sp_smoke19', 4), SM31 = seq('sp_smoke31', 4), SM43 = seq('sp_smoke43', 4);
+/** Мечи 22: 5 шагов взмаха → кадры клинка 1, 2, 3, 4 и 8 (коллайдер шагов 1–4 совпадает с кадрами 1–4 клинка, шаг 5 — OFF = кадр 8) */
+const SWORD_FR = [0, 1, 2, 3, 7];
+/** пауза кадра D «выстрел» (SpiritMotionFirstDelay 0xC70): база 0.2 (не найдено — как было), Ракета 0.18, Клинок 0.5, Фамильяр 0.1 */
+const FIRST_DELAY = { base: 0.2, missile: 0.18, blade: 0.5, familiar: 0.1 };
+
+/** список загрузки для GameScene.preload: [ключ, путь] */
+export const SPIRIT_LOAD: [string, string][] = [
+  ...([1, 2, 3, 8] as const).flatMap((n) => ['A', 'B', 'C', 'D'].map((l): [string, string] => [`sp_u${n}${l}`, `${D}UnitSpirit${n}Motion${l}_s.png`])),
+  ['sp_inc5', `${D}Incinerate5_00.png`],
+  ['sp_inc10', `${D}Incinerate10_00.png`],
+  ...seq('Incinerate18', 8).map((k, i): [string, string] => [BLADE[i], `${D}${k}.png`]),
+  ...seq('Incinerate20', 10).map((k, i): [string, string] => [SPEAR[i], `vfx/bolt/orig/${k}.png`]),
+  ...([19, 31, 43] as const).flatMap((n) => seq(`BulletSmoke${n}`, 4).map((k, i): [string, string] => [`sp_smoke${n}_0${i + 1}`, `${D}${k}.png`])),
+];
+
+interface Unit { img: Phaser.GameObjects.Image; ox: number; oy: number; shotT: number }
 
 /**
  * #3 Дух (Spirit) — 1:1 по коду оригинала (docs/orig/spells/spirit.md):
@@ -81,6 +107,7 @@ class Spirit extends DataSpell {
     for (const l of this.data.levels) if (l.level <= this.level) for (const m of l.mods) if (m.stat === 'count' && m.op === 'add') n += m.v;
     return Math.max(1, Math.round(n + W.stats.sc(this.def.id)));
   }
+  private get unitSet(): 1 | 2 | 3 | 8 { return this.familiar ? UNIT_SET.familiar : this.blade ? UNIT_SET.blade : this.missile ? UNIT_SET.missile : 1 as 1 | 2 | 3 | 8; }
   private get familiar() { return this.hasProp(382); }
   private get missile() { return this.hasProp(380); }
   private get blade() { return this.hasProp(381); }
@@ -113,22 +140,20 @@ class Spirit extends DataSpell {
   // ———————— жизненный цикл ————————
   onChange() {
     super.onChange();
-    ensureOrigTextures();
     const N = this.num, L = layout(N);
     const need = this.familiar ? 1 : N;
     while (this.units.length < need) {
       this.units.push({
-        img: W.scene.add.image(0, 0, OT.wisp).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD),
-        flash: W.scene.add.image(0, 0, OT.glow).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setVisible(false),
+        img: W.scene.add.image(0, 0, UNITS[1][0]).setDepth(DEPTH.projectile),
         ox: 0, oy: 0, shotT: 9,
       });
     }
-    while (this.units.length > need) { const u = this.units.pop()!; u.img.destroy(); u.flash.destroy(); }
+    while (this.units.length > need) { const u = this.units.pop()!; u.img.destroy(); }
     // Unit_Spirit: scale 0.95 (спрайт 64 px, видимая часть ~22×28); Фамильяр — набор 3 (крупнее кадр D)
     this.units.forEach((u, i) => {
       const [x, y] = L[i];
       u.ox = x * U; u.oy = -y * U;
-      u.img.setScale(PX * 0.95).setTint(this.blade ? 0xbff8ee : this.familiar ? 0xffe2a8 : this.missile ? 0xd8e8ff : 0xffffff);
+      u.img.setScale((PX * 0.95) / 4);   // текстура сглажена ×4; цвет спрайтов (1, 1, 1)
     });
     if (!this.co) this.co = new Co(this.attackLoop());
     if (this.familiar && (!this.famCo || this.famNova !== this.hasCombo(53))) {
@@ -139,7 +164,7 @@ class Spirit extends DataSpell {
 
   destroy() {
     this.bullets.destroy();
-    for (const u of this.units) { u.img.destroy(); u.flash.destroy(); }
+    for (const u of this.units) u.img.destroy();
     this.units = []; this.co = null; this.famCo = null;
   }
 
@@ -152,11 +177,11 @@ class Spirit extends DataSpell {
       const x = P.x + u.ox, y = P.y + u.oy;
       u.img.setPosition(x, y);
       u.shotT += dt;
-      // кадр D (выстрел) — мягкий круг ~0.2 с
-      const on = u.shotT < 0.2;
-      u.flash.setVisible(on);
-      if (on) u.flash.setPosition(x, y).setScale(PX * 0.95 * (this.familiar ? 1.4 : 0.8)).setAlpha(1 - u.shotT / 0.2);
-      u.img.setAlpha(on ? 0.4 : 1);
+      // кадр D (выстрел) держится SpiritMotionFirstDelay, затем Play_SpiritNN_Motion: A → B → C по 0.2 с (дальше по кругу)
+      const fr = UNITS[this.unitSet];
+      const dly = this.familiar ? FIRST_DELAY.familiar : this.blade ? FIRST_DELAY.blade : this.missile ? FIRST_DELAY.missile : FIRST_DELAY.base;
+      const key = u.shotT < dly ? fr[3] : fr[Math.floor((u.shotT - dly) / 0.2) % 3];
+      if (u.img.texture.key !== key) u.img.setTexture(key);
     }
     this.bullets.update(dt);
   }
@@ -207,6 +232,7 @@ class Spirit extends DataSpell {
       const step = 360 / n;
       this.units[0].shotT = 0;
       const o0 = this.pos(0);
+      // кольцо старта Сверхновой: кадры эффекта в библии не разобраны (вопрос в отчёте) — пока старая заглушка
       W.fx.burst(o0.x, o0.y, 1.85 * 64 * PX, 0xffe2a8, this.pSpeed <= 0.65 ? 0.33 : 0.63, 'ring');
       yield 0.06;
       const o = this.pos(0);
@@ -224,7 +250,7 @@ class Spirit extends DataSpell {
     const sc = this.bSize * 0.3 + 0.6;
     const v = (this.mSpeed * (0.01 + Math.random() * 0.015) / TICK) * U;
     this.bullets.fire({
-      x, y, ang, tex: OT.shot, scaleX: sc, tint: 0xffe2a8, sp: v, life: 34 * TICK, dmg: this.shotDmg, pierce: 999,
+      x, y, ang, tex: SHOT_FAM, scaleX: sc, normal: true, sp: v, life: 34 * TICK, dmg: this.shotDmg, pierce: 999,
       hl: 0.2 * sc * U, hw: 0.005 * sc * U, cx: 0.4 * sc * U, smokeDt: TICK, smokeTint: 0xffe2a8, src: this.def.id,
       step: (b) => {
         const i = Math.floor(b.t / TICK);
@@ -247,7 +273,7 @@ class Spirit extends DataSpell {
     if (this.missile) {
       // кейс 31: ×1.35, старт +0.66 ед., 17 тиков, alpha 4 − 0.235·i, шаг BulletSpeed·0.02 (12 ед/с)
       this.bullets.fire({
-        x: o.x + cs * 0.66 * U, y: o.y + sn * 0.66 * U, ang, tex: OT.shot, scaleX: S * 1.35, sp: (this.mSpeed * 0.02 / TICK) * U,
+        x: o.x + cs * 0.66 * U, y: o.y + sn * 0.66 * U, ang, tex: SHOT, normal: true, smokeFrames: SM31, smokeScale: PX, scaleX: S * 1.35, sp: (this.mSpeed * 0.02 / TICK) * U,
         life: 17 * TICK, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * 1.35 * U, hw: 0.06 * S * 1.35 * U, smokeDt: TICK, src: this.def.id,
         alpha: (b) => 4 - 0.235 * Math.floor(b.t / TICK + 1),
       });
@@ -255,7 +281,7 @@ class Spirit extends DataSpell {
     }
     // кейс 19: старт +0.33 ед., первый шаг −0.36 ед.; шаг 18·0.0234 ед. за тик (14 ед/с); 12 тиков, гаснет в последние 2
     this.bullets.fire({
-      x: o.x - cs * 0.03 * U, y: o.y - sn * 0.03 * U, ang, tex: OT.shot, scaleX: S, sp: (this.mSpeed * 0.0234 / TICK) * U,
+      x: o.x - cs * 0.03 * U, y: o.y - sn * 0.03 * U, ang, tex: SHOT, normal: true, smokeFrames: SM19, smokeScale: PX, scaleX: S, sp: (this.mSpeed * 0.0234 / TICK) * U,
       life: 12 * TICK, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * U, hw: 0.06 * S * U, smokeDt: TICK, src: this.def.id,
       alpha: (b) => 3 - 0.2 * Math.floor(b.t / TICK + 1),
     });
@@ -266,8 +292,8 @@ class Spirit extends DataSpell {
     const S = this.bSize, f = 0.09 * U, cs = Math.cos(ang), sn = Math.sin(ang);
     const sz = 1;
     this.bullets.fire({
-      x: x + cs * f, y: y + sn * f, ang, tex: OT.shot, scaleX: S * sz, sp: (this.mSpeed * 0.02 / TICK) * U,
-      life: 10 * 0.09, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * sz * U, hw: 0.06 * S * sz * U, smokeDt: 0.09, smokeTint: 0xffe2a8, src: this.def.id,
+      x: x + cs * f, y: y + sn * f, ang, tex: SHOT_FAM, normal: true, smokeFrames: SM43, smokeScale: PX, scaleX: S * sz, sp: (this.mSpeed * 0.02 / TICK) * U,
+      life: 10 * 0.09, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * sz * U, hw: 0.06 * S * sz * U, smokeDt: 0.09, src: this.def.id,
       step: (b) => {
         const i = Math.min(10, Math.floor(b.t / 0.09) + 1);
         const g = Math.max(0, 1 - 0.08 * i), bl = Math.max(0, 1 - 0.22 * i);
@@ -288,12 +314,12 @@ class Spirit extends DataSpell {
     const cen = [-0.76, 0, 0, 0.3, 0.55, 0.72, 0.93], len = [0.5, 2.05, 2.05, 1.5, 1.0, 0.7, 0.3];
     const ends = fr.map((_, i) => fr.slice(0, i + 1).reduce((a, b) => a + b, 0));
     const fire = (x: number, y: number, a: number) => this.bullets.fire({
-      x, y, ang: a, tex: OT.blade, scaleX: sc, tint: 0xbff8ee, life: ends[7], dmg: this.shotDmg * mult, pierce: 999,
+      x, y, ang: a, tex: BLADE[0], normal: true, scaleX: sc, life: ends[7], dmg: this.shotDmg * mult, pierce: 999,
       hw: 0.06 * sc * U, src: this.def.id,
       step: (b: OBullet) => {
         const f = ends.findIndex((e) => b.t < e);
         if (f < 0 || f >= 7) { b.hl = 0; } else { b.hl = (len[f] / 2) * sc * U; b.cx = cen[f] * sc * U; }
-        b.img.setScale(PX * sc * (f <= 0 ? 0.3 : 1), PX * sc).setAlpha(f >= 6 ? 0.5 : 1);
+        b.img.setTexture(BLADE[f < 0 ? 7 : f]).setScale(PX * sc * (f <= 0 ? 0.3 : 1), PX * sc).setAlpha(f >= 6 ? 0.5 : 1);
       },
     });
     fire(tx, ty, ang);
@@ -309,7 +335,7 @@ class Spirit extends DataSpell {
     const S = this.bSize, sx = S + 0.5, sy = S + 0.2, n = this.swordSwings, sw = 5 * TICK;
     const dmg = this.shotDmg * (this.swordMul / 3);
     this.bullets.fire({
-      x: tx, y: ty, ang: Math.random() * Math.PI * 2, tex: OT.blade, scaleX: sx, scaleY: sy, tint: 0xbff8ee, life: n * sw, dmg, pierce: 999,
+      x: tx, y: ty, ang: Math.random() * Math.PI * 2, tex: BLADE[0], normal: true, scaleX: sx, scaleY: sy, life: n * sw, dmg, pierce: 999,
       hw: 0.06 * sy * U, src: this.def.id, data: { k: 0 },
       step: (b: OBullet) => {
         const k = Math.floor(b.t / sw);
@@ -322,7 +348,7 @@ class Spirit extends DataSpell {
         }
         const f = Math.floor((b.t - k * sw) / TICK);
         if (f < 4) { b.hl = (SWORD_L[f] / 2) * sx * U; b.cx = SWORD_C[f] * sx * U; } else b.hl = 0;
-        b.img.setScale(PX * sx * (f === 0 ? 0.3 : 1), PX * sy).setAlpha(f >= 4 ? 0.5 : 1);
+        b.img.setTexture(BLADE[SWORD_FR[Math.min(f, 4)]]).setScale(PX * sx * (f === 0 ? 0.3 : 1), PX * sy).setAlpha(f >= 4 ? 0.5 : 1);
       },
     });
   }
@@ -335,7 +361,7 @@ class Spirit extends DataSpell {
     const sx = 1.35, sy = this.bSize * 0.5 + 0.3, cs = Math.cos(ang), sn = Math.sin(ang);
     const x0 = x + cs * 4.6 * U, y0 = y + sn * 4.6 * U;
     this.bullets.fire({
-      x: x0, y: y0, ang, tex: OT.arrow, scaleX: (sx * 848) / 176, scaleY: (sy * 400 * 0.35) / 57, tint: 0xffffff,
+      x: x0, y: y0, ang, tex: SPEAR[0], normal: true, scaleX: sx, scaleY: sy, tint: 0xffffff,
       life: SPEAR_END[9], dmg: this.shotDmg, pierce: 999, hw: 0.7 * sy * U, src: this.def.id,
       step: (b: OBullet) => {
         let f = SPEAR_END.findIndex((e) => b.t < e);
@@ -344,7 +370,7 @@ class Spirit extends DataSpell {
         for (let k = 1; k <= f; k++) shift += k === 2 ? 0.15432 : 0.132;
         b.x = x0 + cs * shift * U; b.y = y0 + sn * shift * U;
         if (f < 7) { b.hl = (SPEAR_L[f] / 2) * sx * U; b.cx = SPEAR_C[f] * sx * U; } else b.hl = 0;
-        b.img.setTint(SPEAR_TINT[f]).setAlpha(f >= 7 ? 1 - (f - 6) * 0.25 : 1);
+        b.img.setTexture(SPEAR[f]).setTint(SPEAR_TINT[f]).setAlpha(f >= 7 ? 1 - (f - 6) * 0.25 : 1);
       },
     });
   }
