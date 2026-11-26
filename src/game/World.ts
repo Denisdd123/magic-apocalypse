@@ -9,6 +9,7 @@ import type { SpellBook } from './SpellBook';
 import type { ArtifactSet } from './Artifacts';
 import type { Pickups } from './Pickups';
 import type { Zone } from './Zone';
+import type { Waves } from './Waves';
 
 /** Общий контейнер состояния забега — чтобы системы видели друг друга без лишней передачи ссылок. */
 export interface World {
@@ -23,6 +24,8 @@ export interface World {
   artifacts: ArtifactSet;
   pickups: Pickups;
   zone: Zone;
+  /** EnemyLevelUp: волны, рост мобов, зачистки */
+  waves: Waves;
   time: number;      // секунд с начала забега
   kills: number;
   mana: number;      // кошелёк маны (собранные кристаллы минус покупки у торговца)

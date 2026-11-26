@@ -8,7 +8,6 @@ import { Orbs } from './Orbs';
 import { Projectiles } from './Projectiles';
 import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
-import { BOLT } from './spells/v2/Bolt';
 import { ART } from '../data/art';
 
 /** картинки, без которых нельзя начинать бой */
@@ -18,10 +17,12 @@ import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu
 import { showDeath, showPause } from '../ui/screens';
 import { showChest, toast } from '../ui/chest';
 import { showEnhance, showShop, showZoneClear, type ShopItem } from '../ui/zone';
-import { Zone, ZONE } from './Zone';
-import { ARTIFACTS, RARITY } from './Artifacts';
+import { Zone } from './Zone';
 import { ArtifactSet } from './Artifacts';
 import { Pickups, RUNES } from './Pickups';
+import { Waves } from './Waves';
+import type { ChestType } from './ArtifactDeck';
+import { ORIG_U } from '../config';
 
 export class GameScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.TileSprite;
@@ -31,14 +32,13 @@ export class GameScene extends Phaser.Scene {
   private inModal = false;
   private hudT = 0;
   private running = false;
-  private pendingChests = 0;
+  /** подобранные сундуки, ждущие окна */
+  private chestQ: ChestType[] = [];
   /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
-  private zoneQ: ('obelisk' | 'shop' | 'clear')[] = [];
-  private shopItems: ShopItem[] = [];
-  /** сколько раз уже приходил торговец за забег — цены растут */
-  private merchantVisits = 0;
-  private obeliskRerolled = false;
+  private zoneQ: ('shop' | 'clear')[] = [];
   private stageTint = -1;
+  /** зум камеры без зачистки (fitCamera) */
+  private baseZoom = 1;
 
   constructor() { super('game'); }
 
@@ -73,7 +73,8 @@ export class GameScene extends Phaser.Scene {
     let zoom = h / VIEW_H;
     const maxW = VIEW_W * (8.2 / 6.69);
     if (w / zoom > maxW) zoom = w / maxW;
-    cam.setZoom(zoom);
+    this.baseZoom = zoom;
+    cam.setZoom(zoom / (1 + (W.waves?.camZoom ?? 0) / 100));
   }
 
   private startRun() {
@@ -81,28 +82,29 @@ export class GameScene extends Phaser.Scene {
     W.scene = this;
     W.time = 0; W.kills = 0; W.mana = 0; W.dmgBy = new Map();
     W.stats = new Stats();
+    W.waves = new Waves(1);
     W.fx = new Effects(this);
     W.orbs = new Orbs(this);
     W.projectiles = new Projectiles(this);
     W.enemies = new Enemies(this);
     W.player = new Player(this);
-    W.book = new SpellBook();
-    W.book.add(BOLT);
     W.artifacts = new ArtifactSet();
+    W.book = new SpellBook();
+    W.book.learnStart(1); // Магическая пуля (классы — позже)
     W.pickups = new Pickups(this);
     W.zone = new Zone();
-    this.zoneQ = []; this.stageTint = -1;
-    W.zone.onBossKilled = (idx) => {
-      if (idx >= ZONE.bossAt.length - 1) { this.zoneQ.push('clear'); return; }
-      this.obeliskRerolled = false;
-      W.pickups.spot('obelisk');
-      toast('<b>Босс повержен!</b><br>Рядом появился обелиск', 2600);
+    // круг зачистки Obj_EnemyClearGround_Destroy: Box 7.2×12.8 ед. × масштаб шага (spawn.md §2 «Конец зачистки»)
+    W.waves.onClearCircle = (s) => {
+      W.enemies.clearCircle(3.6 * s * ORIG_U, 6.4 * s * ORIG_U);
+      if (s <= 1.8) W.fx.burst(W.player.x, W.player.y, Math.min(6.4 * s, 9) * ORIG_U, 0xffffff, 0.25, 'ring');
     };
-    W.zone.onMerchant = () => { this.shopItems = this.rollShop(); W.pickups.spot('merchant'); toast('<b>Пришёл торговец</b><br>Товары за ману', 2400); };
-    W.zone.onMerchantGone = () => W.pickups.removeSpot('merchant');
-    W.pickups.onSpot = (k) => { if (k === 'obelisk') this.zoneQ.push('obelisk'); else if (!this.zoneQ.includes('shop')) this.zoneQ.push('shop'); };
-    this.pendingChests = 0;
-    W.pickups.onChest = () => { this.pendingChests++; };
+    this.zoneQ = []; this.stageTint = -1;
+    // победа (Game_ClearON на 12:00) → окно → бесконечный режим (Game_BattleLoopON); обелиска после босса в зоне 1 нет
+    W.waves.onVictory = () => { this.zoneQ.push('clear'); };
+    W.pickups.onCurse = (n, up) => toast(`<b style="color:#b8343f">Проклятая руна</b><br>Элитных врагов: ${n}${up ? ` (из них ${up} гигантов)` : ''}<br>Убейте всех за 3 мин — последний оставит сундук`, 2600);
+    W.zone.onMerchant = () => { if (!this.zoneQ.includes('shop')) this.zoneQ.push('shop'); };
+    this.chestQ = [];
+    W.pickups.onChest = (t) => { this.chestQ.push(t); };
     W.pickups.onRune = (r) => toast(`<b style="color:#${RUNES[r].tint.toString(16).padStart(6, '0')}">${RUNES[r].name}</b><br>${RUNES[r].text}`, 2000);
     W.artifacts.onSynergy = (syn) => toast(`Синергия активирована!<br><b>${syn.emoji} ${syn.name}</b><br>${syn.text.join('<br>')}`, 3200);
     // стартовые кристаллы вокруг мага и кристаллы на плитках поля — как в оригинале (Orbs.startField)
@@ -135,14 +137,15 @@ export class GameScene extends Phaser.Scene {
   private openLevelUp() {
     const P = W.player;
     this.inModal = true; this.paused = true; this.joy?.release();
-    const choices = W.book.buildChoices(3);
-    showLevelUp(P.level - P.pendingLevels + 1, choices, W.book.refundPct(), (c) => {
+    const scr = W.book.buildScreen();
+    showLevelUp(P.level, scr, (c) => {
+      const attr = W.book.pick(c);
       if (c.kind === 'enchant') { showEnhance((id) => { W.book.enchant(id); this.afterChoice(); }); return; }
-      const attr = W.book.apply(c);
       if (attr && attr.options.length) {
         showAttrPick(attr.spell, attr.options, (a) => { W.book.chooseAttr(attr.spell, a); this.afterChoice(); });
       } else this.afterChoice();
-    }, () => { if (choices[0]?.kind === 'combo') W.book.skipCombo(); else W.book.refund(); this.afterChoice(); });
+    }, () => { W.book.refund(scr); this.afterChoice(); },
+    (combo) => { W.book.learnMerge(combo); this.afterChoice(); });
   }
 
   private afterChoice() {
@@ -151,62 +154,36 @@ export class GameScene extends Phaser.Scene {
     else { this.inModal = false; this.paused = false; }
   }
 
-  /** 8 артефактов торговца, цена по редкости, на одном скидка 25% */
-  private rollShop(): ShopItem[] {
-    // цены из кода оригинала (V_Artifact_Manager): база по редкости × Random(98..108)% × множитель визита
-    // база: Обычный 220, Редкий 260, Героический 360, Особый 520 (RARITY[r].price); легендарных у торговца нет
-    const visitMul = [1, 1.25, 1.6, 2.2, 2.8, 3.5, 3.75][Math.min(this.merchantVisits++, 6)];
-    const pool = ARTIFACTS.filter((a) => a.rarity !== 'legend' && !W.artifacts.has(a.id));
-    const out: ShopItem[] = [];
-    while (out.length < 8 && pool.length) {
-      // сначала редкость по весу, затем равновероятно внутри неё (иначе перекос в многочисленные редкости)
-      const rars = [...new Set(pool.map((x) => x.rarity))];
-      const total = rars.reduce((t, r) => t + RARITY[r].weight, 0);
-      let r = Math.random() * total;
-      const rar = rars.find((x) => (r -= RARITY[x].weight) <= 0) ?? rars[rars.length - 1];
-      const inR = pool.filter((x) => x.rarity === rar);
-      const a = inR[(Math.random() * inR.length) | 0];
-      pool.splice(pool.indexOf(a), 1);
-      out.push({ a, price: Math.round(RARITY[a.rarity].price * visitMul * (0.98 + Math.random() * 0.1) * (1 - W.stats.shopDiscount)), discount: false, sold: false });
-    }
-    const d = out[(Math.random() * out.length) | 0];
-    if (d) { d.discount = true; d.price = Math.round(d.price * 0.75 / 10) * 10; }
-    return out;
-  }
-
   private openZone() {
     const k = this.zoneQ.shift()!;
     const close = () => { this.inModal = false; this.paused = false; };
-    this.inModal = true; this.paused = true; this.joy?.release();
-    if (k === 'obelisk') {
-      const open = () => {
-        const choices = W.artifacts.rollLegend(3);
-        if (!choices.length) { W.pickups.removeSpot('obelisk'); close(); return; }
-        showChest(choices, (a) => {
-          W.artifacts.add(a.id);
-          W.pickups.removeSpot('obelisk');
-          W.orbs.magnetAll(); // после алтаря все кристаллы притягиваются
-          close();
-        }, { title: 'Обелиск', cls: 'obelisk', onReroll: this.obeliskRerolled ? undefined : () => { this.obeliskRerolled = true; open(); } });
-      };
-      open();
-    } else if (k === 'shop') {
-      showShop(this.shopItems, (it) => { W.mana -= it.price; W.artifacts.add(it.a.id); }, close);
+    if (k === 'shop') {
+      const items: ShopItem[] = W.artifacts.merchantGoods().map((g) => ({ ...g, sold: false }));
+      if (!items.length) return;
+      this.inModal = true; this.paused = true; this.joy?.release();
+      showShop(items, (it) => { W.mana -= it.price; W.artifacts.add(it.a.id); }, close);
     } else {
+      this.inModal = true; this.paused = true; this.joy?.release();
       document.body.classList.remove('fury');
-      showZoneClear(() => this.startRun(), () => { this.cleanupRun(); this.cameras.main.centerOn(0, 0); showMenu(() => this.startRun()); });
+      showZoneClear(() => this.startRun(), () => { this.cleanupRun(); this.cameras.main.centerOn(0, 0); showMenu(() => this.startRun()); },
+        () => { W.waves.loopOn = true; close(); });
     }
   }
 
-  private openChest() {
-    this.pendingChests--;
-    this.inModal = true; this.paused = true; this.joy?.release();
-    const choices = W.artifacts.roll(3);
-    if (!choices.length) { W.orbs.drop(W.player.x, W.player.y, 'l'); this.inModal = false; this.paused = false; return; }
-    showChest(choices, (a) => {
-      W.artifacts.add(a.id);
-      this.inModal = false; this.paused = false;
-    });
+  /** Create_Artifact: взять один из показанных, «Обновить» за ключ (один раз на сундук) или крестик — ничего */
+  private openChest(type: ChestType) {
+    const close = () => { this.inModal = false; this.paused = false; };
+    const open = (changed: boolean) => {
+      const r = W.artifacts.openChest(type);
+      if (!r.items.length) { close(); return; }
+      const keys = W.artifacts.deck.keys;
+      this.inModal = true; this.paused = true; this.joy?.release();
+      showChest(r.items, (a) => { close(); W.artifacts.add(a.id); }, {
+        type, title: r.roulette ? 'Золотая рулетка' : undefined, onDiscard: close, keys,
+        onReroll: keys >= 1 && !changed && !r.legend && type !== 7 ? () => { W.artifacts.deck.keys--; open(true); } : undefined,
+      });
+    };
+    open(false);
   }
 
   /** Воскрешение (артефакты/синергии): полное здоровье, очищение экрана и неуязвимость */
@@ -237,7 +214,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.running || this.paused) return;
     const dt = Math.min(deltaMs / 1000, 1 / 20);
     if (!W.zone.timeFrozen) W.time += dt;
-    W.zone.update();
+    W.waves.update(dt);
+    if (W.waves.camZoom > 0 || this.cameras.main.zoom !== this.baseZoom) this.cameras.main.setZoom(this.baseZoom / (1 + W.waves.camZoom / 100));
+    W.zone.update(dt);
 
     const mv = this.joy!.vector;
     W.player.move(mv.x, mv.y, dt);
@@ -260,8 +239,9 @@ export class GameScene extends Phaser.Scene {
       this.hudT = 0.1;
       const P = W.player;
       this.hud!.set(P.xp / P.xpNeed, W.time, W.mana);
-      const b = W.zone.boss;
-      this.hud!.boss(b && b.alive ? b.hp / b.maxHp : null);
+      // полоска Obj_MonsterClearBar во время зачистки (вид — партия 7); HP боссов и эпиков — полоски под ними
+      this.hud!.boss(W.waves.clearFrac);
+      this.hud!.merchant(W.zone.merchantFrac);
       // откаты утилитарных заклинаний (поля cdLeft/cdTotal/active выставляют сами заклинания)
       for (const k of ['shield', 'cloak', 'mcircle', 'armageddon']) {
         const sp = W.book.spells.get(k) as any;
@@ -278,7 +258,9 @@ export class GameScene extends Phaser.Scene {
 
     if (W.player.dead && !this.tryRevive()) { document.body.classList.remove('fury'); this.die(); return; }
     if (W.player.pendingLevels > 0 && !this.inModal) this.openLevelUp();
-    else if (this.pendingChests > 0 && !this.inModal) this.openChest();
+    // «Золотая рулетка»: очередь экранов (AbilityStatApply @0x1110628) сразу открывает окно артефакта
+    else if (W.artifacts.deck.roulette && !this.inModal) this.openChest(5);
+    else if (this.chestQ.length && !this.inModal) this.openChest(this.chestQ.shift()!);
     else if (this.zoneQ.length && !this.inModal) this.openZone();
   }
 }

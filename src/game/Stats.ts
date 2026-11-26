@@ -10,7 +10,9 @@ export class Stats {
   cdr = 0;           // сокращение перезарядки (асимптотически)
   size = 0;
   duration = 0;
-  crit = 0;
+  /** UnitBase_CriRan 3 % + «Меткость» и пр. (доля); бросок Random(1,101) ≤ round(crit·100) — Enemies.damage */
+  crit = 0.03;
+  /** (UnitBase_CriMultiplier 200 + CriMultiplierRatio) · 0.01 */
   critMult = 2;
   hpPct = 0;
   regen = 0;         // доля макс. HP в секунду
@@ -24,11 +26,15 @@ export class Stats {
   lifeOrbHeal = 0;
   cdSpeedBonus = 0;  // временное ускорение перезарядки (Высвобождение)
   runeDur = 0;       // длительность рун
-  chestRate = 0;     // частота сундуков
+  /** AllyUnitVar_ChestDropCostRatio (эффект 127), %: порог убийств до сундука × (100 + X)% */
+  chestCostRatio = 0;
+  /** AllyUnitVar_EnemyCreateDelayRatio (эффект 133), %: задержка спавна × (100 + X)% */
+  createDelayRatio = 0;
   revives = 0;       // воскрешения
   comboDmg = 0;      // +% урона слияний (Продвинутая магия)
   orbRate = 0;       // сферы маны чаще (Завод маны)
-  shopDiscount = 0;  // скидка у торговца
+  /** AllyUnitVar_MerchantCostRatio (эффект 26), %: цены торговца × (100 + X)% */
+  merchantCostRatio = 0;
   extraCardChance = 0; // шанс 4-й карточки, %
   /** Исследование «Поддержка» (278): стартовых кристаллов маны больше на долю (0.1…0.6) — AllyUnitVar_StartManaBallCreateNumRatio */
   startOrbs = 0;
@@ -37,7 +43,7 @@ export class Stats {
 
   // по врагам
   enemyHpRed = 0;    // снижение макс. HP всех врагов
-  eliteHpRed = 0;    // снижение HP элиток
+  eliteHpRatio = 1;  // ApplyEliteMonsterHpRatio (эффект 143): множители перемножаются
   enemySlow = 0;     // замедление всех врагов
   highHpBonus = 0;   // доп. урон по врагам с HP > 75%
 
@@ -56,7 +62,8 @@ export class Stats {
    *  Список ключей и смысл — в Artifacts.ts (TODO_FX). Пока никем не читаются. */
   artFx: Record<string, number> = {};
 
-  get atk() { return BASE_ATK * (1 + this.atkPct); }
+  /** UnitApply_Attack = round((100 + AttackNum) × (AttackRatioU + 100)% × …) — balance.md §5 */
+  get atk() { return Math.round(BASE_ATK * Math.max(0.01, 1 + this.atkPct)); }
   get maxHp() { return PLAYER.hp * (1 + this.hpPct); }
   get sizeMul() { return 1 + this.size; }
   get durMul() { return 1 + this.duration; }
@@ -76,8 +83,11 @@ export class Stats {
   addSpellDmg(id: string, v: number) { this.spellDmg[id] = (this.spellDmg[id] ?? 0) + v; }
   addSpellCount(id: string, v: number) { this.spellCount[id] = (this.spellCount[id] ?? 0) + v; }
 
-  /** Урон заклинания: pct — множитель заклинания в процентах от силы */
-  spellDamage(pct: number, spellMul = 1) {
-    return this.atk * (pct / 100) * (1 + this.amp + this.tempAmp + this.runeAmp) * (1 + this.magicDmg) * spellMul;
+  /**
+   * Урон заклинания: pct — % атаки (база × (U + 100)%). В оригинале % урона всей магии прибавляется к % заклинания
+   * (StartInformation_B @0x11c4700) — DataSpell считает это сам и передаёт magicIn = true.
+   */
+  spellDamage(pct: number, spellMul = 1, magicIn = false) {
+    return this.atk * (pct / 100) * (1 + this.amp + this.tempAmp + this.runeAmp) * (magicIn ? 1 : 1 + this.magicDmg) * spellMul;
   }
 }

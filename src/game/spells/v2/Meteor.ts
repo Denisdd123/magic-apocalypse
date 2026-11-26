@@ -1,219 +1,317 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
-import { areaDamage } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { Later, SkyFx, randomInView } from './_skyfx';
-import { ensureDarkTex } from './_darkfx';
-import { RING_K, ensureInkFrost } from './_inkfx';
-import { SHARD_TEX, SPLASH_TEX, TRAIL_TEX, ensureGroupC } from './_groupC';
-import { ImgPool } from './_zoneKit';
+import { boxDamage, Co, PX, TICK, U } from './_orig';
 
-/** базовый радиус взрыва метеорита */
-const R0 = 42;
-/** время падения, с (тень на земле растёт — телеграф). В 2.0 было 0.7, в 2.1 — 0.36 (слишком быстро); теперь чуть быстрее 2.0 */
-const FALL = 0.55;
-/** приглушённый багрянец телеграфа (STYLE_GUIDE: не розовый) */
-const CRIMSON = 0xb8343f;
-/** высота старта над точкой удара и снос вбок (дуга: сначала полого, потом почти отвесно) */
-const FALL_H = 300, FALL_DX = 0.75;
+const DEG = Math.PI / 180;
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+/** мешок мест падения: 3 × 4 ячейки вокруг мага (ед., y вверх); в центре (y = 0) ячеек нет */
+const CELL_X = [-2, 0, 2], CELL_Y = [4.5, 2, -2, -4.5];
 
-/** Летящая звезда: квадратичная кривая Безье S → C → E с ускорением к земле */
-interface Fall {
-  sx: number; sy: number; cx: number; cy: number; ex: number; ey: number;
-  t: number; dur: number; delay: number; R: number; dmg: number; crater: boolean;
-  head: Phaser.GameObjects.Image | null; tail: Phaser.GameObjects.Image | null; spin: number;
+// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
+const T = { rockC: 'mt_rock_c', rock: 'mt_rock', flash: 'mt_flash', smoke: 'mt_smoke', scorch: 'mt_scorch', lava: 'mt_lava', dot: 'mt_dot' };
+function textures() {
+  const tx = W.scene.textures;
+  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+    if (tx.exists(key)) return;
+    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+    draw(g); g.generateTexture(key, w, h); g.destroy();
+  };
+  // MeteorA1 rect 360×200, видимая 274×60 (рисуем 90×50 = ×4): тёмный камень спереди (справа), раскалённый хвост
+  make(T.rock, 90, 50, (g) => {
+    g.fillStyle(0xff7a2a, 0.35); g.fillEllipse(48, 25, 68, 14);
+    g.fillStyle(0xffc060, 0.8); g.fillEllipse(56, 25, 46, 8);
+    g.fillStyle(0x3a1a12, 1); g.fillEllipse(74, 25, 16, 13);
+    g.fillStyle(0xfff0c0, 1); g.fillEllipse(80, 25, 5, 9);
+  });
+  // MeteorC1 видимая 302×324 (рисуем 76×81 = ×4): круглая глыба с раскалённой кромкой
+  make(T.rockC, 76, 81, (g) => {
+    g.fillStyle(0xff7a2a, 0.35); g.fillCircle(38, 40, 37);
+    g.fillStyle(0x4a2418, 1); g.fillCircle(38, 40, 30);
+    g.fillStyle(0xffb050, 1); g.fillCircle(50, 52, 9);
+    g.fillStyle(0x2a120c, 1); g.fillCircle(30, 32, 10);
+  });
+  // Explosion9_01: белая «вата» (rect 400, рисуем 100)
+  make(T.flash, 100, 100, (g) => {
+    for (let i = 0; i < 5; i++) { g.fillStyle(0xffffff, 0.2 + i * 0.16); g.fillCircle(50, 50, 30 - i * 4); }
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; g.fillStyle(0xffffff, 0.8); g.fillCircle(50 + Math.cos(a) * 22, 50 + Math.sin(a) * 22, 10); }
+  });
+  // Explosion9_04..10: клубы дыма (тинт тёмно-красный → чёрный)
+  make(T.smoke, 100, 100, (g) => {
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; g.fillStyle(0xffffff, 0.9); g.fillCircle(50 + Math.cos(a) * 16, 50 + Math.sin(a) * 14, 13); }
+    g.fillStyle(0xffffff, 1); g.fillCircle(50, 50, 18);
+  });
+  // MeteorLand1 227×118 (рисуем как есть): копоть
+  make(T.scorch, 114, 59, (g) => {
+    g.fillStyle(0xffffff, 0.5); g.fillEllipse(57, 30, 110, 56);
+    g.fillStyle(0xffffff, 1); g.fillEllipse(57, 30, 80, 38);
+  });
+  // MeteorLand2A 419×381 (рисуем 105×95): лавовая лужа — жёлто-оранжевый центр, красная кромка
+  make(T.lava, 105, 95, (g) => {
+    g.fillStyle(0x8a1a10, 0.9); g.fillEllipse(52, 48, 100, 88);
+    g.fillStyle(0xe03a14, 1); g.fillEllipse(52, 48, 84, 72);
+    g.fillStyle(0xff9a20, 1); g.fillEllipse(52, 48, 60, 50);
+    g.fillStyle(0xffe070, 1); g.fillEllipse(52, 48, 34, 28);
+  });
+  make(T.dot, 12, 12, (g) => { g.fillStyle(0xffffff, 0.4); g.fillCircle(6, 6, 6); g.fillStyle(0xffffff, 1); g.fillCircle(6, 6, 3.5); });
 }
-/** базовый интервал между метеоритами одного залпа, с (стат interval) */
-const GAP = 0.3;
 
-interface Crater { x: number; y: number; r: number; dmg: number; t: number; next: number }
+/** Визуальный объект с временной шкалой: step(t) вернул false — убрать */
+interface Vis { img: Phaser.GameObjects.Image; t: number; step: (v: Vis, dt: number) => boolean }
+interface Job { t: number; fn: () => void }
+
+/** параметры взрыва ExplosionAttack: scale = Area·base + plus; коллайдер cw×ch × scale */
+interface Expl { base: number; plus: number; cw: number; ch: number; delay?: number; cy?: number }
+const EX9: Expl = { base: 0.95, plus: 0.25, cw: 3, ch: 2.5 };          // ID 9 (база, 444)
+const EX32: Expl = { base: 1.05, plus: 0, cw: 3.15, ch: 2.65 };       // 443 (Plus по умолчанию 0 — C_Battle_AllyExplosion.c, ExplosionAttack)
+const EX54: Expl = { base: 0.3, plus: 0.5, cw: 6.5, ch: 6 };          // 445
+const EX25: Expl = { base: 0.55, plus: 0.3, cw: 4, ch: 4 };           // слияние 5
+const EX93: Expl = { base: 0.23, plus: 0, cw: 7.5, ch: 6, cy: 0.5 };  // слияние 35 (первый: Plus 0.9, урон ×1.5)
+const EX97: Expl = { base: 0.55, plus: 0.55, cw: 2.25, ch: 3.5, delay: 0.03 }; // слияние 41
 
 /**
- * #10 Метеорит → «Падение звезды». Раз в КД count метеоритов падают в случайные точки экрана
- * (тень на земле — телеграф), взрыв, кратер.
- * Свойства: 443 Извержение вулкана (взрыв сразу из-под земли + кратер 25% каждые 0.5 с, 3 с),
- * 444 Метеоритный дождь (чистые моды: ×3 штук, интервал −30%), 445 Астероид (один, +50% размера за каждый).
- * Слияния (основа): 5 Военный климат, 35 Великое столкновение, 41 Пламенный шторм.
+ * #10 Метеорит — 1:1 по коду оригинала (docs/orig/spells/meteor.md, карточка tasks/meteor.md):
+ * Play_Meteor: wait(PSpeed); залп Num метеоров с паузой MeteorDSpeed 0.15 с (444: 0.1), места — мешок 12 ячеек
+ * x ∈ {−2, 0, 2}, y ∈ {±2, ±4.5} ед. ± 0.2 (на мага не падает; при ≤ 4 в мешке — новый без последней), затем wait(PSpeed).
+ * Падение MeteorA: прямая под Random(−75°, −68°) сверху-слева, старт 20 ед., 26 тиков × 0.7015 ед. (0.78 с),
+ * взрыв Explosion9: прямоугольник 3×2.5 × (Area·0.95 + 0.25), урон один раз; подпалина MeteorLand1 0.6 с без урона.
+ * Свойства: 443 Извержение (без падения, лесенка SV01·0.15 с, взрыв 3.15×2.65 × Area·1.05, лавовый кратер ×0.25:
+ * квадрат 1.25 ед. × Size, удар раз в 0.495 с, живёт 1.0 с + 0.6 с угасания, на 0.92 ед. ниже), 444 Дождь (данные ×3, пауза 0.1),
+ * 445 Астероид (один, Area + 50 %·Num, падение 2:1 за 22 тика, взрыв 6.5×6 × (Area·0.3 + 0.5)).
+ * Слияния (числа §9.3/§9.4; полностью — партия 6): 5 Военный климат (Com01: поток в ±4.6 × ±5.8 ед., урон ×7),
+ * 35 Великое столкновение (3 падения через 0.3 с почти вертикально), 41 Пламенный шторм (Com03: «ромашка» 5–8 лучей).
  */
 class Meteor extends DataSpell {
-  private fx = new SkyFx();
-  private later = new Later();
-  private craters: Crater[] = [];
-  private freeCr: Crater[] = [];
-  private falls: Fall[] = [];
-  private freeFall: Fall[] = [];
-  private imgs = new ImgPool();
+  private co: Co | null = null;
+  private vis: Vis[] = [];
+  private pool: Phaser.GameObjects.Image[] = [];
+  private jobs: Job[] = [];
+  private bag: number[] = [];
+  private lastCell = -1;
 
-  destroy() { this.fx.destroy(); this.later.clear(); this.craters = []; this.falls = []; this.imgs.destroy(); }
+  /** Area = (100 + AreaU)% */
+  private get area(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
+  private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 4.5) * this.cdGlobal); }
+  /** VolcanoTime = (100 + MTimeU)·0.01 × (100 − MTimeD)·0.01 → 1.0 с */
+  private get volcanoT(): number { return Math.max(0.01, (1 + this.pctOf('duration') / 100) * W.stats.durMul); }
+
+  onChange() {
+    super.onChange();
+    textures();
+    if (!this.co) this.co = new Co(this.loop());
+  }
+
+  destroy() {
+    for (const v of this.vis) v.img.destroy();
+    for (const i of this.pool) i.destroy();
+    this.vis = []; this.pool = []; this.jobs = []; this.co = null;
+  }
 
   update(dt: number) {
-    ensureDarkTex();
-    ensureInkFrost();
-    ensureGroupC();
-    this.fx.update(dt);
-    this.later.update(dt);
-    this.updateFalls(dt);
-    this.updateCraters(dt);
-
-    if (this.hasCombo(5)) {
-      // 5 Военный климат: КД делится на число метеоритов, по одному за КД; каждый сокращает следующий КД на 0–80%
-      if (this.ready(dt, this.cdSec / this.count)) {
-        const p = randomInView(30);
-        this.drop(p.x, p.y, R0 * this.sizeMul, this.dmg, 0, false);
-        this.cd *= 1 - Math.random() * 0.8;
-      }
-      return;
+    if (!this.co) this.onChange();
+    this.co!.update(dt);
+    for (let i = this.jobs.length - 1; i >= 0; i--) {
+      const j = this.jobs[i];
+      j.t -= dt;
+      if (j.t <= 0) { this.jobs[i] = this.jobs[this.jobs.length - 1]; this.jobs.pop(); j.fn(); }
     }
-    if (this.readyData(dt)) this.cast();
+    for (let i = this.vis.length - 1; i >= 0; i--) {
+      const v = this.vis[i];
+      v.t += dt;
+      if (!v.step(v, dt)) {
+        v.img.setVisible(false); this.pool.push(v.img);
+        this.vis[i] = this.vis[this.vis.length - 1]; this.vis.pop();
+      }
+    }
   }
 
-  private cast() {
-    const P = W.player;
-    const n = this.count, dmg = this.dmg, size = this.sizeMul;
-    const instant = this.hasProp(443);
+  private after(t: number, fn: () => void) { if (t <= 0) fn(); else this.jobs.push({ t, fn }); }
 
-    // 41 Пламенный шторм: извержения линиями по 5+ направлениям от мага, кратеры не бьют
-    if (this.hasCombo(41)) {
-      const extra = (size >= 1.33 ? 1 : 0) + (size >= 1.66 ? 1 : 0) + (size >= 1.99 ? 1 : 0);
-      const dirs = 5 + extra, d = dmg * (10 + 5 * extra) / 10, R = R0 * 0.8 * size;
-      const a0 = Math.random() * Math.PI * 2;
-      for (let i = 0; i < dirs; i++) {
-        const a = a0 + (i * Math.PI * 2) / dirs, c = Math.cos(a), s = Math.sin(a);
-        for (let k = 0; k < 4; k++) {
-          const dist = 45 + k * R * 1.5;
-          this.drop(P.x + c * dist, P.y + s * dist, R, d, k * 0.09, true, false);
+  private img(tex: string, depth: number, add: boolean) {
+    const img = this.pool.pop() ?? W.scene.add.image(0, 0, tex);
+    img.setTexture(tex).setVisible(true).setAlpha(1).setRotation(0).setScale(1).clearTint().setDepth(depth)
+      .setBlendMode(add ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
+    return img;
+  }
+  private addVis(img: Phaser.GameObjects.Image, step: (v: Vis, dt: number) => boolean) { this.vis.push({ img, t: 0, step }); }
+
+  // ———— Play_Meteor ————
+  private *loop(): Generator<number, void, unknown> {
+    yield this.pSpeed;
+    if (this.hasCombo(5)) { yield* this.warClimate(); return; }
+    for (;;) {
+      if (this.hasCombo(41)) yield* this.flameStorm();
+      else {
+        const big = this.hasProp(445) || this.hasCombo(35);
+        const n = this.hasCombo(35) ? 3 : this.hasProp(445) ? 1 : this.count;
+        const ds = this.hasCombo(35) ? 0.3 : this.hasProp(444) ? 0.1 : 0.15;
+        // 445: Area = (100 + AreaU + Num·50)% (Num до сброса в 1)
+        const area = this.hasProp(445) && !this.hasCombo(35) ? this.area + this.count * 0.5 : this.area;
+        for (let i = 0; i < n; i++) {
+          const [cx, cy] = this.cell();
+          const x = W.player.x + cx * U, y = W.player.y - cy * U;
+          if (this.hasCombo(35)) this.impact(x, y, area, i === 0);
+          else if (big) this.asteroid(x, y, area);
+          else if (this.hasProp(443)) this.volcano(x, y, area, i);
+          else this.fallA(x, y, area);
+          if (i + 1 < n) yield ds;
         }
       }
-      return;
-    }
-
-    // 445 Астероид: один огромный, +50% размера за каждый метеорит
-    if (this.hasProp(445)) {
-      const R = R0 * size * (1 + 0.5 * (n - 1));
-      if (this.hasCombo(35)) {
-        // 35 Великое столкновение: 3 падения подряд, первое на 50% мощнее
-        for (let k = 0; k < 3; k++) { const p = randomInView(40); this.drop(p.x, p.y, R, k === 0 ? dmg * 1.5 : dmg, k * 0.45, false); }
-        return;
-      }
-      const p = randomInView(40);
-      this.drop(p.x, p.y, R, dmg, 0, false);
-      return;
-    }
-
-    const gap = this.stat('interval', GAP);
-    for (let j = 0; j < n; j++) {
-      const p = randomInView(30);
-      this.drop(p.x, p.y, R0 * size, dmg, j * gap, instant);
+      yield this.pSpeed;
     }
   }
 
+  /** мешок 12 ячеек: при ≤ 4 оставшихся — новый мешок без последней выпавшей; ± 0.2 ед. по обеим осям */
+  private cell(): [number, number] {
+    if (this.bag.length <= 4) { this.bag = []; for (let k = 0; k < 12; k++) if (k !== this.lastCell) this.bag.push(k); }
+    const k = this.bag.splice((Math.random() * this.bag.length) | 0, 1)[0];
+    this.lastCell = k;
+    return [CELL_X[k % 3] + rnd(-0.2, 0.2), CELL_Y[(k / 3) | 0] + rnd(-0.2, 0.2)];
+  }
+
+  // ———— падения ————
   /**
-   * Падение: телеграф (растущая тень и тонкое тусклое кольцо) → тёмная «звезда» с узким следом
-   * сверху → разлёт обломков и выжженный кратер. Не огненный шар: тёмный камень, багровая кромка,
-   * бледное ядро (текстуры _darkfx). instant — извержение без падения.
+   * Камень летит от (x, y) − dir·startU, шаг stepU за тик (tick с), nSteps шагов, затем onLand.
+   * dir — экранный угол полёта. scale — масштаб спрайта MeteorA (360×200).
    */
-  private drop(x: number, y: number, R: number, dmg: number, delay: number, instant: boolean, crater = instant) {
-    if (instant) {
-      const tele = 0.25;
-      this.fx.spawn('ink_ring', { x, y, w: R * 0.7 * RING_K, w1: R * RING_K, a0: 0.15, a1: 0.5, life: tele, delay, tint: CRIMSON, depth: DEPTH.zone + 0.1 });
-      this.later.add(delay + tele, () => this.land(x, y, R, dmg, crater));
-      return;
-    }
-    const fall = R > R0 * 2 ? FALL * 1.35 : FALL;
-    this.fx.spawn('shadow', { x, y, w: R * 0.5, w1: R * 2, h: R * 0.25, h1: R * 0.8, a0: 0.2, a1: 0.7, life: fall, delay, add: false, depth: DEPTH.zone });
-    // тонкое тусклое кольцо-телеграф: сжимается к точке удара
-    this.fx.spawn('ink_ring', { x, y, w: R * 1.5 * RING_K, w1: R * RING_K, a0: 0.1, a1: 0.45, life: fall, delay, tint: CRIMSON, depth: DEPTH.zone + 0.1 });
-    // кривая падения: старт высоко и сбоку (сторона случайная), контрольная точка даёт дугу —
-    // сначала камень летит полого, затем почти отвесно «втыкается» в землю
-    const side = Math.random() < 0.5 ? -1 : 1, dx = FALL_H * FALL_DX * (0.85 + Math.random() * 0.3);
-    const f = this.freeFall.pop() ?? ({} as Fall);
-    f.sx = x - side * dx; f.sy = y - FALL_H;
-    f.cx = x - side * dx * 0.35; f.cy = y - FALL_H * 0.8;
-    f.ex = x; f.ey = y;
-    f.t = 0; f.dur = fall; f.delay = delay; f.R = R; f.dmg = dmg; f.crater = crater;
-    f.head = null; f.tail = null; f.spin = ((Math.random() * 4) | 0) * (Math.PI / 2);
-    this.falls.push(f);
-    if (delay <= 0) this.showFall(f);
+  private fall(x: number, y: number, ang: number, startU: number, stepU: number, nSteps: number, tick: number, scale: number, onLand: () => void, tex: string = T.rock) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const rock = this.img(tex, DEPTH.top, true).setRotation(tex === T.rock ? ang : 0).setScale(PX * 4 * scale);
+    let i = 0, acc = 0, trail = 0;
+    const place = () => rock.setPosition(x - c * (startU - stepU * i) * U, y - s * (startU - stepU * i) * U);
+    place();
+    this.addVis(rock, (_v, dt) => {
+      acc += dt; trail += dt;
+      while (acc >= tick && i < nSteps) { acc -= tick; i++; }
+      place();
+      // TrailRenderer 0.45 с
+      if (trail >= TICK) { trail = 0; W.fx.puff(rock.x, rock.y, 16 * scale * PX * 4, 0xffa040, 0.45, T.dot); }
+      if (i >= nSteps) { onLand(); return false; }
+      return true;
+    });
   }
 
-  /** Картинки звезды (камень dk_star из _darkfx прежний; след — светлый gc_trail) */
-  private showFall(f: Fall) {
-    // след: «голова» картинки (правый край) совпадает с камнем
-    f.tail = this.imgs.get(TRAIL_TEX, DEPTH.top, true).setOrigin(0.95, 0.5).setDisplaySize(f.R * 2.4, f.R * 0.45).setAlpha(0);
-    f.head = this.imgs.get('dk_star', DEPTH.top + 0.01, false).setDisplaySize(f.R * 0.8, f.R * 0.8).setRotation(f.spin);
-    this.placeFall(f, 0);
+  /** MeteorA_AnimationB: угол Random(−75°, −68°) (экран: вниз-вправо), старт 20 ед., 26 × 0.7015 ед. */
+  private fallA(x: number, y: number, area: number) {
+    const ang = rnd(68, 75) * DEG;
+    this.fall(x, y, ang, 20, 0.7015, 26, TICK, 1.25, () => {
+      this.explode(x, y, area, this.dmg, EX9);
+      this.scorch(x, y, area * 1.1, 227, 118, 0x1a1a1a);
+    });
   }
 
-  /** Позиция и поворот по кривой; k — доля пути 0..1 */
-  private placeFall(f: Fall, k: number) {
-    const m = 1 - k;
-    const x = m * m * f.sx + 2 * m * k * f.cx + k * k * f.ex;
-    const y = m * m * f.sy + 2 * m * k * f.cy + k * k * f.ey;
-    // касательная — направление следа
-    const tx = m * (f.cx - f.sx) + k * (f.ex - f.cx), ty = m * (f.cy - f.sy) + k * (f.ey - f.cy);
-    f.tail!.setPosition(x, y).setRotation(Math.atan2(ty, tx));
-    f.head!.setPosition(x, y);
+  /** 443 (ID 32, MeteorB): без падения, wait SV01·0.15, взрыв + лавовый кратер на 0.92 ед. ниже */
+  private volcano(x: number, y: number, area: number, i: number) {
+    const dmg = this.dmg;
+    this.after(i * 0.15, () => {
+      this.explode(x, y, area, dmg, EX32);
+      this.crater(x, y + 0.92 * U, area, dmg * 0.25);
+    });
   }
 
-  private updateFalls(dt: number) {
-    for (let i = this.falls.length - 1; i >= 0; i--) {
-      const f = this.falls[i];
-      if (f.delay > 0) { f.delay -= dt; if (f.delay > 0) continue; this.showFall(f); }
-      f.t += dt;
-      if (f.t >= f.dur) {
-        if (f.head) this.imgs.put(f.head);
-        if (f.tail) this.imgs.put(f.tail);
-        f.head = f.tail = null;
-        this.falls[i] = this.falls[this.falls.length - 1]; this.falls.pop();
-        this.freeFall.push(f);
-        this.land(f.ex, f.ey, f.R, f.dmg, f.crater);
-        continue;
-      }
-      const u = f.t / f.dur;
-      // разгон к земле: медленнее вверху, «бух» в конце
-      this.placeFall(f, u * (0.35 + 0.65 * u));
-      f.tail!.setAlpha(Math.min(0.95, u * 5));
-    }
+  /** 445 (ID 54, MeteorC): local(i) = (−4.88 + 0.22i, 9.76 − 0.44i), i = 1..22 по 0.03 с; камень Area·0.38 */
+  private asteroid(x: number, y: number, area: number) {
+    const ang = Math.atan2(0.44, 0.22);   // экран: вниз-вправо, наклон 2:1
+    const L = Math.hypot(4.88, 9.76);
+    this.fall(x, y, ang, L, Math.hypot(0.22, 0.44), 22, TICK, area * 0.38, () => {
+      this.explode(x, y, area, this.dmg, EX54);
+      this.scorch(x, y, area * 1.1, 485, 83, 0x333333);
+    }, T.rockC);
   }
 
-  private land(x: number, y: number, R: number, dmg: number, crater: boolean) {
-    areaDamage(x, y, R, dmg, 80, this.def.id);
-    // взрыв в нашем стиле: светлая клякса-вспышка (быстро растёт и гаснет) + штрихи-осколки веером + тонкое кольцо
-    const sp = (Math.random() * 2) | 0;
-    this.fx.spawn(SPLASH_TEX[sp], { x, y, w: R * 1.3, w1: R * 2.3, life: 0.1, a0: 1, a1: 1, rot: Math.random() * 6.28, tint: 0xfff0d8 });
-    this.fx.spawn(SPLASH_TEX[sp ^ 1], { x, y, w: R * 2.3, w1: R * 2.7, life: 0.28, delay: 0.1, a0: 0.9, a1: 0, hold: true, rot: Math.random() * 6.28, tint: 0xffe2b8 });
-    const n = R > 60 ? 10 : 7, a0 = Math.random() * 6.28;
-    for (let i = 0; i < n; i++) {
-      const a = a0 + (i / n) * 6.28 + (Math.random() - 0.5) * 0.4, v = R * (3.2 + Math.random() * 2.2);
-      this.fx.spawn(SHARD_TEX, {
-        x, y, w: R * (0.45 + Math.random() * 0.35), h: R * 0.1, w1: R * 0.2, h1: R * 0.07, life: 0.32, a0: 1, a1: 0, hold: true,
-        rot: a, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ox: 0.2, oy: 0.5, tint: 0xffe9c8,
+  /** 35 (ID 93, MeteorE): поле повёрнуто на 15–21° против часовой, старт +11 ед. по up, 22 × 0.48 ед. */
+  private impact(x: number, y: number, area: number, first: boolean) {
+    const th = Math.floor(rnd(15, 22)) * DEG;
+    // up Unity (−sin θ, cos θ) → экран (−sin θ, −cos θ); полёт — обратно
+    const ang = Math.atan2(Math.cos(th), Math.sin(th));
+    const dmg = this.dmg * (first ? 1.5 : 1), ex = first ? { ...EX93, plus: 0.9 } : EX93;
+    this.fall(x, y, ang, 11, 0.48, 22, TICK, (first ? 0.45 : 0) + area * 0.3 + 0.2, () => {
+      this.explode(x, y, area, dmg, ex);
+      this.scorch(x, y, area * 1.45, 485, 83, 0x333333);
+    });
+  }
+
+  /** 5 Военный климат (Com01, ID 25, MeteorD): поток в ±4.6 × ±5.8 ед., пауза PSpeed'·Random(0.2, 1.0) */
+  private *warClimate(): Generator<number, void, unknown> {
+    for (;;) {
+      const x = W.player.x + rnd(-4.6, 4.6) * U, y = W.player.y - rnd(-5.8, 5.8) * U;
+      const area = this.area, dmg = this.dmg * (7 / 6);   // данные ×6, код ×7
+      this.fall(x, y, rnd(68, 75) * DEG, 20, 0.76, 24, TICK, 1.5, () => {
+        this.explode(x, y, area, dmg, EX25);
+        this.scorch(x, y, area * 1.1, 227, 118, 0x1a1a1a);
       });
-    }
-    this.fx.spawn('ink_ring', { x, y, w: R * 0.6 * RING_K, w1: R * 1.5 * RING_K, life: 0.22, a0: 0.55, a1: 0, tint: 0xf0d2a8 });
-    // выжженное пятно: гладкая тёмная копоть (fx_thunder_scorch)
-    this.fx.spawn('fx_thunder_scorch', { x, y, w: R * 2, life: crater ? 3 : 1.6, a0: 0.85, a1: 0, hold: true, add: false, depth: DEPTH.zone, tint: 0x2a1c18, rot: Math.random() * 6.28 });
-    W.fx.sparks(x, y, R > 60 ? 8 : 4, 0xffd8a0, 120);
-    if (R > 70) W.scene.cameras.main.shake(140, 0.005);
-    if (crater) {
-      // кратер: 25% урона каждые 0.5 с в течение 3 с
-      const c = this.freeCr.pop() ?? ({} as Crater);
-      c.x = x; c.y = y; c.r = R; c.dmg = dmg * 0.25; c.t = 3; c.next = 0.5;
-      this.craters.push(c);
-      // тлеющие трещины активного кратера: тусклое ADD поверх той же картинки
-      this.fx.spawn('ink_ring', { x, y, w: R * 2 * RING_K * 0.5, life: 3, a0: 0.35, a1: 0, hold: true, depth: DEPTH.zone + 0.1, tint: CRIMSON });
+      const ps = Math.max(0.02, (this.pSpeed + 2) / (this.count * 0.5 + 23));
+      yield ps * rnd(0.2, 1.0);
     }
   }
 
-  private updateCraters(dt: number) {
-    for (let i = this.craters.length - 1; i >= 0; i--) {
-      const c = this.craters[i];
-      c.t -= dt; c.next -= dt;
-      if (c.next <= 0) { c.next += 0.5; areaDamage(c.x, c.y, c.r, c.dmg, 0, this.def.id); }
-      if (c.t <= 0) { this.craters[i] = this.craters[this.craters.length - 1]; this.craters.pop(); this.freeCr.push(c); }
+  /** 41 Пламенный шторм (Com03, ID 97): лучи 360/AddNum от 90°, шаг 1.84 ед., центр маг + 0.5 ед. вверх, ряд за рядом через 0.2 с */
+  private *flameStorm(): Generator<number, void, unknown> {
+    const A = this.area;
+    const k = A >= 1.99 ? 3 : A >= 1.66 ? 2 : A >= 1.33 ? 1 : 0;
+    const rays = 5 + k, dmg = this.dmg * (10 + 5 * k) / 10;   // данные ×10
+    const n = this.count, step = 360 / rays;
+    for (let row = 1; row <= n; row++) {
+      const cx = W.player.x, cy = W.player.y - 0.5 * U;
+      for (let j = 0; j < rays; j++) {
+        const a = (90 - step * j) * DEG;
+        const x = cx + 1.84 * row * Math.cos(a) * U, y = cy - 1.84 * row * Math.sin(a) * U;
+        this.explode(x, y, A, dmg, EX97);
+        this.scorch(x, y, A * 0.9, 303, 191, 0x8a1010);   // MeteorLand 7 — без урона
+      }
+      yield 0.2;
     }
+  }
+
+  // ———— взрывы и следы ————
+  /** ExplosionAttack + Explosion9_Animation: кадр 01 (вспышка) — коллайдер 0.06 с, затем 9 кадров дыма по 0.06 с */
+  private explode(x: number, y: number, area: number, dmg: number, ex: Expl) {
+    const sc = area * ex.base + ex.plus;
+    const hl = (ex.cw / 2) * sc * U, hw = (ex.ch / 2) * sc * U;
+    const oy = -(ex.cy ?? 0) * sc * U;
+    this.after(ex.delay ?? 0, () => boxDamage(x, y + oy, 0, hl, hw, dmg, this.def.id));
+    // вспышка Explosion9_01: видимая ≈440 px × scale
+    const fl = this.img(T.flash, DEPTH.fx, true).setPosition(x, y).setScale((440 / 64) * PX * sc);
+    this.addVis(fl, (v) => { fl.setAlpha(v.t < 0.06 ? 1 : Math.max(0, 1 - (v.t - 0.06) / 0.12)); return v.t < 0.18; });
+    const sm = this.img(T.smoke, DEPTH.fx, false).setPosition(x, y).setAlpha(0);
+    const col0 = Phaser.Display.Color.ValueToColor(0x8a1a10), col1 = Phaser.Display.Color.ValueToColor(0x141010);
+    this.addVis(sm, (v) => {
+      if (v.t < 0.06) return true;
+      const k = Math.min(1, (v.t - 0.06) / 0.54);
+      const c = Phaser.Display.Color.Interpolate.ColorWithColor(col0, col1, 100, k * 100);
+      sm.setTint(Phaser.Display.Color.GetColor(c.r, c.g, c.b)).setAlpha(0.85 * (1 - k * k))
+        .setScale((230 / 58) * PX * sc * (1 + 0.25 * k));
+      return v.t < 0.6;
+    });
+  }
+
+  /** MeteorLand_DurationA: тинт, alpha 1 − 0.1·i, 10 шагов по 0.06 с; размер спрайта w×h px × scale; без урона */
+  private scorch(x: number, y: number, scale: number, w: number, h: number, tint: number) {
+    const im = this.img(T.scorch, DEPTH.zone, false).setPosition(x, y).setTint(tint)
+      .setScale((w / 114) * PX * scale, (h / 59) * PX * scale);
+    this.addVis(im, (v) => { im.setAlpha(1 - 0.1 * Math.floor(v.t / 0.06)); return v.t < 0.6; });
+  }
+
+  /** MeteorLand тип 2 (443): scale Size·0.5, коллайдер 2.5 × scale, удар в первые 0.165 с каждого периода 0.495 с, живёт VolcanoTime + 0.6 с */
+  private crater(x: number, y: number, size: number, dmg: number) {
+    const sc = size * 0.5, half = 1.25 * sc * U, life = this.volcanoT;
+    const im = this.img(T.lava, DEPTH.zone, false).setPosition(x, y).setScale((419 / 105) * PX * sc);
+    const hits = new Set<number>();
+    let period = -1;
+    const tints = [0xffffff, 0xffd8b0, 0xffb090];
+    this.addVis(im, (v) => {
+      if (v.t < life) {
+        const p = Math.floor(v.t / 0.495), ph = v.t - p * 0.495;
+        if (p !== period) { period = p; hits.clear(); }
+        im.setTint(tints[Math.min(2, Math.floor(ph / 0.165))]);
+        if (ph < 0.165) boxDamage(x, y, 0, half, half, dmg, this.def.id, hits);
+        return true;
+      }
+      im.setAlpha(Math.max(0, 1 - 0.1 * Math.floor((v.t - life) / 0.06)));
+      return v.t < life + 0.6;
+    });
   }
 }
 

@@ -30,6 +30,13 @@ export class Effects {
     this.list.push({ img, t: 0, life, s0: (r * 0.35) / base, s1: r / base, a0: 0.9, a1: 0, vx: 0, vy: 0, spin: 0, follow, ox: follow ? x - follow.x : 0, oy: follow ? y - follow.y : 0 });
   }
 
+  /** Неподвижная картинка заданного размера (по большей стороне), гаснет за life с; rot — поворот */
+  puff(x: number, y: number, size: number, tint = 0xffffff, life = 0.15, tex = 'dot', rot = 0, a0 = 1) {
+    const img = this.get(tex).setPosition(x, y).setTint(tint).setRotation(rot);
+    const k = size / Math.max(img.width, img.height);
+    this.list.push({ img, t: 0, life, s0: k, s1: k, a0, a1: 0, vx: 0, vy: 0, spin: 0, ox: 0, oy: 0 });
+  }
+
   sparks(x: number, y: number, n: number, tint = 0xffffff, speed = 90) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random());

@@ -1,230 +1,248 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../../../config';
-import { SPELL_BY_ID } from '../../../data/spells_data';
-import type { Enemy } from '../../Enemies';
+import { SPELL_BY_ID, type Mod } from '../../../data/spells_data';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { GB_NEEDLE, GB_STAR, ensureGroupBTextures } from './_groupB';
-import { aimR, faceVel, lifeToEdge, ROT } from './_proj';
-
-/** Свои текстуры: плоский мрачный дух в капюшоне (вспышка и игла — из _groupB.ts) */
-const WRAITH = 'v2_spirit_wraith';
-function ensureTextures() {
-  ensureGroupBTextures();
-  const tx = W.scene.textures;
-  if (!tx.exists(WRAITH)) {
-    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
-    // силуэт: капюшон и рваный подол
-    g.fillStyle(0x8a80a8, 1);
-    g.fillPoints([
-      { x: 12, y: 0 }, { x: 20, y: 6 }, { x: 23, y: 15 }, { x: 22, y: 25 }, { x: 18, y: 21 }, { x: 15, y: 28 },
-      { x: 12, y: 22 }, { x: 8, y: 28 }, { x: 5, y: 21 }, { x: 1, y: 25 }, { x: 1, y: 15 }, { x: 4, y: 6 },
-    ] as Phaser.Types.Math.Vector2Like[], true);
-    // тёмное тело (по краю остаётся тусклая кайма)
-    g.fillStyle(0x2b2638, 1);
-    g.fillPoints([
-      { x: 12, y: 2 }, { x: 19, y: 7 }, { x: 21, y: 15 }, { x: 20, y: 22 }, { x: 18, y: 19 }, { x: 15, y: 25 },
-      { x: 12, y: 20 }, { x: 8, y: 25 }, { x: 6, y: 19 }, { x: 3, y: 22 }, { x: 3, y: 15 }, { x: 5, y: 7 },
-    ] as Phaser.Types.Math.Vector2Like[], true);
-    // провал под капюшоном: тьма со слабым тусклым свечением в глубине (без «глаз»)
-    g.fillStyle(0x0b0910, 1); g.fillEllipse(12, 11, 11, 8);
-    g.fillStyle(0x3a3452, 0.6); g.fillEllipse(12, 12, 5, 3);
-    g.generateTexture(WRAITH, 24, 28);
-    g.destroy();
-  }
-}
-
-/** Один дух: своя картинка, свой крестик-вспышка и СВОЯ перезарядка */
-interface Unit { img: Phaser.GameObjects.Image; cross: Phaser.GameObjects.Image; cd: number; full: number; flash: number }
-
-/** длительность вспышки-крестика, с */
-const FLASH = 0.2;
+import { aimAngle, Co, ensureOrigTextures, OrigBullets, OT, origTargets, PX, TICK, U, type OBullet } from './_orig';
 
 /**
- * #3 Дух → «Духи-стражи». Духи парят вокруг мага, у каждого своя перезарядка: готов — стреляет пробивающим
- * снарядом в ближайшего врага на экране (нет врагов — ждёт заряженным). Пока перезаряжается — темнеет;
- * при выстреле — белый крестик раздувается и гаснет (без ADD-бленда).
- * Свойства: 380 Заколдованная ракета (КД ускоряется от числа духов, стреляют разом), 381 Магический клинок
- * (мгновенный разрез прямо на враге), 382 Фамильяр (один большой дух, веер выстрелов во все стороны, 15 за духа).
- * Слияния (основа): 2 Парящие мечи, 43 Магическое копьё, 53 Сверхновая.
+ * Раскладки духов вокруг мага (StartInformation_B, switch по UnitApply_SpiritNum, @0x11d08b0…0x11d7cbc;
+ * сняты трассировкой ветвей, ед., y вверх). Индекс = порядок стрельбы (List_Transform_ObjSpirit[1..N]).
+ */
+const LAYOUT: Record<number, [number, number][]> = {
+  1: [[0, 0.55]],
+  2: [[-0.38, 0.075], [0.38, 0.075]],
+  3: [[-0.38, 0.075], [0.38, 0.075], [0, 0.55]],
+  4: [[-0.38, 0.075], [0.38, 0.075], [-0.3, 0.34], [0.3, 0.34]],
+  5: [[-0.38, 0.075], [0.38, 0.075], [-0.24, 0.343], [0.24, 0.343], [0, 0.55]],
+  6: [[-0.38, 0.075], [0.38, 0.075], [-0.24, 0.343], [0.24, 0.343], [-0.125, 0.55], [0.125, 0.55]],
+  7: [[-0.3, -0.19], [0.3, -0.19], [-0.38, 0.075], [0.38, 0.075], [-0.24, 0.343], [0.24, 0.343], [0, 0.55]],
+  8: [[-0.3, -0.3], [0.3, -0.3], [-0.4, 0], [0.4, 0], [-0.33, 0.31], [0.33, 0.31], [-0.14, 0.56], [0.14, 0.56]],
+  9: [[-0.24, -0.47], [0.24, -0.47], [-0.42, -0.2], [0.42, -0.2], [-0.5, 0.109], [0.5, 0.109], [-0.4, 0.42], [0.4, 0.42], [-0.18, 0.65]],
+  10: [[-0.26, -0.48], [0.26, -0.48], [-0.45, -0.215], [0.45, -0.215], [-0.55, 0.09], [0.55, 0.09], [-0.46, 0.4], [0.46, 0.4], [-0.275, 0.633], [0.275, 0.633]],
+};
+/** больше 10 духов: венок по кругу (раскладки 11–14 в коде есть, но не выписаны — до них не доходит) */
+function layout(n: number): [number, number][] {
+  if (LAYOUT[n]) return LAYOUT[n];
+  return Array.from({ length: n }, (_, i) => {
+    const a = -Math.PI / 2 + ((i + 0.5) / n) * Math.PI * 2;
+    return [Math.cos(a) * 0.6, Math.sin(a) * 0.6 + 0.1] as [number, number];
+  });
+}
+
+/** колонки 02 Духа (эффект 271 +20) применяются уже при изучении — у Духа нет проверки «первое изучение» */
+const LEARN_BONUS: Mod = { stat: 'dmg', op: 'pct', v: 20, text: 'Урон духов +20%' };
+
+interface Unit { img: Phaser.GameObjects.Image; flash: Phaser.GameObjects.Image; ox: number; oy: number; shotT: number }
+
+/**
+ * #3 Дух (Spirit) — 1:1 по коду оригинала (docs/orig/spells/spirit.md):
+ * духи стоят «венком» у мага (раскладка из кода), стреляют ПО ОЧЕРЕДИ одним циклом Play_Spirit_Attack:
+ * цель заново на каждый выстрел (d = (|dx|+|dy|)·приоритет ≤ 23 ед.; нет цели — ждать 0.1 с),
+ * после каждого духа пауза DSpeed = 0.135·15/(N+14), после круга — max(0.9·КД − DSpeed, 0.05).
+ * Снаряд (кейс 19): 0.36 с, 14 ед/с, пробой 999, первый шаг 0.36 ед. назад.
+ * Свойства: 380 Заколдованная ракета (ровный поток, кейс 31), 381 Магический клинок (взмах на цели, кейс 56),
+ * 382 Фамильяр (один дух, 15·N выстрелов во все стороны, кейс 43).
+ * Слияния (основа): 2 Парящие мечи, 43 Магическое копьё, 53 Сверхновая — пока упрощённо (партия 6).
  */
 class Spirit extends DataSpell {
+  private bullets = new OrigBullets();
   private units: Unit[] = [];
-  private angle = 0;
-  private burst: { t: number; shots: number; done: number; dur: number } | null = null;
-  /** основной цвет духов (по свойству) */
-  private baseTint = 0xffffff;
+  private co: Co | null = null;
+  private famCo: Co | null = null;
 
-  /** Число духов: база + прибавки «+N» (без %-множителей количества — те относятся к выстрелам) */
-  private get spirits(): number {
+  mods(): Mod[] {
+    const m = super.mods();
+    if (this.level >= 1 && !m.includes(LEARN_BONUS)) m.unshift(LEARN_BONUS);
+    return m;
+  }
+
+  // ———————— числа (StartInformation_B @0x11c82f4, ограничения @0x11cbaa8) ————————
+  /** UnitApply_SpiritNum: +1 за уровень (Фамильяр «+15 за духа» — это выстрелы, не духи) */
+  private get num(): number {
     let n = this.data.base.count ?? 1;
-    for (const m of this.mods()) if (m.stat === 'count' && m.op === 'add') n += m.v;
-    n += W.stats.sc(this.def.id);
-    if (this.hasProp(382)) n -= 15; // «+15 выстрелов за духа» — это не духи
-    return Math.max(1, Math.round(n));
+    for (const l of this.data.levels) if (l.level <= this.level) for (const m of l.mods) if (m.stat === 'count' && m.op === 'add') n += m.v;
+    return Math.max(1, Math.round(n + W.stats.sc(this.def.id)));
   }
-
-  /** Фактический КД одного духа (с общими сокращениями, как Spell.ready) */
-  private cdOf(base: number) {
-    return Math.max(0.05, base * W.stats.cdMul * (1 - (W.stats.spellCdr[this.def.id] ?? 0)));
+  private get familiar() { return this.hasProp(382); }
+  private get missile() { return this.hasProp(380); }
+  private get blade() { return this.hasProp(381); }
+  /** дальность выбора цели: 23, Клинок 17, Копьё 20 */
+  private get range() { return this.hasCombo(43) ? 20 : this.blade ? 17 : 23; }
+  /** размер снаряда: (100 + U + MSizeU)% */
+  private get bSize() { return Math.max(0.01, Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100); }
+  /** скорость (×0.1): 18 */
+  private get mSpeed() { return Math.max(0.0001, 18 * Math.max(0, 1 + this.pctOf('speed') / 100)); }
+  /** [DSpeed, пауза после круга] */
+  private get rhythm(): [number, number] {
+    const N = this.num;
+    let D = Math.max(0.01, 0.135 * 15 / (N + 14));
+    // ×5 Фамильяра в данных (мод cd mul 5) — в коде он после ограничений, поэтому снимаем его тут и умножаем ниже
+    const P0 = (this.cdOrig(0.9) / (this.familiar ? 5 : 1)) * this.cdGlobal;
+    let P = Math.max(P0 - D, 0.05);
+    if (this.missile) { D = Math.max(0.02, (P + D) / (N * 0.388 + 3.88)); P = 0; }
+    if (this.familiar) { D *= 0.168; P *= 5; }
+    return [D, P];
   }
-  private get realCd() { return this.cdOf(this.cdSec); }
+  private get shotDmg() { return this.dmg; }
 
-  private get missile() { return this.hasProp(380) && !this.hasCombo(43); }
-
+  // ———————— жизненный цикл ————————
   onChange() {
     super.onChange();
-    ensureTextures();
-    const familiar = this.hasProp(382);
-    const need = familiar ? 1 : this.spirits;
-    const full = this.realCd;
+    ensureOrigTextures();
+    const N = this.num, L = layout(N);
+    const need = this.familiar ? 1 : N;
     while (this.units.length < need) {
-      const i = this.units.length;
       this.units.push({
-        img: W.scene.add.image(0, 0, WRAITH).setDepth(DEPTH.projectile),
-        cross: W.scene.add.image(0, 0, GB_STAR).setDepth(DEPTH.projectile).setVisible(false),
-        // новые духи стартуют вразнобой — у каждого своя фаза перезарядки
-        cd: full * (i / Math.max(1, need)), full, flash: 0,
+        img: W.scene.add.image(0, 0, OT.wisp).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD),
+        flash: W.scene.add.image(0, 0, OT.glow).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setVisible(false),
+        ox: 0, oy: 0, shotT: 9,
       });
     }
-    while (this.units.length > need) { const u = this.units.pop()!; u.img.destroy(); u.cross.destroy(); }
-    const s = (familiar ? 26 : 15) * Math.min(2.5, this.stat('size', 1));
-    this.baseTint = this.hasProp(381) ? 0x9ff5e8 : this.hasProp(382) ? 0xffe2a8 : 0xffffff;
-    for (const u of this.units) u.img.setDisplaySize(s, s * (28 / 24));
+    while (this.units.length > need) { const u = this.units.pop()!; u.img.destroy(); u.flash.destroy(); }
+    // Unit_Spirit: scale 0.95 (спрайт 64 px, видимая часть ~22×28); Фамильяр — набор 3 (крупнее кадр D)
+    this.units.forEach((u, i) => {
+      const [x, y] = L[i];
+      u.ox = x * U; u.oy = -y * U;
+      u.img.setScale(PX * 0.95).setTint(this.blade ? 0xbff8ee : this.familiar ? 0xffe2a8 : this.missile ? 0xd8e8ff : 0xffffff);
+    });
+    if (!this.co) this.co = new Co(this.attackLoop());
+    if (this.familiar && !this.famCo) this.famCo = new Co(this.familiarLoop());
   }
 
   destroy() {
-    for (const u of this.units) { u.img.destroy(); u.cross.destroy(); }
-    this.units = []; this.burst = null;
+    this.bullets.destroy();
+    for (const u of this.units) { u.img.destroy(); u.flash.destroy(); }
+    this.units = []; this.co = null; this.famCo = null;
   }
 
   update(dt: number) {
-    if (!this.units.length) this.onChange();
+    if (!this.co) this.onChange();
+    if (this.familiar) this.famCo?.update(dt); else this.co!.update(dt);
     const P = W.player;
-    this.angle += dt * 2.0;
-    const n = this.units.length;
-    const familiar = this.hasProp(382), missile = this.missile;
-    // Заколдованная ракета: КД ускоряется пропорционально числу духов (Магическое копьё возвращает обычный КД)
-    const full = missile ? this.cdOf(this.cdSec / (1 + this.spirits * 0.25)) : this.realCd;
-
-    // ракеты стреляют разом: общий отсчёт по первому духу
-    let volley = false;
-    if (missile) {
-      const u0 = this.units[0];
-      u0.cd -= dt;
-      if (u0.cd <= 0 && W.enemies.nearest(P.x, P.y, aimR())) volley = true;
-    }
-
-    for (let i = 0; i < n; i++) {
-      const u = this.units[i];
-      const a = this.angle + (i * Math.PI * 2) / n;
-      const R = n === 1 ? 18 : 20 + n;
-      const x = P.x + Math.cos(a) * R, y = P.y - 4 + Math.sin(a) * R * 0.7;
+    for (const u of this.units) {
+      // духи — дочерние объекты мага: стоят на месте относительно него, лёгкое покачивание кадров A–C (0.2 с)
+      const x = P.x + u.ox, y = P.y + u.oy;
       u.img.setPosition(x, y);
+      u.shotT += dt;
+      // кадр D (выстрел) — мягкий круг ~0.2 с
+      const on = u.shotT < 0.2;
+      u.flash.setVisible(on);
+      if (on) u.flash.setPosition(x, y).setScale(PX * 0.95 * (this.familiar ? 1.4 : 0.8)).setAlpha(1 - u.shotT / 0.2);
+      u.img.setAlpha(on ? 0.4 : 1);
+    }
+    this.bullets.update(dt);
+  }
 
-      // своя перезарядка
-      let fired = false;
-      if (missile) {
-        if (volley) fired = this.fireFrom(x, y);
-        else if (i > 0) u.cd = this.units[0].cd;
-      } else {
-        u.cd -= dt;
-        if (u.cd <= 0) {
-          if (familiar) { this.startBurst(); fired = true; }
-          else fired = this.fireFrom(x, y);
-          if (!fired) u.cd = 0; // нет цели — ждёт заряженным
+  private pos(i: number) { const u = this.units[i], P = W.player; return { x: P.x + u.ox, y: P.y + u.oy }; }
+
+  // ———————— корутины ————————
+  /** Play_Spirit_Attack: духи по очереди, цель заново на каждый выстрел */
+  private *attackLoop(): Generator<number, void, unknown> {
+    for (;;) {
+      if (this.familiar) { yield 0.1; continue; }
+      const N = Math.min(this.num, this.units.length);
+      for (let s = 0; s < N; s++) {
+        let T = origTargets(W.player.x, W.player.y, this.range);
+        while (!T) {
+          yield 0.1; // нет цели — ждать и пробовать того же духа
+          T = origTargets(W.player.x, W.player.y, this.range);
         }
+        if (s >= this.units.length) break;
+        this.fire(s, T[0].x, T[0].y);
+        yield this.rhythm[0];
       }
-      if (fired || (missile && volley)) { u.cd = full; u.full = full; u.flash = FLASH; }
-
-      // пока перезаряжается — темнеет (к концу КД снова светлеет)
-      const k = u.full > 0 ? Math.max(0, Math.min(1, u.cd / u.full)) : 0;
-      u.img.setTint(this.shade(1 - 0.62 * k));
-
-      // вспышка выстрела: белый крестик раздувается и гаснет
-      if (u.flash > 0) {
-        u.flash -= dt;
-        const f = 1 - Math.max(0, u.flash) / FLASH;
-        // маленькая острая звёздочка-штрих: быстро растёт, чуть поворачивается и гаснет
-        const sz = 9 + 11 * f;
-        u.cross.setVisible(u.flash > 0).setPosition(x, y - 1).setDisplaySize(sz, sz).setRotation(f * 0.8).setAlpha(1 - f * f);
-      }
-    }
-
-    if (this.burst) {
-      const b = this.burst, im = this.units[0].img;
-      b.t += dt;
-      const target = b.dur <= 0 ? b.shots : Math.min(b.shots, Math.floor((b.t / b.dur) * b.shots));
-      while (b.done < target) {
-        const a = b.dur <= 0 ? (b.done / b.shots) * Math.PI * 2 + this.angle : (b.done / b.shots) * Math.PI * 6 + this.angle;
-        this.shot(im.x, im.y, a, this.dmg);
-        b.done++;
-      }
-      if (b.done >= b.shots) this.burst = null;
-      if (this.hasCombo(53) && b.done === b.shots) W.fx.burst(im.x, im.y, 60 * this.sizeMul, 0xffc070, 0.5, 'blast');
+      yield this.rhythm[1];
     }
   }
 
-  /** Множитель яркости k (0..1) к основному цвету — тинт без добавления яркости */
-  private shade(k: number): number {
-    const t = this.baseTint;
-    const r = (((t >> 16) & 255) * k) | 0, g = (((t >> 8) & 255) * k) | 0, b = ((t & 255) * k) | 0;
-    return (r << 16) | (g << 8) | b;
+  /** Play_Familiar_Attack: SpiritNum × 15 выстрелов в случайные стороны (AccuracyAim 900), затем пауза ×5 */
+  private *familiarLoop(): Generator<number, void, unknown> {
+    for (;;) {
+      if (!this.familiar) { yield 0.1; continue; }
+      const shots = this.num * 15;
+      for (let k = 0; k < shots; k++) {
+        const o = this.pos(0);
+        this.units[0].shotT = 0;
+        this.familiarShot(o.x, o.y, Math.random() * Math.PI * 2);
+        yield this.rhythm[0];
+      }
+      yield this.rhythm[1];
+    }
   }
 
-  /** Фамильяр: веер за ~1/5 КД; Сверхновая — всё разом */
-  private startBurst() {
-    const shots = this.hasCombo(53) ? Math.max(4, Math.round(15 * this.spirits * 0.25)) : 15 * this.spirits;
-    this.burst = { t: 0, shots, done: 0, dur: this.hasCombo(53) ? 0 : Math.min(1, this.cdSec / 5) };
+  // ———————— снаряды ————————
+  private fire(i: number, tx: number, ty: number) {
+    const o = this.pos(i);
+    this.units[i].shotT = 0;
+    if (this.blade) { this.bladeAt(o, tx, ty); return; }
+    const ang = aimAngle(o.x, o.y, tx, ty, 10);
+    const S = this.bSize, cs = Math.cos(ang), sn = Math.sin(ang);
+    if (this.missile) {
+      // кейс 31: ×1.35, старт +0.66 ед., 17 тиков, alpha 4 − 0.235·i, шаг BulletSpeed·0.02 (12 ед/с)
+      const k = this.hasCombo(43) ? 1.6 : 1;
+      this.bullets.fire({
+        x: o.x + cs * 0.66 * U, y: o.y + sn * 0.66 * U, ang, tex: OT.shot, scaleX: S * 1.35 * k, sp: (this.mSpeed * 0.02 / TICK) * U,
+        life: 17 * TICK, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * 1.35 * k * U, hw: 0.06 * S * 1.35 * k * U, smokeDt: TICK, src: this.def.id,
+        alpha: (b) => 4 - 0.235 * Math.floor(b.t / TICK + 1),
+      });
+      return;
+    }
+    // кейс 19: старт +0.33 ед., первый шаг −0.36 ед.; шаг 18·0.0234 ед. за тик (14 ед/с); 12 тиков, гаснет в последние 2
+    this.bullets.fire({
+      x: o.x - cs * 0.03 * U, y: o.y - sn * 0.03 * U, ang, tex: OT.shot, scaleX: S, sp: (this.mSpeed * 0.0234 / TICK) * U,
+      life: 12 * TICK, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * U, hw: 0.06 * S * U, smokeDt: TICK, src: this.def.id,
+      alpha: (b) => 3 - 0.2 * Math.floor(b.t / TICK + 1),
+    });
   }
 
-  /** Выстрел духа в ближайшего врага на экране. false — целей нет. */
-  private fireFrom(x: number, y: number): boolean {
-    if (this.hasProp(381)) return this.blades(x, y);
-    const e = W.enemies.nearest(x, y, aimR());
-    if (!e) return false;
-    this.shot(x, y, Math.atan2(e.y - y, e.x - x), this.dmg);
-    return true;
-  }
-
-  /** Обычный заряд духа: пробивает всех, летит до края экрана */
-  private shot(x: number, y: number, a: number, dmg: number) {
-    const spear = this.hasCombo(43), size = this.sizeMul;
-    const sp = (spear ? 900 : 797) * this.speedMul; // 797 px/с — из кода (SpiritBulletMSpeed 180 × 0.0234 / 0.03 ед.)
-    W.projectiles.fire({
-      src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
-      r: 4 * size, life: lifeToEdge(sp, 0.6), tex: GB_NEEDLE, size: (spear ? 40 : 26) * size,
-      tint: this.hasProp(382) ? 0xffe2a8 : 0xffffff, pierce: Infinity, knock: 15,
-      rotateToVel: false, update: faceVel(0), // игла смотрит остриём вправо
+  /** кейс 43: Incinerate10, старт +0.45 − 0.36 ед., 12 ед/с, 10 кадров по 0.09 с; цвет (1, 1 − 0.08i, 1 − 0.22i, 3 − 0.3i) */
+  private familiarShot(x: number, y: number, ang: number) {
+    const S = this.bSize, f = 0.09 * U, cs = Math.cos(ang), sn = Math.sin(ang);
+    const sz = this.hasCombo(53) ? 2 : 1;
+    this.bullets.fire({
+      x: x + cs * f, y: y + sn * f, ang, tex: OT.shot, scaleX: S * sz, sp: (this.mSpeed * 0.02 / TICK) * U,
+      life: 10 * 0.09, dmg: this.shotDmg, pierce: 999, hl: 0.25 * S * sz * U, hw: 0.06 * S * sz * U, smokeDt: 0.09, smokeTint: 0xffe2a8, src: this.def.id,
+      step: (b) => {
+        const i = Math.min(10, Math.floor(b.t / 0.09) + 1);
+        const g = Math.max(0, 1 - 0.08 * i), bl = Math.max(0, 1 - 0.22 * i);
+        b.img.setTint(Phaser.Display.Color.GetColor(255, (g * 255) | 0, (bl * 255) | 0)).setAlpha(Math.min(1, 3 - 0.3 * i));
+      },
     });
   }
 
   /**
-   * Магический клинок: разрез возникает прямо на враге (короткий быстрый клинок насквозь).
-   * Парящие мечи: клинки быстрее и длиннее; каждые 0.15 с сокращения КД → +1 к множителю урона и +1 удар.
+   * Кейс 56 «Магический клинок»: взмах на месте В ТОЧКЕ ЦЕЛИ (Bullet_Create кейс 56 ставит позицию в (EGx, EGy)),
+   * повёрнут от духа к цели; масштаб 1.5·Size + 0.15; 8 кадров, коллайдер × 0.12 ед. (центр/длина по кадрам);
+   * пауза кадров 2–6 = BulletSpeed = 0.035 с.
    */
-  private blades(x: number, y: number): boolean {
-    let hits = 1, mul = 1, len = 1, sp = 1100;
+  private bladeAt(o: { x: number; y: number }, tx: number, ty: number) {
+    const ang = Math.atan2(ty - o.y, tx - o.x), sc = 1.5 * this.bSize + 0.15;
+    const mult = this.hasCombo(2) ? this.swords : 1;
+    const fr = [0.03, 0.035, 0.035, 0.035, 0.035, 0.035, 0.03, 0.03];
+    const cen = [-0.76, 0, 0, 0.3, 0.55, 0.72, 0.93], len = [0.5, 2.05, 2.05, 1.5, 1.0, 0.7, 0.3];
+    const ends = fr.map((_, i) => fr.slice(0, i + 1).reduce((a, b) => a + b, 0));
+    const fire = (x: number, y: number, a: number) => this.bullets.fire({
+      x, y, ang: a, tex: OT.blade, scaleX: sc, tint: 0xbff8ee, life: ends[7], dmg: this.shotDmg * mult, pierce: 999,
+      hw: 0.06 * sc * U, src: this.def.id,
+      step: (b: OBullet) => {
+        const f = ends.findIndex((e) => b.t < e);
+        if (f < 0 || f >= 7) { b.hl = 0; } else { b.hl = (len[f] / 2) * sc * U; b.cx = cen[f] * sc * U; }
+        b.img.setScale(PX * sc * (f <= 0 ? 0.3 : 1), PX * sc).setAlpha(f >= 6 ? 0.5 : 1);
+      },
+    });
+    fire(tx, ty, ang);
+    // Парящие мечи (слияние 2): ещё взмахи с прыжком на 1…1.5 ед. в случайную сторону (число — оценка до партии 6)
     if (this.hasCombo(2)) {
-      const bonus = Math.max(0, Math.floor((0.9 - this.realCd) / 0.15));
-      hits = 1 + bonus; mul = 1 + bonus; len = 1.6; sp = 1600;
+      for (let k = 1; k < 3; k++) {
+        const a = Math.random() * Math.PI * 2, r = (1 + Math.random() * 0.5) * U;
+        fire(tx + Math.cos(a) * r, ty + Math.sin(a) * r, Math.random() * Math.PI * 2);
+      }
     }
-    const targets: Enemy[] = W.enemies.nearestN(x, y, hits, aimR());
-    if (!targets.length) return false;
-    const dmg = this.dmg * mul, size = this.sizeMul * len;
-    for (let i = 0; i < hits; i++) {
-      const e = targets[i % targets.length];
-      const a = Math.atan2(e.y - y, e.x - x) + (i >= targets.length ? (Math.random() - 0.5) * 1.2 : 0);
-      const back = 24 * size;
-      W.projectiles.fire({
-        src: this.def.id, x: e.x - Math.cos(a) * back, y: e.y - Math.sin(a) * back,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg, r: 7 * size, life: (back * 2) / sp + 0.02,
-        tex: 'fx_spirit_blade', size: 30 * size, tint: 0xbff8ee, pierce: Infinity, knock: 10,
-        rotateToVel: false, update: faceVel(ROT.blade),
-      });
-    }
-    return true;
   }
+
+  /** множитель урона Парящих мечей — формула кода не дочитана (партия 6), пока 1 */
+  private get swords() { return 1; }
 }
 
 export const SPIRIT = defFromData(SPELL_BY_ID[3], (def) => new Spirit(def, SPELL_BY_ID[3]));

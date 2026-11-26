@@ -1,157 +1,325 @@
+import Phaser from 'phaser';
+import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
-import type { Enemy } from '../../Enemies';
-import { areaDamage, type Projectile } from '../../Projectiles';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimR, lifeToEdge, rnd } from './_proj';
-import { LF, MAGE_H, animFrames, ensureLineFx } from './_linefx';
-import { GA, ensureGroupA } from './_groupA';
+import { boxDamage, Co, PX, U } from './_orig';
 
-/** Длина одного разряда в наших единицах */
-const LEN = 170; // ≈ 3 ед. оригинала: длинная толстая молния
-/** Ломаная перерисовывается каждые 0.05 с (4 кадра штриховой молнии по кругу) */
-const shockAnim = animFrames(GA.shock, 24); // мерцание: 4 кадра по 1/24 с
+const DEG = Math.PI / 180;
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+/** Приоритет цели (боссы/эпики UnitID 41–46 ×0.5) */
+const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
+
+// ——— текстуры-заглушки по меркам спрайтов (рисуем с Денисом позже) ———
+/** Incinerate11_01..10 (600×200), видимая ширина кадров, px */
+const VIS11 = [34, 112, 290, 468, 564, 439, 399, 244, 147, 79];
+const T = { bolt: 'es_bolt', dots: 'es_dots', short: 'es_short', boom: 'es_boom' };
+
+function textures() {
+  const tx = W.scene.textures;
+  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+    if (tx.exists(key)) return;
+    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+    draw(g); g.generateTexture(key, w, h); g.destroy();
+  };
+  const zig = (g: Phaser.GameObjects.Graphics, w: number, h: number, amp: number, step: number) => {
+    const pts: [number, number][] = [[0, h / 2]];
+    for (let x = step; x < w; x += step) pts.push([x, h / 2 + (Math.random() * 2 - 1) * amp]);
+    pts.push([w, h / 2]);
+    for (const [lw, a] of [[12, 0.12], [5, 0.35], [2, 1]] as const) {
+      g.lineStyle(lw, 0xffffff, a);
+      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+      for (const p of pts) g.lineTo(p[0], p[1]);
+      g.strokePath();
+    }
+  };
+  // тонкая белая зигзаг-молния с мягким свечением (рисуем 300×100 на 600×200)
+  make(T.bolt, 300, 100, (g) => zig(g, 300, 100, 9, 16));
+  // рассыпание в точки (кадры 06–10)
+  make(T.dots, 300, 100, (g) => { g.fillStyle(0xffffff, 1); for (let x = 6; x < 300; x += 14) g.fillCircle(x, 50 + (Math.random() * 2 - 1) * 8, 2); });
+  // Incinerate45 220×100 (рисуем 110×50): короткая толстая молния
+  make(T.short, 110, 50, (g) => zig(g, 110, 50, 8, 11));
+  // Explosion124 512 px (рисуем 128): белое кольцо с шипами
+  make(T.boom, 128, 128, (g) => {
+    g.lineStyle(6, 0xffffff, 0.3); g.strokeCircle(64, 64, 46);
+    g.lineStyle(2, 0xffffff, 1); g.strokeCircle(64, 64, 46);
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6;
+      g.lineBetween(64 + Math.cos(a) * 40, 64 + Math.sin(a) * 40, 64 + Math.cos(a + 0.12) * 58, 64 + Math.sin(a + 0.12) * 58);
+    }
+  });
+}
 
 /**
- * #13 Электрический удар → «Разряд». Ломаные разряды из мага в случайные стороны (летят до края экрана), пробивают всех.
- * Свойства: 470 Цепная молния (от цели перескакивает 1–3 раза), 471 Высокая производительность (взрыв при исчезновении,
- * рост размера идёт в урон), 472 Сверхпроводимость (по очереди в ближайших врагов, ×3 урон, ×2 размер — моды).
- * Слияния (основа): 22 Буйство электричества, 34 Сердце грозы, 47 Дыхание молнии, 63 Дисчардж.
+ * ElectricA_Animation: [кадр Incinerate11 (−1 = Sprite_Trans), центр коллайдера x, размер x, пауза] (локальные ед. до ×1.2·BulletSize).
+ * Коллайдер на дочернем Sprite_Electric со сдвигом +2.85 → в корне хит-зона «бежит» от мага наружу.
+ */
+const STEPS_A: [number, number, number, number][] = [
+  [0, -2.75, 0.3, 0.03], [1, -2.35, 1.0, 0.03], [-1, -2.35, 1.0, 0.03],
+  [2, -1.45, 2.8, 0.06], [3, -0.5, 4.6, 0.06], [-1, -0.5, 4.6, 0.03],
+  [4, 0.5, 4.8, 0.06], [5, 0.9, 4.0, 0.06], [-1, 0.9, 4.0, 0.03],
+  [6, 1.4, 3.0, 0.06], [7, 1.9, 2.0, 0.05], [8, 2.5, 0.8, 0.04],
+  [9, 0, 0, 0.03],
+];
+
+/** ElectricB_Animation (472): [виден, центр x, размер x, пауза] */
+const STEPS_B: [boolean, number, number, number][] = [
+  [true, -3.22, 0.3, 0.03], [true, -2.75, 1.1, 0.03], [false, 0, 0, 0.03],
+  [true, -1.6, 3.2, 0.06], [true, -0.3, 4.8, 0.06], [false, 0, 0, 0.03],
+  [true, 0.9, 5.0, 0.06], [true, 1.33, 4.2, 0.06], [false, 0, 0, 0.03],
+  [true, 1.7, 3.5, 0.06], [true, 2.33, 2.2, 0.06], [true, 3.03, 0.8, 0.05],
+  [true, 0, 0, 0.04], [true, 0, 0, 0.03],
+];
+
+interface Shock {
+  x: number; y: number; ang: number; s: number; dmg: number;
+  hits: Set<number>; img: Phaser.GameObjects.Image; flip: boolean;
+  /** текущий коллайдер в корне: от a до b ед. вдоль направления (до масштаба), полутолщина hw (наших ед.) */
+  a: number; b: number; hw: number; on: boolean;
+}
+
+/**
+ * #13 Электрический удар — 1:1 по коду оригинала (docs/orig/spells/eshock.md, карточка tasks/eshock.md).
+ * Play_Electric: wait(PSpeed); цикл: AttackNum залпов (1; между ними 0.225 с), в залпе Num разрядов В ОДИН КАДР,
+ * у мага в случайном направлении (Aim 900 → ±180°); затем wait(PSpeed 2 с).
+ * Разряд НЕ летит: неподвижный отрезок 5.75·1.2·BulletSize ед. (≈370 px) от точки мага +0.45 ед.,
+ * BulletSize = Size·Random(0.92, 1.15)·Random(0.8, 1.0); хит-зона высотой 0.22·1.2·BS «бежит» от мага наружу по шагам
+ * ElectricA_Animation, жизнь 0.57 с; пробой 999 — каждый враг раз за разряд. Шанс усиления ElectricEnforceRan — ×2.5, красный.
+ * Свойства: 470 Цепная молния (1–3 звена из EndPoint01 через 0.24 с, зигзаг ±40°/±16°, ×0.925),
+ * 471 Высокая производительность (ID 124: короткая молния ×1.5 летит 0–6 шагов по 0.62 ед. за 0.05 с, взрыв 3.125 ед.),
+ * 472 Сверхпроводимость (ID 57: по одному каждые 0.15 с в ближайшего, ±12°, Incinerate16, жизнь 0.63 с).
+ * Слияния 22/34/47/63: Play_Electric_Com01/03 не разобраны — пока как своё свойство-основа (партия 6).
  */
 class Eshock extends DataSpell {
-  private queue: { delay: number; a: number; target: Enemy | null; front: boolean }[] = [];
-  private static readonly SPEED = 850; // «бжух»: до края экрана за ~0.45 с (не мгновенно, не ползком)
-  private static readonly LIFE = 0.32;
+  private co: Co | null = null;
+  private mode = -1;
+  private shocks: Shock[] = [];
+  private pool: Phaser.GameObjects.Image[] = [];
+  private seq: { done: boolean; co: Co }[] = [];
+
+  // ———— числа (StartInformation_B) ————
+  private get sizePct(): number { return this.pctOf('size') + W.stats.size * 100; }
+  /** ElectricSize = (100 + AreaU + MSizeU)%; у 471 = 1 (бонусы размера идут в урон) */
+  private get size(): number { return this.hasProp(471) ? 1 : Math.round(100 + this.sizePct) / 100; }
+  private get damage(): number { return this.hasProp(471) ? this.dmgOf(this.data.base.dmgPct ?? 500, this.sizePct) : this.dmg; }
+  private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 2) * this.cdGlobal); }
+  /** AttackNum: эффект 423 в данных не используется → 1 */
+  private readonly attackNum = 1;
+  /** ElectricEnforceRan (Z+0xf28): источник бонуса (артефакт/класс) ещё не перенесён → 0 */
+  private readonly enforceRan = 0;
+  private get kind(): number { return this.hasProp(472) ? 472 : 0; }
+
+  onChange() {
+    super.onChange();
+    textures();
+    const k = this.kind;
+    if (!this.co || k !== this.mode) { this.mode = k; this.co = new Co(k === 472 ? this.loopSC() : this.loop()); }
+  }
+
+  destroy() {
+    for (const s of this.shocks) s.img.destroy();
+    for (const i of this.pool) i.destroy();
+    this.shocks = []; this.pool = []; this.seq = []; this.co = null;
+  }
 
   update(dt: number) {
-    if (this.readyData(dt)) { ensureLineFx(W.scene); ensureGroupA(); this.cast(); }
-    for (let i = this.queue.length - 1; i >= 0; i--) {
-      const q = this.queue[i];
-      q.delay -= dt;
-      if (q.delay > 0) continue;
-      this.queue[i] = this.queue[this.queue.length - 1]; this.queue.pop();
-      let a = q.a;
-      const P = W.player;
-      if (q.target) {
-        // цель погибла — не теряем выстрел, берём ближайшего на экране
-        const t = q.target.alive ? q.target : W.enemies.nearest(P.x, P.y, aimR());
-        if (!t) continue;
-        a = Math.atan2(t.y - P.y, t.x - P.x);
-      }
-      this.shock(P.x, P.y, a, q.front);
+    if (!this.co) this.onChange();
+    this.co!.update(dt);
+    for (let i = this.seq.length - 1; i >= 0; i--) {
+      const j = this.seq[i];
+      j.co.update(dt);
+      if (j.done) { this.seq[i] = this.seq[this.seq.length - 1]; this.seq.pop(); }
     }
+    for (const s of this.shocks) this.collide(s);
   }
 
-  destroy() { this.queue.length = 0; }
-
-  private cast() {
-    const n = this.count;
-    const P = W.player;
-    // Буйство электричества: вместо цепочки — 3–7 волн подряд
-    const waves = this.hasCombo(22) ? 3 + ((Math.random() * 5) | 0) : 1;
-    for (let w = 0; w < waves; w++) {
-      const t0 = w * 0.14;
-      if (this.hasProp(472)) {
-        // Сверхпроводимость: по очереди в ближайших
-        const ts = W.enemies.nearestN(P.x, P.y, n, aimR());
-        for (let i = 0; i < n; i++) {
-          const e = ts.length ? ts[i % ts.length] : null;
-          this.queue.push({ delay: t0 + i * 0.06, a: Math.random() * Math.PI * 2, target: e, front: false });
+  // ———— Play_Electric ————
+  private *loop(): Generator<number, void, unknown> {
+    yield this.pSpeed;
+    for (;;) {
+      for (let i = 1; i <= this.attackNum; i++) {
+        const P = W.player;
+        for (let k = 0; k < this.count; k++) {
+          const ang = Math.random() * Math.PI * 2;
+          if (this.hasProp(471)) this.run(this.high(P.x, P.y, ang));
+          else {
+            const chain = this.hasProp(470) ? ((1 + Math.random() * 3) | 0) * 10 : 0;
+            this.run(this.shockA(P.x, P.y, ang, this.size * rnd(0.92, 1.15), chain));
+          }
         }
-      } else {
-        for (let i = 0; i < n; i++) this.queue.push({ delay: t0 + i * 0.03, a: Math.random() * Math.PI * 2, target: null, front: false });
+        if (i < this.attackNum) yield 0.225;
       }
-    }
-    // Дыхание молнии: ещё три разряда перед магом (по направлению движения)
-    if (this.hasCombo(47)) {
-      const f = Math.atan2(P.faceY, P.faceX);
-      for (let i = -1; i <= 1; i++) this.queue.push({ delay: 0.05, a: f + i * 0.3, target: null, front: true });
+      yield this.pSpeed;
     }
   }
 
-  /** Множитель длины полёта (Буйство — дальше) */
-  private get rangeK() { return this.hasCombo(22) ? 1.7 : 1; }
-
-  private shock(x: number, y: number, a: number, front: boolean) {
-    const hi = this.hasProp(471);
-    // Высокая производительность: размер не растёт — его прирост уходит в урон
-    const size = hi ? 1 : this.sizeMul;
-    const dmg = hi ? this.dmg * this.sizeMul : this.dmg;
-    const sp = Eshock.SPEED * this.speedMul * (front ? 1.3 : 1);
-    const chain = this.hasProp(470) && !this.hasCombo(22);
-    W.projectiles.fire({
-      // хвост молнии начинается у мага — разряд «отрывается» от него и улетает вперёд
-      src: this.def.id, x: x + Math.cos(a) * LEN * size * 0.2, y: y + Math.sin(a) * LEN * size * 0.2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg,
-      // без предела длины: разряд пролетает весь экран (Буйство — ещё дальше)
-      r: 9 * size, life: lifeToEdge(sp) * this.rangeK, tex: GA.shock[(Math.random() * 4) | 0], size: LEN * size,
-      tint: this.tintFor(), pierce: Infinity, knock: 12,
-      update: shockAnim,
-      data: { chained: false },
-      onHit: chain ? (p, e) => this.startChain(p, e, dmg, size) : this.hitFx,
-      onEnd: hi ? (p) => this.discharge(p.x, p.y, dmg) : undefined,
-    });
-  }
-
-  /** Попадание: маленькая вспышка тонких лучей */
-  private hitFx = (_p: Projectile, e: Enemy) => { W.fx.burst(e.x, e.y, 0.4 * MAGE_H, 0xe8dcff, 0.15, LF.spark); };
-
-  private tintFor() {
-    return this.hasProp(472) ? 0xa8c8ff : this.hasProp(471) ? 0xffb0c8 : 0xffffff;
-  }
-
-  /** Первое попадание снаряда запускает цепочку */
-  private startChain(p: Projectile, e: Enemy, dmg: number, size: number) {
-    if (p.data.chained) return;
-    p.data.chained = true;
-    const heart = this.hasCombo(34);
-    const jumps = heart ? 3 : 1 + ((Math.random() * 3) | 0);
-    this.jump(e, dmg, size, jumps, heart);
-  }
-
-  /**
-   * Перескок: из врага from в ближайших соседей. Цепная молния — 1 ветка, урон тот же, разряд уменьшается.
-   * Сердце грозы — каждая ветка делится на 2, урон и размер −20%, перескок быстрее.
-   */
-  private jump(from: Enemy, dmg: number, size: number, left: number, heart: boolean) {
-    if (left <= 0) return;
-    const branches = heart ? 2 : 1;
-    const ts = W.enemies.nearestN(from.x, from.y, branches + 1, 110);
-    let made = 0;
-    for (const t of ts) {
-      if (t === from || made >= branches) continue;
-      made++;
-      const a = Math.atan2(t.y - from.y, t.x - from.x);
-      const d = Math.hypot(t.x - from.x, t.y - from.y);
-      const sp = heart ? 900 : 600;
-      const nd = heart ? dmg * 0.8 : dmg, ns = size * (heart ? 0.8 : 0.85);
-      const p = W.projectiles.fire({
-        src: this.def.id, x: from.x, y: from.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: nd,
-        r: 5 * ns, life: d / sp + 0.05, tex: GA.shock[0], size: Math.min(LEN, Math.max(20, d)) * ns, tint: this.tintFor(),
-        pierce: 0, update: shockAnim,
-        onHit: (q, e) => { this.hitFx(q, e); this.jump(e, nd, ns, left - 1, heart); },
-      });
-      p.hit.set(from.id, 0); // не бить врага, из которого прыгнули
+  // ———— Play_Superconductivity (472): по одному каждые 0.15 с в ближайшего ————
+  private *loopSC(): Generator<number, void, unknown> {
+    yield this.pSpeed;
+    for (;;) {
+      for (let k = 0; k < this.count; k++) {
+        const P = W.player;
+        let best = null as null | { x: number; y: number }, bd = Infinity;
+        for (const e of W.enemies.list) {
+          if (!e.alive) continue;
+          const d = (Math.abs(e.x - P.x) + Math.abs(e.y - P.y)) * prio(e.type.uid);
+          if (d < bd) { bd = d; best = e; }
+        }
+        if (best) {
+          const ang = Math.atan2(best.y - P.y, best.x - P.x) + rnd(-60, 60) * 0.2 * DEG;
+          this.run(this.superB(P.x, P.y, ang));
+        }
+        yield 0.15;
+      }
+      yield this.pSpeed;
     }
   }
 
-  /** Высокая производительность: взрыв при исчезновении. Дисчардж — взрыв крупнее и выпускает снаряды. */
-  private discharge(x: number, y: number, dmg: number) {
-    const dis = this.hasCombo(63);
-    const r = 20 * (dis ? 1.8 : 1);
-    areaDamage(x, y, r, dmg, 20, this.def.id);
-    W.fx.burst(x, y, r * 1.3, 0xe8d8ff, 0.3, LF.spark);
-    W.fx.burst(x, y, r, 0xe8d8ff, 0.3, LF.ring);
-    W.fx.sparks(x, y, 3, 0xd9b8ff, 90);
-    if (!dis) return;
-    const a0 = Math.random() * Math.PI * 2;
-    for (let i = 0; i < 4; i++) {
-      const a = a0 + (i * Math.PI) / 2 + rnd(-0.2, 0.2), sp = Eshock.SPEED;
-      W.projectiles.fire({
-        src: this.def.id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: dmg * 0.5,
-        r: 5, life: Eshock.LIFE * 0.8, tex: GA.shock[i], size: LEN * 0.6, tint: 0xffb0c8,
-        pierce: Infinity, update: shockAnim,
-      });
+  /** запустить анимацию разряда отдельной корутиной */
+  private run(g: Generator<number, void, unknown>) {
+    const job = { done: false, co: null as unknown as Co };
+    job.co = new Co((function* () { yield* g; job.done = true; })());
+    this.seq.push(job);
+  }
+
+  private img(tex: string): Phaser.GameObjects.Image {
+    const i = this.pool.pop() ?? W.scene.add.image(0, 0, tex).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD);
+    return i.setTexture(tex).setVisible(true).setAlpha(1).clearTint();
+  }
+
+  private add(x: number, y: number, ang: number, s: number, dmg: number, hw: number, tex: string): Shock {
+    const sh: Shock = { x, y, ang, s, dmg, hits: new Set(), img: this.img(tex), flip: Math.random() < 0.5, a: 0, b: 0, hw, on: false };
+    sh.img.setRotation(ang).setFlipY(sh.flip);
+    this.shocks.push(sh);
+    return sh;
+  }
+
+  private remove(sh: Shock) {
+    const i = this.shocks.indexOf(sh);
+    if (i >= 0) { this.shocks[i] = this.shocks[this.shocks.length - 1]; this.shocks.pop(); }
+    sh.img.setVisible(false); this.pool.push(sh.img);
+  }
+
+  /** хит-зона: отрезок [a, b] ед. (корень, до масштаба s) вдоль направления, полутолщина hw */
+  private collide(sh: Shock) {
+    if (!sh.on || sh.b <= sh.a) return;
+    const k = sh.s * U, hl = (sh.b - sh.a) / 2 * k, mid = (sh.a + sh.b) / 2 * k;
+    const c = Math.cos(sh.ang), s = Math.sin(sh.ang);
+    const x = sh.x + c * mid, y = sh.y + s * mid;
+    // boxDamage бьёт каждого из hits один раз
+    boxDamage(x, y, sh.ang, hl, sh.hw, sh.dmg, this.def.id, sh.hits);
+  }
+
+  /** спрайт отрезка: кадр f (видимая ширина VIS11[f] из 600 px), левый край у начала */
+  private drawA(sh: Shock, f: number, scaleY = 1, texW = 600, vis = VIS11, tint?: number) {
+    if (f < 0) { sh.img.setVisible(false); return; }
+    // корневая длина 5.75 ед. ↔ спрайт 600 px; кадр рисуем по видимой ширине, начало у мага
+    const L = 5.75 * sh.s * U, w = L * vis[f] / texW;
+    const c = Math.cos(sh.ang), s = Math.sin(sh.ang);
+    const startK = f < 5 ? 0 : (texW - vis[f]) / texW; // 01→05 растут от мага, 06→10 рассыпаются к концу
+    const cx = (startK * L + w / 2);
+    sh.img.setVisible(true).setTexture(f < 5 ? T.bolt : T.dots).setPosition(sh.x + c * cx, sh.y + s * cx)
+      .setDisplaySize(Math.max(2, w), 200 * PX * sh.s * scaleY);
+    if (tint !== undefined) sh.img.setTint(tint);
+  }
+
+  /** ElectricA_Animation (база, 470) */
+  private *shockA(px: number, py: number, ang: number, bs: number, chain: number): Generator<number, void, unknown> {
+    let dmg = this.damage, tint: number | undefined;
+    if (Math.random() * 100 + 1 <= this.enforceRan) { dmg *= 2.5; tint = 0xff3333; }
+    bs *= rnd(0.8, 1.0);
+    const s = 1.2 * bs;
+    // старт +0.45 ед. вперёд; Sprite_Electric сдвинут на +2.85 (локальные ед.)
+    const ox = px + Math.cos(ang) * 0.45 * U, oy = py + Math.sin(ang) * 0.45 * U;
+    const sh = this.add(ox, oy, ang, s, dmg, 0.22 * s / 2 * U, T.bolt);
+    sh.on = true;
+    for (let i = 0; i < STEPS_A.length; i++) {
+      const [f, cx, sx, w] = STEPS_A[i];
+      if (i === 12) sh.on = false;
+      else { sh.a = cx - sx / 2 + 2.85; sh.b = cx + sx / 2 + 2.85; }
+      this.drawA(sh, f, 1, 600, VIS11, tint);
+      if (i === 6 && chain >= 10) this.link(sh, bs, chain);
+      yield w;
     }
+    this.remove(sh);
+  }
+
+  /** 470: новое звено из EndPoint01 (локально x 5.7): k = 0, 2 — назад к началу (±40°), k = 1, 3 — вперёд к EndPoint02 (±16°) */
+  private link(sh: Shock, bs: number, chain: number) {
+    const c = Math.cos(sh.ang), s = Math.sin(sh.ang);
+    const ex = sh.x + c * 5.7 * sh.s * U, ey = sh.y + s * 5.7 * sh.s * U;
+    const k = chain % 10;
+    let tx: number, ty: number, aim: number;
+    if (k % 2 === 0) { tx = sh.x; ty = sh.y; aim = 200; }
+    else { tx = sh.x + c * 6.0 * sh.s * U; ty = sh.y + s * 6.0 * sh.s * U; aim = 80; }
+    const a = Math.atan2(ty - ey, tx - ex) + rnd(-aim, aim) * 0.2 * DEG;
+    // новое звено стартует прямо из EndPoint01 (без сдвига +0.45)
+    const back = 0.45 * U;
+    this.run(this.shockA(ex - Math.cos(a) * back, ey - Math.sin(a) * back, a, bs * 0.925, chain - 9));
+  }
+
+  /** ElectricH_Animation (471, ID 124): короткая молния ×1.5 летит, затем взрыв в EndPoint01 */
+  private *high(px: number, py: number, ang: number): Generator<number, void, unknown> {
+    const dmg = this.damage, S = 1.5;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    // корень на 3 ед. позади мага; Sprite_Electric сдвиг +2.85, EndPoint01 x 3.9
+    let rx = px - c * 3 * U, ry = py - s * 3 * U;
+    const sh = this.add(rx, ry, ang, S, dmg, 0.35 * S / 2 * U, T.short);
+    sh.on = true;
+    const N = (Math.random() * 7) | 0;
+    const set = (cx: number, sx: number, tex: number) => {
+      sh.x = rx; sh.y = ry;
+      sh.a = cx - sx / 2 + 2.85; sh.b = cx + sx / 2 + 2.85;
+      const mid = (2.85 + cx) * S * U;
+      sh.img.setVisible(tex >= 0).setTexture(T.short).setPosition(rx + c * mid, ry + s * mid)
+        .setDisplaySize(Math.max(2, sx * S * U), 100 * PX * S);
+    };
+    set(-0.7, 0.3, 0); yield 0.03;
+    set(-0.35, 1.0, 1); yield 0.05;
+    set(-0.2, 1.25, 2); yield 0.05;
+    for (let count = 1; count <= N; count++) {
+      rx += c * 0.62 * U; ry += s * 0.62 * U;
+      set(0.05, 2.0, 3); yield 0.05;
+    }
+    const ex = rx + c * 3.9 * S * U, ey = ry + s * 3.9 * S * U;
+    this.explode124(ex, ey, dmg);
+    sh.on = false;
+    sh.img.setAlpha(0.6); yield 0.03;
+    sh.img.setAlpha(0.35); yield 0.03;
+    sh.img.setAlpha(0.15); yield 0.03;
+    this.remove(sh);
+  }
+
+  /** Explosion124: квадрат 2.5 × 1.25 = 3.125 ед., окно 0.03 с, кадры 5 × 0.045 с; Area не влияет */
+  private explode124(x: number, y: number, dmg: number) {
+    const half = 2.5 * 1.25 / 2 * U;
+    const hits = new Set<number>();
+    this.run((function* (self: Eshock) {
+      boxDamage(x, y, 0, half, half, dmg, self.def.id, hits);
+      yield 0.015;
+      boxDamage(x, y, 0, half, half, dmg, self.def.id, hits);
+    })(this));
+    W.fx.puff(x, y, 512 * PX * 1.25, 0xffffff, 0.03 + 5 * 0.045, T.boom, Math.random() * 361 * DEG);
+  }
+
+  /** ElectricB_Animation (472, ID 57): Incinerate16 848×300, тинт (0.7, 0.9, 1), scale (1.22, 1.16)·Size, h 0.55, +0.8 ед., 0.63 с */
+  private *superB(px: number, py: number, ang: number): Generator<number, void, unknown> {
+    const bs = this.size, sx = 1.22 * bs, sy = 1.16 * bs;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const sh = this.add(px + c * 0.8 * U, py + s * 0.8 * U, ang, sx, this.damage, 0.55 * sy / 2 * U, T.bolt);
+    sh.img.setTint(0xb3e6ff);
+    sh.on = true;
+    for (let i = 0; i < STEPS_B.length; i++) {
+      const [vis, cx, w0, w] = STEPS_B[i];
+      if (i === 12) sh.on = false;
+      else if (w0 > 0) { sh.a = cx - w0 / 2 + 2.85; sh.b = cx + w0 / 2 + 2.85; }
+      // спрайт — по хит-зоне кадра (видимые ширины Incinerate16 не замерены, кроме 05 = 714 px)
+      const mid = (sh.a + sh.b) / 2 * sx * U, len = (sh.b - sh.a) * sx * U;
+      sh.img.setVisible(vis).setPosition(sh.x + c * mid, sh.y + s * mid).setDisplaySize(Math.max(2, len), 300 * PX * sy)
+        .setAlpha(i >= 12 ? 0.4 : 1);
+      yield w;
+    }
+    this.remove(sh);
   }
 }
 

@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import type { Choice } from '../game/SpellBook';
+import type { Choice, LevelScreen } from '../game/SpellBook';
 import type { AttrDef, Spell } from '../game/spells/Spell';
 import { W } from '../game/World';
 import { ART } from '../data/art';
@@ -117,6 +117,7 @@ export class Hud {
   private cds = el('div', 'cdicons');
   private cdMap = new Map<string, HTMLElement>();
   private bossEl: HTMLElement | null = null;
+  private merchEl: HTMLElement | null = null;
   private lastLvl = -1;
   private lastMana = -1;
 
@@ -155,6 +156,16 @@ export class Hud {
       this.timer.classList.add('red');
     }
     (this.bossEl.querySelector('.fg') as HTMLElement).style.width = `${(Math.max(0, frac) * 100).toFixed(1)}%`;
+  }
+
+  /** Obj_MerchantBar: заполняется 40 с до окна торговца. null — убрать. */
+  merchant(frac: number | null) {
+    if (frac === null) { this.merchEl?.remove(); this.merchEl = null; return; }
+    if (!this.merchEl) {
+      this.merchEl = el('div', 'merchbar', '<span>Торговец</span><div><i></i></div>');
+      this.wrap.appendChild(this.merchEl);
+    }
+    (this.merchEl.querySelector('i') as HTMLElement).style.width = `${(frac * 100).toFixed(1)}%`;
   }
 
   /** Иконка перезарядки (Фаза и др.): frac 0 = готово, 1 = только что использовано */
@@ -282,17 +293,21 @@ function cardHtml(c: Choice) {
     ${corner}`;
 }
 
-export function showLevelUp(level: number, choices: Choice[], refundPct: number, onPick: (c: Choice) => void, onRefund: () => void) {
+export function showLevelUp(level: number, scr: LevelScreen, onPick: (c: Choice) => void, onRefund: () => void, onMerge: (c: ComboData) => void) {
   clearModals();
-  const combo = choices[0]?.kind === 'combo';
-  const m = el('div', 'modal levelup' + (combo ? ' combos' : ''));
-  m.appendChild(el('div', 'sub', 'Текущий уровень: ' + level));
-  m.appendChild(el('h1', '', combo ? 'Слияние заклинаний' : 'Выбор заклинания'));
-  const cards = el('div', 'cards');
+  const m = el('div', 'modal levelup');
+  m.appendChild(el('div', 'sub', 'Текущий уровень : ' + level));
+  m.appendChild(el('h1', '', 'Выбор заклинания'));
   let locked = true;
   setTimeout(() => (locked = false), 250); // защита от случайного тапа
-  choices.forEach((c, i) => {
-    // длинное описание (слияния) — мельче шрифт; карточка растёт, список прокручивается
+  // Button_MagicCom_IN (280, 400): мигает, когда есть слияние (List_ApplyMagicComPossible)
+  if (scr.merges.length) {
+    const mb = el('button', 'mergebtn', 'Слияние');
+    mb.addEventListener('click', () => { if (locked) return; showMerge(scr.merges, (c) => { m.remove(); onMerge(c); }, () => root().appendChild(m)); m.remove(); });
+    m.appendChild(mb);
+  }
+  const cards = el('div', 'cards');
+  scr.choices.forEach((c, i) => {
     const long = c.lines.join(' ').length > 150;
     const card = el('div', `card k-${c.kind}${long ? ' long' : ''}`);
     card.style.animationDelay = (i * 0.05).toFixed(2) + 's';
@@ -301,10 +316,40 @@ export function showLevelUp(level: number, choices: Choice[], refundPct: number,
     cards.appendChild(card);
   });
   m.appendChild(cards);
-  // на экране слияний кнопка внизу — «Не изучать» (GameScene вызывает skipCombo)
-  const rb = el('button', 'refund', combo ? 'Не изучать' : `Вернуть ${Math.round(refundPct * 100)}% маны`);
-  rb.addEventListener('click', () => { if (locked) return; m.remove(); onRefund(); });
+  const rb = el('button', 'refund', scr.refundOn ? `Вернуть ${scr.refundPct}% маны` : '<span style="color:#C84B1E">Больше нельзя вернуть ману</span>') as HTMLButtonElement;
+  rb.disabled = !scr.refundOn;
+  rb.addEventListener('click', () => { if (locked || !scr.refundOn) return; m.remove(); onRefund(); });
   m.appendChild(rb);
+  root().appendChild(m);
+}
+
+/** Canvas_MagicCom: одно слияние за раз, стрелки листают весь список, «Изучить» (ui.md §3) */
+function showMerge(list: ComboData[], onLearn: (c: ComboData) => void, onBack: () => void) {
+  const m = el('div', 'modal levelup combos');
+  m.appendChild(el('h1', '', 'Комбинация заклинаний'));
+  const close = el('button', 'mclose', '✕');
+  close.addEventListener('click', () => { m.remove(); onBack(); });
+  m.appendChild(close);
+  const cards = el('div', 'cards');
+  let idx = 0;
+  const nav = el('div', 'mnav');
+  const L = el('button', '', '◀'), R = el('button', '', '▶'), N = el('span', '', '');
+  const draw = () => {
+    const c = W.book.comboChoice(list[idx]);
+    cards.innerHTML = '';
+    const card = el('div', 'card k-combo' + (c.lines.join(' ').length > 150 ? ' long' : ''));
+    card.innerHTML = cardHtml(c);
+    cards.appendChild(card);
+    N.textContent = `${idx + 1} / ${list.length}`;
+    L.toggleAttribute('disabled', idx === 0); R.toggleAttribute('disabled', idx >= list.length - 1);
+  };
+  L.addEventListener('click', () => { if (idx > 0) { idx--; draw(); } });
+  R.addEventListener('click', () => { if (idx < list.length - 1) { idx++; draw(); } });
+  nav.append(L, N, R);
+  const learn = el('button', 'learn', 'Изучить');
+  learn.addEventListener('click', () => { m.remove(); onLearn(list[idx]); });
+  m.append(cards, nav, learn);
+  draw();
   root().appendChild(m);
 }
 

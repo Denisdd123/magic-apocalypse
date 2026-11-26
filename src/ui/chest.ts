@@ -47,23 +47,30 @@ export function artifactText(a: ArtifactDef) {
 }
 
 // ---------------- Сундук ----------------
-/** Картинка над заголовком: сундук 2.0 или обелиск */
-function chestPic(cls?: string) {
-  const src = icon(cls === 'obelisk' ? 'obelisk' : 'chest_wood');
+/** Картинка над заголовком */
+function chestPic() {
+  const src = icon('chest_wood');
   return src ? `<img src="${src}" alt="">` : '';
 }
 
-export interface ChestOpts { title?: string; cls?: string; onReroll?: () => void }
+/** Названия и цвета заголовка по типу сундука (ui.md §5) */
+const CHEST: Record<number, [string, string]> = {
+  5: ['Сундук с сокровищами', '#fff096'], 6: ['Чёрный ящик', '#ffe7cb'], 7: ['Хранилище реликвий', '#fff0f4'],
+};
 
-export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => void, opts: ChestOpts = {}) {
+export interface ChestOpts { type: number; title?: string; keys: number; onReroll?: () => void; onDiscard: () => void }
+
+export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => void, opts: ChestOpts) {
   clearModals();
-  const m = div('modal chest ' + (opts.cls ?? ''), `
-    <div class="chestpic">${chestPic(opts.cls)}</div>
-    <h1 class="ctitle">${opts.title ?? 'Сундук с сокровищами'}</h1>
+  const [title, color] = CHEST[opts.type];
+  const m = div('modal chest', `
+    <button class="close" aria-label="Оставить">✕</button>
+    <div class="chestpic">${chestPic()}</div>
+    <h1 class="ctitle" style="color:${color}">${opts.title ?? title}</h1>
     <div class="cline"></div>
     <div class="ccards"></div>
     <div class="cinfo"><div class="hint">Выберите желаемый артефакт</div></div>
-    <button class="take" disabled>Получить</button>${opts.onReroll ? '<button class="take reroll">Обновить</button>' : ''}`);
+    <button class="take get" disabled>Получить</button>${opts.onReroll ? `<button class="take reroll">Обновить <span>(Доступно: ${opts.keys})</span></button>` : ''}`);
   const cards = m.querySelector('.ccards')!;
   const info = m.querySelector('.cinfo')!;
   const take = m.querySelector('.take') as HTMLButtonElement;
@@ -74,7 +81,8 @@ export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => vo
 
   choices.forEach((a) => {
     const c = div('ccard r-' + a.rarity, `${artIcon(a)}<div class="cname">${esc(a.name)}</div>`);
-    c.style.setProperty('--rc', RARITY[a.rarity].color);
+    c.style.setProperty('--rc', RARITY[a.rarity].frame);
+    c.style.setProperty('--rbg', RARITY[a.rarity].bg);
     c.addEventListener('click', () => {
       if (locked) return;
       sel = a; take.disabled = false;
@@ -92,6 +100,7 @@ export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => vo
   });
   take.addEventListener('click', () => { if (!sel) return; clearModals(); onPick(sel); });
   m.querySelector('.reroll')?.addEventListener('click', () => { if (!locked) opts.onReroll!(); });
+  m.querySelector('.close')!.addEventListener('click', () => { if (locked) return; clearModals(); opts.onDiscard(); });
   root().appendChild(m);
 }
 

@@ -1,195 +1,191 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
-import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimR } from './_proj';
-import { HitGate, forSegment, viewHalfDiag } from './_zoneKit';
+import { Co, OrigBullets, PX, U, type OBullet } from './_orig';
 
-/** Базовый фиолетово-розовый оттенок луча (приглушённый, не кислотный) */
-const RAY_TINT = 0xe0c8f0;
+const DEG = Math.PI / 180;
+/** ASpeed — пауза между лучами одного каста */
+const ASPEED = 0.2;
+/** кружок у мага: (0.35, 0, 0) вдоль выстрела */
+const RING_OFF = 0.35;
+const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 
-interface Beam {
-  ang: number; spin: number; t: number; life: number;
-  both: boolean;        // 515 Отражение: луч и в противоположную сторону
-  reAim: number;        // C4: смена направления каждые 0.5 с
-  tint: number;         // оттенок тонкой второй линии
+// ——— заглушки по меркам спрайтов (рисуем с Денисом позже) ———
+const T = { beam: 'ry_beam', beam0: 'ry_beam0', dot: 'ry_dot' };
+/** Incinerate13_03 950×30 (рисуем 190×6 = ÷5); 36_03 908×56 (рисуем 182×12); кружок 13_01 56×55 (рисуем 28) */
+const K_BEAM = 5, K_DOT = 2;
+function textures() {
+  const tx = W.scene.textures;
+  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+    if (tx.exists(key)) return;
+    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+    draw(g); g.generateTexture(key, w, h); g.destroy();
+  };
+  // луч: ось x — от начала (левый край) вперёд, белая сердцевина в мягкой кромке
+  make(T.beam, 190, 6, (g) => { g.fillStyle(0xffffff, 0.35); g.fillRect(0, 0, 190, 6); g.fillStyle(0xffffff, 1); g.fillRect(0, 2, 190, 2); });
+  make(T.beam0, 182, 12, (g) => { g.fillStyle(0xffffff, 0.3); g.fillRect(0, 0, 182, 12); g.fillStyle(0xffffff, 1); g.fillRect(0, 4, 182, 4); });
+  make(T.dot, 28, 28, (g) => { g.fillStyle(0xffffff, 0.35); g.fillCircle(14, 14, 13); g.fillStyle(0xffffff, 1); g.fillCircle(14, 14, 7); });
 }
 
+type Mode = 'a' | 'mirror' | 'hyper' | 'em' | 'c4' | 'c16' | 'c30' | 'c38' | 'c58';
+
 /**
- * #18 Таинственный луч → «Луч бездны». Луч из мага до края экрана в ближайшего врага, пробивает всё; до свойств неподвижен.
- * Лучи выходят по одному с интервалом (stat interval). Урон одному врагу — один раз за луч
- * (EM-излучение — раз в 0.5 с, Плазменный луч — раз в 0.25 с); ворота урона общие для заклинания.
- * Свойства: 515 Отражение (второй луч назад), 516 Разрушительный (быстрое вращение), 517 Электромагнитное
- * (случайные направления, тик 0.5 с, длит. ×4).
- * Слияния (основа): C4 Поток Теры, C16 Плазменный луч, C30 Призменная лихорадка, C38 Энерг. насыщенность, C58 Геноцид.
+ * #18 Таинственный луч — 1:1 по коду оригинала (docs/orig/spells/ray.md, карточка tasks/ray.md):
+ * Play_ArcaneRay: wait(PSpeed); цикл: цель — 1-й, 2-й… ближайший ((|dx|+|dy|)·приоритет, БЕЗ проверки дальности; врагов нет — wait 0.1),
+ * лучи по одному через ASpeed 0.2 с, затем wait(PSpeed 3.5 с).
+ * Луч (ID 4): дочерний объект у мага (едет с ним), не летит; коллайдер 9.8 × 0.1 со scale (1, Size·0.7) — 557 px от кружка
+ * на 20 px от мага; живёт Time 0.8 с, затем 4 тика затухания без коллайдера; каждый враг на линии — раз за луч.
+ * Цвет (0.85+0.015n, 0.3+0.03n, 1) по шагам 0.06 с, первые 0.06 с — спрайт 36_03.
+ * Свойства: 515 Отражение (на каждый луч — второй под 180°, жёлтые), 516 Разрушительный луч (ОДИН луч, группа вращается +2° за тик против часовой),
+ * 517 Электромагнитное излучение (Random(1, Num) лучей в случайные стороны, мерцание 0.125 с, повторный урон раз в 0.5 с, коллайдер 10.5 × 0.25).
+ * Слияния (числа карточки; полностью — партия 6): 4, 16, 30, 38, 58.
  */
 class Ray extends DataSpell {
-  private beams: Beam[] = [];
-  private g: Phaser.GameObjects.Graphics | null = null;
-  private gate = new HitGate();
-  private clock = 0;
-  private queue: number[] = [];   // задержки до выхода следующих лучей
-  private volleys: number[] = []; // C30: задержки залпов
-  private plasmaN = 0;            // C16: сколько постоянных лучей сейчас
-  private aimIdx = 0;             // номер луча в текущем залпе (в какого по близости врага целиться)
-  // параметры текущего удара (без замыканий в цикле)
-  private hDmg = 0; private hEvery = 0; private hUx = 0; private hUy = 0;
-  private onHit = (e: Enemy) => {
-    if (this.gate.ok(e.id, this.clock, this.hEvery)) W.enemies.damage(e, this.hDmg, this.hUx * 6, this.hUy * 6, this.def.id);
-  };
+  private co: Co | null = null;
+  private beams = new OrigBullets();
+  private dots: Phaser.GameObjects.Image[] = [];
+  /** 516 / C16: поворот группы Transform_ObjArcaneRayMid (рад, экран) */
+  private rot = 0;
+  private rotAcc = 0;
+
+  private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100 * 0.5; }
+  private get pSpeed(): number { return Math.max(0.05, this.cdOrig(this.data.base.cd ?? 3.5) * this.cdGlobal); }
+  /** ASpeed × (100 + interval%) — 515 даёт −50 % из данных */
+  private get aSpeed(): number { return ASPEED * Math.max(0.05, 1 + this.pctOf('interval') / 100); }
 
   onChange() {
     super.onChange();
-    // смена режима — убрать постоянные лучи, их пересоздаст update
-    if (!this.hasCombo(16) && this.plasmaN) { this.clearBeams(); this.plasmaN = 0; }
+    textures();
+    if (!this.co) this.co = new Co(this.loop());
   }
 
-  destroy() { this.clearBeams(); this.g?.destroy(); this.g = null; }
-
-  private clearBeams() {
-    this.beams.length = 0;
-    this.g?.clear();
-  }
-
-  /** интервал урона по одному врагу */
-  private get hitEvery(): number {
-    if (this.hasCombo(16)) return 0.25;
-    if (this.hasProp(517)) return 0.5;
-    return this.durSec + 0.05; // обычный луч — один удар за время жизни
-  }
-
-  private get halfW(): number {
-    let w = 5 * this.sizeMul;
-    if (this.hasCombo(4)) w *= 2.2; // радиус атаки увеличен
-    return w;
-  }
-
-  /** Множитель урона слияний (то, что «конвертируется» в урон) */
-  private get comboMul(): number {
-    const durK = this.durSec / 0.8; // длительность относительно базовой
-    if (this.hasCombo(4)) return Math.max(1, this.durSec);          // +1 к множителю за секунду длительности
-    if (this.hasCombo(16)) return Math.max(1, this.sizeMul * durK); // размер и длительность → урон
-    if (this.hasCombo(30)) return Math.max(1, durK);
-    if (this.hasCombo(58)) return Math.max(1, this.sizeMul) * this.count; // всё в один луч
-    return 1;
+  destroy() {
+    this.beams.destroy();
+    for (const d of this.dots) d.destroy();
+    this.dots = []; this.co = null;
   }
 
   update(dt: number) {
-    this.clock += dt;
-    const P = W.player;
+    if (!this.co) this.onChange();
+    this.co!.update(dt);
+    // Play_ArcaneRayMid_Rotation: +2° за 0.03 с против часовой (на экране угол уменьшается)
+    if (this.hasProp(516) || this.hasCombo(16)) {
+      this.rotAcc += dt;
+      while (this.rotAcc >= 0.03) { this.rotAcc -= 0.03; this.rot -= 2 * DEG; }
+    }
+    this.beams.update(dt);
+  }
 
-    if (this.hasCombo(16)) {
-      // Плазменный луч: 4 постоянных луча + 1 за каждую секунду сокращения КД ниже 4 с
-      const effCd = this.cdSec * W.stats.cdMul;
-      const n = 4 + Math.max(0, Math.floor(4 - effCd));
-      if (n !== this.plasmaN) {
-        this.clearBeams();
-        for (let i = 0; i < n; i++) this.spawn((i / n) * Math.PI * 2, 1.2, Infinity, false);
-        this.plasmaN = n;
-      }
-    } else if (this.readyData(dt)) {
+  // ———— корутины ————
+  private *loop(): Generator<number, void, unknown> {
+    if (this.hasCombo(38)) yield this.pSpeed + 0.1; else yield this.pSpeed;
+    for (;;) {
       const n = this.count;
-      if (this.hasCombo(30)) {
-        for (let v = 0; v < 5; v++) this.volleys.push(v * 0.3);
-      } else if (this.hasCombo(38) || this.hasCombo(58)) {
-        this.aimIdx = 0;
-        this.queue.push(0);
-      } else {
-        // лучи по одному: интервал появления (у Отражения −50%)
-        const gap = this.stat('interval', 0.25);
-        this.aimIdx = 0;
-        const k = this.hasProp(517) ? 1 + Math.floor(Math.random() * n) : n; // EM: от 1 до числа лучей
-        for (let i = 0; i < k; i++) this.queue.push(i * gap);
-      }
-    }
-
-    // очередь одиночных выстрелов
-    for (let i = this.queue.length - 1; i >= 0; i--) {
-      this.queue[i] -= dt;
-      if (this.queue[i] > 0) continue;
-      this.queue[i] = this.queue[this.queue.length - 1]; this.queue.pop();
-      this.fireOne();
-    }
-    // C30: залпы во все хаотичные стороны
-    for (let i = this.volleys.length - 1; i >= 0; i--) {
-      this.volleys[i] -= dt;
-      if (this.volleys[i] > 0) continue;
-      this.volleys[i] = this.volleys[this.volleys.length - 1]; this.volleys.pop();
-      const n = this.count;
-      for (let j = 0; j < n; j++) this.spawn(Math.random() * Math.PI * 2, 0, 0.35, false);
-    }
-
-    // движение и урон
-    if (!this.g) this.g = W.scene.add.graphics().setDepth(DEPTH.projectile);
-    const g = this.g;
-    g.clear();
-    if (!this.beams.length) return;
-    const len = viewHalfDiag() + 20;
-    const hw = this.halfW;
-    const dmg = this.dmg * this.comboMul;
-    const every = this.hitEvery;
-    const now = this.clock;
-    for (let i = this.beams.length - 1; i >= 0; i--) {
-      const b = this.beams[i];
-      b.t += dt;
-      if (b.t >= b.life) {
-        this.beams[i] = this.beams[this.beams.length - 1]; this.beams.pop();
+      if (this.hasProp(517) || this.hasCombo(4)) {
+        // Play_ArcaneRay_Electromagnetic: Random(1, Num+1) лучей в случайные стороны
+        const k = 1 + Math.floor(Math.random() * n);
+        for (let i = 0; i < k; i++) { this.ray(this.hasCombo(4) ? 'c4' : 'em', Math.random() * Math.PI * 2); yield this.aSpeed; }
+        yield this.pSpeed;
         continue;
       }
-      b.ang += b.spin * dt;
-      if (this.hasCombo(4)) { b.reAim -= dt; if (b.reAim <= 0) { b.reAim = 0.5; b.ang = Math.random() * Math.PI * 2; } }
-      const ux = Math.cos(b.ang), uy = Math.sin(b.ang);
-      this.hDmg = dmg; this.hEvery = every; this.hUx = ux; this.hUy = uy;
-      const hit = this.onHit;
-      if (b.both) forSegment(P.x - ux * len, P.y - uy * len, ux, uy, len * 2, hw, hit);
-      else forSegment(P.x, P.y, ux, uy, len, hw, hit);
-      // вид: точка у мага + тонкая статичная прямая линия (как лазерная указка), не расширяется; меняется только прозрачность
-      const k = b.life === Infinity ? 1 : b.t / b.life;
-      const a = b.life === Infinity ? 0.9 : k < 0.1 ? k / 0.1 : 1 - Math.max(0, (k - 0.75) / 0.25);
-      const x1 = P.x + ux * len, y1 = P.y + uy * len;
-      const x0 = b.both ? P.x - ux * len : P.x, y0 = b.both ? P.y - uy * len : P.y;
-      g.lineStyle(1.3, b.tint, 0.85 * a);
-      g.lineBetween(x0 + uy * 0.8, y0 - ux * 0.8, x1 + uy * 0.8, y1 - ux * 0.8);
-      g.lineStyle(2.2, 0xf6eefc, a);
-      g.lineBetween(x0, y0, x1, y1);
-      g.fillStyle(0xf6eefc, a); g.fillCircle(P.x, P.y - 3, 3.2);
-      g.fillStyle(b.tint, 0.8 * a); g.fillCircle(P.x, P.y - 3, 1.6);
+      if (this.hasCombo(30)) { for (let i = 0; i < 5; i++) { this.ray('c30', Math.random() * Math.PI * 2); yield this.aSpeed; } yield this.pSpeed; continue; }
+      if (this.hasCombo(38)) { for (let i = 0; i < n; i++) this.ray('c38', Math.random() * Math.PI * 2); yield this.pSpeed + 0.1; continue; }
+      if (this.hasCombo(58)) { this.ray('c58', Math.random() * Math.PI * 2); yield 0.2; continue; }
+      if (this.hasCombo(16)) {
+        // постоянные лучи по кругу: 7/6/5/4 по PSpeed
+        const ps = this.pSpeed, m = ps <= 1 ? 7 : ps <= 2 ? 6 : ps <= 3 ? 5 : 4;
+        for (let i = 0; i < m; i++) this.ray('c16', (i / m) * Math.PI * 2 - this.rot);
+        yield this.durSec + 4 * 0.03;
+        continue;
+      }
+      const P = W.player;
+      const list = W.enemies.list.filter((e) => e.alive)
+        .map((e) => ({ e, d: ((Math.abs(e.x - P.x) + Math.abs(e.y - P.y)) / U) * prio(e.type.uid) }))
+        .sort((a, b) => a.d - b.d);
+      if (!list.length) { yield 0.1; continue; }
+      const hyper = this.hasProp(516);
+      const m = hyper ? 1 : n;
+      for (let i = 0; i < m; i++) {
+        const e = list[i % list.length].e;
+        const a = Math.atan2(e.y - W.player.y, e.x - W.player.x);
+        if (hyper) this.ray('hyper', a - this.rot);
+        else if (this.hasProp(515)) { this.ray('mirror', a); this.ray('mirror', a + Math.PI); }
+        else this.ray('a', a);
+        yield this.aSpeed;
+      }
+      yield this.pSpeed;
     }
-    if ((this.clock * 10 | 0) % 50 === 0) this.gate.prune(now, 5);
   }
 
-  /** обычный выстрел одного луча */
-  private fireOne() {
-    const life = this.durSec;
-    // наведение: каждый следующий луч залпа — в следующего по близости врага на экране; врагов нет — случайно
-    const P = W.player;
-    const ts = W.enemies.nearestN(P.x, P.y, this.aimIdx + 1, aimR());
-    const e = ts.length ? ts[Math.min(this.aimIdx, ts.length - 1)] : null;
-    this.aimIdx++;
-    const ang = e ? Math.atan2(e.y - P.y, e.x - P.x) : Math.random() * Math.PI * 2;
-    if (this.hasCombo(38)) {
-      // все лучи разом в хаотичных направлениях, без вращения
-      const n = this.count;
-      for (let j = 0; j < n; j++) this.spawn(Math.random() * Math.PI * 2, 0, life, false);
-      return;
+  /** Bullet_Create 4 / 51 / 67 / 40 / 23 / 10016 / 90 / 94 / 111 */
+  private ray(mode: Mode, ang: number) {
+    const S = this.size;
+    let len = 9.8, thick = 0.1, sy = S * 0.7, life = this.durSec;
+    switch (mode) {
+      case 'em': case 'c4': len = 10.5; thick = 0.25; sy = S * 0.5 + 0.35; break;
+      case 'c16': len = 10.5; thick = 0.3; break;
+      case 'c30': len = 10.5; thick = 0.08; break;
+      case 'c38': len = 10.5; thick = 1.2; sy = 0.75; life = Math.max(0.3, life); break;
+      case 'c58': len = 10.5; thick = 2; sy = 0.5; break;
     }
-    if (this.hasCombo(58)) { this.spawn(ang, 0, life, false, 6); return; }
-    if (this.hasProp(517)) { this.spawn(Math.random() * Math.PI * 2, 0, life, false); return; } // EM: случайные стороны
-    const both = this.hasProp(515) && !this.hasCombo(30);
-    this.spawn(ang, 0, life, both);
+    const rotating = mode === 'hyper' || mode === 'c16';
+    const dot = this.dots.find((d) => !d.visible) ?? (() => { const d = W.scene.add.image(0, 0, T.dot); this.dots.push(d); return d; })();
+    const dotSc = ((S - 0.5) * 0.8 + 0.5) * 0.7;
+    dot.setVisible(true).setDepth(DEPTH.projectile).setBlendMode(Phaser.BlendModes.ADD).setScale((56 * PX * dotSc) / 28).setAlpha(1);
+    const hl = (len / 2) * U, hw = (thick * sy / 2) * U;
+    this.beams.fire({
+      x: W.player.x + Math.cos(ang) * RING_OFF * U, y: W.player.y + Math.sin(ang) * RING_OFF * U, ang: rotating ? ang + this.rot : ang, sp: 0, life: life + 4 * 0.03,
+      tex: T.beam0, scaleX: 908 / 182, scaleY: (56 / 12) * sy,
+      hl, hw, cx: hl, pierce: 1e9, dmg: this.dmg, src: this.def.id,
+      data: { base: ang, n: 0, acc: 0, cyc: 0, dot, life, sy, flick: 0 },
+      step: (b) => this.beamStep(b, mode, rotating),
+      onEnd: (b) => b.data.dot.setVisible(false),
+    });
   }
 
-  private spawn(ang: number, spinOverride: number, life: number, both: boolean, spinAbs = 0) {
-    // до свойств луч статичен (не крутится); вращается только у «Разрушительного» и в слияниях
-    let spin = spinAbs || (this.hasProp(516) ? 3.2 : 0);
-    if (spinOverride) spin = spinOverride;
-    if (this.hasProp(517) && !this.hasCombo(16)) spin = 0;
-    if (this.hasCombo(38) || this.hasCombo(30)) spin = 0;
-    if (Math.random() < 0.5) spin = -spin;
-    const tint = this.hasCombo(16) ? 0xc8a0ff : this.hasProp(516) ? 0xf0b0b8 : this.hasProp(515) ? 0xf0d8b0 : this.hasProp(517) ? 0xb0d4f0 : RAY_TINT;
-    this.beams.push({ ang, spin, t: 0, life, both, reAim: 0.5, tint });
+  /** ArcaneRayA/B_Animation: шаги 0.06 с (цвет, смена спрайтов), мерцание 517, затухание */
+  private beamStep(b: OBullet, mode: Mode, rotating: boolean) {
+    const d = b.data, P = W.player;
+    if (rotating) b.ang = d.base + this.rot;
+    const c = Math.cos(b.ang), s = Math.sin(b.ang);
+    // луч начинается у кружка (0.35 ед. от мага): изображение с началом в левом крае
+    const ox = P.x + c * RING_OFF * U, oy = P.y + s * RING_OFF * U;
+    b.img.setOrigin(0, 0.5);
+    d.dot.setPosition(ox, oy);
+    const em = mode === 'em' || mode === 'c4';
+    while (d.acc + 0.06 <= b.t) {
+      d.acc += 0.06; d.n++;
+      if (!em) {
+        b.img.setTexture(T.beam).setScale(PX * (950 / 190), PX * (30 / 6) * d.sy);
+        const n = d.n;
+        let tint: number[];
+        if (mode === 'mirror') tint = [0.9, 0.804, 0.2 + 0.02 * n];
+        else if (mode === 'hyper') tint = [1, 0.02 * n, 0];
+        else if (mode === 'c16') tint = [0, 1, 0.4];
+        else tint = [0.85 + 0.015 * n, 0.3 + 0.03 * n, 1];
+        const k = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
+        const col = (k(tint[0]) << 16) | (k(tint[1]) << 8) | k(tint[2]);
+        b.img.setTint(col); d.dot.setTint(col).setScale(d.dot.scaleX * (n % 2 ? 0.92 : 1 / 0.92));
+      }
+    }
+    if (em) {
+      // цикл 0.125 с: 0.095 видно, 0.03 пусто; каждые 4 цикла (0.5 с) — повторный урон
+      b.img.setTexture(T.beam).setScale(PX * (950 / 190), PX * (30 / 6) * d.sy).setTint(mode === 'c4' ? 0x59d9ff : 0xc0a0ff);
+      const cyc = Math.floor(b.t / 0.125);
+      b.img.setVisible(b.t % 0.125 < 0.095);
+      if (cyc !== d.cyc) { d.cyc = cyc; if (cyc % 4 === 0) b.hits.clear(); }
+    }
+    if (mode === 'c16') { const k = Math.floor(b.t / 0.25); if (k !== d.flick) { d.flick = k; b.hits.clear(); } }
+    // затухание: коллайдер OFF, 4 шага alpha 1 − 0.2·i
+    if (b.t >= d.life) {
+      b.hl = 0;
+      const i = Math.floor((b.t - d.life) / 0.03) + 1;
+      b.img.setAlpha(Math.max(0, 1 - 0.2 * i)); d.dot.setAlpha(Math.max(0, 1 - 0.2 * i));
+    }
+    // корень объекта — у кружка; коллайдер сдвинут на половину длины вперёд
+    b.x = ox; b.y = oy;
   }
 }
 

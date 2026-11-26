@@ -5,6 +5,7 @@ import { SPELLS, PASSIVES } from './game/SpellBook';
 import { ARTIFACTS, SYNERGIES, RARITY, artifactById } from './game/Artifacts';
 import { RUNES } from './game/Pickups';
 import { ENEMY_TYPES } from './game/Enemies';
+import { ensureMobTextures, mobFrames, mobTex } from './game/mobLook';
 import { ART } from './data/art';
 
 // Галерея разработчика: вся графика и контент игры на одной странице — смотреть и оценивать без игры.
@@ -71,6 +72,25 @@ function tile(parent: HTMLElement, keys: string[], name: string, scale = 1, opts
   parent.appendChild(t);
 }
 
+/** Плитка-анимация из готовых PNG-кадров (эффекты из Effekseer); pause — пауза между повторами, мс */
+function imgTile(parent: HTMLElement, urls: string[], name: string, size: number, frameMs: number, pause = 0) {
+  const t = document.createElement('div'); t.className = 'tile';
+  const img = document.createElement('img');
+  img.style.cssText = `width:${size}px;height:auto;display:block;margin:0 auto 4px;image-rendering:pixelated`;
+  urls.forEach((u) => { new Image().src = u; });
+  let i = 0;
+  const step = () => {
+    img.src = urls[i];
+    const last = i === urls.length - 1;
+    i = (i + 1) % urls.length;
+    setTimeout(step, frameMs + (last ? pause : 0));
+  };
+  step();
+  t.appendChild(img);
+  t.appendChild(Object.assign(document.createElement('div'), { className: 'n', textContent: name }));
+  parent.appendChild(t);
+}
+
 const iconUrl = (key: string, tint?: number) => {
   const src = tm.get(key).getSourceImage() as HTMLCanvasElement;
   const cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height;
@@ -79,10 +99,11 @@ const iconUrl = (key: string, tint?: number) => {
   return cv.toDataURL();
 };
 
+let bootScene!: Phaser.Scene;
 function build() {
   root.innerHTML = `<h1>Галерея Magic Apocalypse</h1>
     <div class="note">Вся графика и контент игры. Анимация — как в игре. Отмечай, что нравится, а что переделать.</div>
-    <div class="toc"><a href="#mage">Маг</a><a href="#mobs">Мобы</a><a href="#items">Предметы</a><a href="#fx">Эффекты</a><a href="#icons">Иконки</a><a href="#cards">Карточки</a><a href="#arts">Артефакты</a><a href="#syn">Синергии</a></div>`;
+    <div class="toc"><a href="#mage">Маг</a><a href="#mobs">Мобы</a><a href="#items">Предметы</a><a href="#fx">Эффекты</a><a href="#vfx">Effekseer</a><a href="#icons">Иконки</a><a href="#cards">Карточки</a><a href="#arts">Артефакты</a><a href="#syn">Синергии</a></div>`;
 
   let g = section('mage', 'Маг', 'Анимация «дыхания»: 4 кадра, 3 в секунду (в движении 5). В игре маг размером 18×29 — здесь крупнее.');
   tile(g, [0, 1, 2, 3].map((f) => 'player_' + f), 'анимация', 1.6, { fps: 3 });
@@ -94,11 +115,11 @@ function build() {
     tile(g, [0, 1, 2].map((f) => `mage_${p}_${f}`), 'поза: ' + n, 1, { fps: 9 });
   }
 
-  g = section('mobs', 'Мобы', 'Силуэты 2.0 (src/game/mobArt.ts): плоские тёмные пиксельные, без ног и глаз, 3 кадра «кипящей» кромки и пульса ядра (~4 кадра/с).');
+  g = section('mobs', 'Мобы', '3.0: рисуются по меркам спрайтов оригинала (src/game/mobLook.ts), кадр меняется на каждом шаге.');
   for (const [k, t] of Object.entries(ENEMY_TYPES)) {
-    // en_*_0..2 — три кадра; если кадров нет — один
-    const keys = tm.exists(t.tex + '_0') ? [0, 1, 2].map((f) => `${t.tex}_${f}`) : [t.tex];
-    tile(g, keys, `${k} (HP ${t.hp})`, t.id === 'boss' ? 0.5 : 0.6, { fps: 4 });
+    ensureMobTextures(bootScene, t.uid);
+    const keys = Array.from({ length: mobFrames(t.uid) }, (_, f) => mobTex(t.uid, f));
+    tile(g, keys, `${k} · ${t.uid} (HP ${t.hp})`, t.id === 'boss' ? 0.5 : 1, { fps: 12 });
   }
   tile(g, ['elite_ring'], 'кольцо элитки', 0.6);
 
@@ -111,6 +132,16 @@ function build() {
   for (const [k, n] of [['bolt', 'игла'], ['blade', 'клинок'], ['dot', 'снаряд духа'], ['fireball', 'пламенное ядро'], ['spirit', 'дух'], ['satellite', 'сфера кольца'], ['ring', 'кольцо взрыва'], ['blast', 'вспышка'], ['spark', 'искра'], ['magic_circle', 'руна силы']] as const) {
     tile(g, [k], n, k === 'magic_circle' ? 0.7 : 1.5, { dark: true });
   }
+
+  g = section('vfx', 'Огненный шар (проба)',
+    'Шар нарисован слоями по меркам оригинала: красная кайма → золото → бледный → крем, языки-капсулы назад (research/vfx/fireball/ball_draw.py), 6 кадров по 0.06 с. ' +
+    'Взрыв — из редактора Effekseer, 9 кадров по 0.06 с; «плавно» — 18 кадров. Размер «в игре»: шар 148×77, взрыв 218 px.');
+  const seq = (pre: string, n: number) => Array.from({ length: n }, (_, i) => `vfx/fireball/${pre}_${String(i + 1).padStart(2, '0')}.png`);
+  imgTile(g, seq('ball2', 6), 'шар крупно', 328, 60);
+  imgTile(g, seq('ball2', 6), 'шар в игре', 93, 60);   // кадр 328 px = часть спрайта 520 px, в игре ×0.285
+  imgTile(g, seq('hit', 9), 'взрыв, 9 кадров', 256, 60, 400);
+  imgTile(g, seq('hit18', 18), 'взрыв плавно, 18 кадров', 256, 30, 400);
+  imgTile(g, seq('hit', 9), 'взрыв в игре', 218, 60, 400);
 
   g = section('icons', 'Иконки заклинаний и пассивок', 'Цвет — вариант преображения (свойства).');
   for (const def of SPELLS) {
@@ -150,6 +181,6 @@ function build() {
 class Boot extends Phaser.Scene {
   // картинки мира 2.0 нужны для мобов en_*, сундука, обелиска и торговца
   preload() { for (const [k, p] of Object.entries(ART)) if (p.includes('/world/')) this.load.image(k, p); }
-  create() { makeTextures(this); tm = this.textures; build(); }
+  create() { makeTextures(this); tm = this.textures; bootScene = this; build(); }
 }
 new Phaser.Game({ type: Phaser.CANVAS, parent: 'phaser', width: 2, height: 2, scene: [Boot], banner: false });

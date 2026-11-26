@@ -32,7 +32,8 @@ const U = VIEW_W / 6.69;
  * Когда плитка уходит из окна, её несобранные кристаллы исчезают, у новой — генерируются заново.
  * (Число «мест под ману» из 20 в префабе не снято — считаем все 20; руны/особые предметы мест типа 3 — не здесь.)
  */
-const FIELD = { tile: 20 * U, slots: 20, chance: 86 / 195, spread: 10 * U };
+/** CreateItem_Field: на тайл 20×20 ед. — 17 слотов сфер (непуст с шансом Ran·86/195 %) и 3 слота «руна / сердце» (Ran·21/195 %) */
+const FIELD = { tile: 20 * U, slots: 17, chance: 86 / 195, slots3: 3, chance3: 21 / 195, spread: 10 * U };
 /**
  * Стартовые кристаллы (C_Battle_Manager.CreateItem_StartItem): floor(50 × (1 + «Поддержка»)) штук,
  * x = cos a · U(2.8, 11) ед., y = sin a · U(2.8, 11) ед. от мага; 80% малые, 20% средние.
@@ -98,6 +99,7 @@ export class Orbs {
         if (!o.alive || !o.tile || o.magnet) continue;
         if (Math.abs(o.tx - tx) > 1 || Math.abs(o.ty - ty) > 1) this.remove(o);
       }
+      W.pickups.dropTiles(tx, ty);
     }
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
       const cx = tx + i, cy = ty + j;
@@ -113,6 +115,16 @@ export class Orbs {
       const kind: OrbKind = r === 1 ? 'l' : r <= 18 ? 'm' : 's';
       const o = this.drop(cx * T + (Math.random() * 2 - 1) * FIELD.spread, cy * T + (Math.random() * 2 - 1) * FIELD.spread, kind, 1);
       if (o) { o.tile = true; o.tx = cx; o.ty = cy; }
+    }
+    // слот типа 3: Random(1, 3001) — клетки 21–23 (валюта вне забега, не переносим), руны 31–34, сердце 15
+    const ch3 = FIELD.chance3 * (1 + W.stats.fieldItemRate);
+    for (let i = 0; i < FIELD.slots3; i++) {
+      if (Math.random() >= ch3) continue;
+      const r = 1 + ((Math.random() * 3000) | 0);
+      const x = cx * T + (Math.random() * 2 - 1) * FIELD.spread, y = cy * T + (Math.random() * 2 - 1) * FIELD.spread;
+      if (r < 751) continue;
+      if (r < 1101) { W.pickups.rune(r < 851 ? 'fury' : r < 951 ? 'invuln' : r < 1001 ? 'greed' : 'cleanse', x, y, { x: cx, y: cy }); continue; }
+      if (r < 2601) { const o = this.drop(x, y, 'life', 0); if (o) { o.tile = true; o.tx = cx; o.ty = cy; } }
     }
   }
 
@@ -150,7 +162,8 @@ export class Orbs {
     this.count--;
     const A = W.artifacts, s = W.stats;
     if (o.kind === 'life') {
-      const v = s.maxHp * 0.2 * (1 + s.lifeOrbHeal);
+      // сердце (тип 15): HpMax × (100 + HpRecoveryU − D) × 15 × 0.0001 = 15 %
+      const v = s.maxHp * 0.15 * (1 + s.lifeOrbHeal);
       if (A.orbFx) A.onLifeOrb(v); // Жизненный щит, Глаз смотрящего
       W.player.heal(v);
     } else {

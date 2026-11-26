@@ -1,199 +1,278 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../../../config';
 import { SPELL_BY_ID } from '../../../data/spells_data';
-import type { Enemy } from '../../Enemies';
 import { W } from '../../World';
 import { DataSpell, defFromData } from '../DataSpell';
-import { aimR, keepTarget } from './_proj';
-import { HitGate, ImgPool, randomViewPoint } from './_zoneKit';
-import { CYC_D, CYC_TEX, CYC_TEX_VOID, ensureInkCyclone } from './_inkfx';
+import { boxDamage, Co, OrigBullets, PX, U } from './_orig';
 
-/** штриховой вихрь (_inkfx): 3 кадра закрученных росчерков, смена ~12 раз в секунду + вращение */
-const TEX_D = CYC_D, CYC_FPS = 12;
+const DEG = Math.PI / 180;
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+/** UnitApply_ShootingRange (как у Огн. шара / Пули) */
+const RANGE = 23;
+/** тик анимации базы (AnimationA) и корутин 462/463 */
+const TA = 0.033, TC = 0.03;
+/** UnitApply_TornadoDelay — пауза между вихрями Пустот */
+const VOID_DELAY = 0.35;
+/** приоритет цели: боссы/эпики ×0.5 */
+const prio = (uid: number) => (uid >= 41 && uid <= 46 ? 0.5 : 1);
 
-type Mode = 'seek' | 'void' | 'orbit' | 'neutron' | 'typhoon' | 'super' | 'hole';
+// ——— заглушки по меркам спрайтов (рисуем с Денисом позже): [ключ, px спрайта оригинала, ширина текстуры] ———
+const T = { a: 'cy_a', c: 'cy_c', b: 'cy_b', l: 'cy_l' };
+const PXS: Record<string, [number, number]> = { cy_a: [400, 100], cy_c: [400, 100], cy_b: [409, 100], cy_l: [180, 90] };
+function textures() {
+  const tx = W.scene.textures;
+  const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+    if (tx.exists(key)) return;
+    const g = W.scene.make.graphics({ x: 0, y: 0 }, false);
+    draw(g); g.generateTexture(key, w, h); g.destroy();
+  };
+  // TornadoA 400 (видимо ≈250 = 62 %): белые закрученные дуги
+  make(T.a, 100, 100, (g) => {
+    for (let i = 0; i < 5; i++) {
+      g.lineStyle(2.5 - i * 0.3, 0xffffff, 0.9 - i * 0.12);
+      g.beginPath(); g.arc(50, 50, 9 + i * 5.5, i * 1.3, i * 1.3 + 3.6); g.strokePath();
+    }
+    g.fillStyle(0xffffff, 0.18); g.fillCircle(50, 50, 30);
+  });
+  // TornadoC (электрическая сфера, видимо ≈360–430 из 400): мягкий бело-голубой шар
+  make(T.c, 100, 100, (g) => {
+    for (let i = 0; i < 6; i++) { g.fillStyle(0xbfe6ff, 0.08 + i * 0.05); g.fillCircle(50, 50, 46 - i * 6); }
+    g.fillStyle(0xffffff, 1); g.fillCircle(50, 50, 12);
+  });
+  // TornadoB (пустота) 409: тёмно-фиолетовый вихрь
+  make(T.b, 100, 100, (g) => {
+    g.fillStyle(0x2a1040, 0.45); g.fillCircle(50, 50, 48);
+    for (let i = 0; i < 4; i++) { g.lineStyle(2, 0xb070ff, 0.7); g.beginPath(); g.arc(50, 50, 14 + i * 8, i * 1.6, i * 1.6 + 3.4); g.strokePath(); }
+    g.fillStyle(0x000000, 0.8); g.fillCircle(50, 50, 10);
+  });
+  // Incinerate15 (молния сферы) ≤179 px: ломаная вдоль оси x
+  make(T.l, 90, 12, (g) => {
+    g.lineStyle(3, 0x9fdcff, 0.5); g.beginPath(); g.moveTo(2, 6); for (let x = 10; x <= 88; x += 9) g.lineTo(x, x % 2 ? 2 : 10); g.strokePath();
+    g.lineStyle(1.2, 0xffffff, 1); g.beginPath(); g.moveTo(2, 6); for (let x = 10; x <= 88; x += 9) g.lineTo(x, x % 2 ? 2 : 10); g.strokePath();
+  });
+}
+
+type Kind = 'a' | 'c' | 'b' | 'orbit' | 'neutron' | 'typhoon' | 'super' | 'hole';
 
 interface Wind {
-  mode: Mode; x: number; y: number; vx: number; vy: number;
-  t: number; life: number; delay: number; r0: number; r: number;
-  ang: number; shotT: number; gate: HitGate;
-  /** удерживаемая цель (не перескакивает между врагами каждый кадр) */
-  tgt: Enemy | null;
-  img: Phaser.GameObjects.Image | null;
+  kind: Kind; x: number; y: number;
+  /** курс при создании и текущий (рад, экран) */
+  h0: number; h: number;
+  t: number; life: number; fade: number; fadeA: number;
+  /** localScale объекта и коллайдер (ед. до умножения на scale) */
+  sc: number; coll: number; grow: number; expand: number;
+  /** скорость, ед. ориг./с */
+  v: number;
+  dmg: number; hitT: number; hitK: number;
+  acc: number; n: number;
+  ox: number; oy: number;
+  img: Phaser.GameObjects.Image;
+  tex: string;
 }
 
 /**
- * #12 Вихрь → «Смерч». Вихрь ползёт к ближайшему врагу и постепенно растёт; тик 0.3 с, длительность 2 с.
- * Каждый вихрь бьёт одного врага не чаще тика (свои ворота у каждого вихря).
- * Свойства: 461 Штормовое предупреждение (чистые моды), 462 Электрическая сфера (сжимается и стреляет зарядами),
- * 463 Космические пустоты (по одному в случайных местах, стоят, растут в 9 раз быстрее — speed ×9 из данных).
- * Слияния (основа): C10 Вихрь, C14 Генерация нейтронов, C25 Повелитель тайфуна, C39 Супертайфун, C50 Чёрная дыра.
+ * #12 Вихрь — 1:1 по коду оригинала (docs/orig/spells/cyclone.md, карточка tasks/cyclone.md):
+ * Play_Tornado: wait(PSpeed) один раз; залп — Num вихрей в один кадр у мага, k-й в k-го ближайшего (≤ 23 ед.,
+ * врагов меньше — лишние не создаются), затем wait(PSpeed 3.5 с).
+ * Вихрь (ID 13): курс один раз при создании, каждые 4 кадра (0.13 с) rotation = курс·Random(0.3, 1.2) (умножение, как в коде);
+ * 2.36 ед/с (134 px/с), scale Size·0.375 + Size·0.375·0.0075 за тик 0.033; коллайдер квадрат 2.5 × scale;
+ * урон: wait 0.3, затем каждые 0.33 с (коллайдер 0.03 с + пауза 0.3), каждый враг раз за тик, без отброса.
+ * Свойства: 461 — только числа; 462 Электрическая сфера (ID 60: 2.2 ед/с без виляния, ×0.9933 за тик, 2 молнии раз в 28 тиков);
+ * 463 Космические пустоты (ID 39: по одному через 0.35 с в точке маг ± (3.8, 5.5) ед., рост +0.03·0.998ⁿ за тик, ×9 из данных не действует).
+ * Слияния (числа карточки; полностью — партия 6): 10, 14, 25, 39, 50.
  */
 class Cyclone extends DataSpell {
+  private co: Co | null = null;
   private winds: Wind[] = [];
-  private spare: Wind[] = [];
-  private pool = new ImgPool();
-  private clock = 0;
+  private pool: Phaser.GameObjects.Image[] = [];
+  private bolts = new OrigBullets();
+  /** слияния 39/50: КД после окончания вихря */
+  private alive = 0;
+
+  private get size(): number { return Math.round(100 + this.pctOf('size') + W.stats.size * 100) / 100; }
+  private get pSpeed(): number { return Math.max(0.2, this.cdOrig(this.data.base.cd ?? 3.5) * this.cdGlobal); }
+  private get num(): number { return this.count; }
+
+  onChange() {
+    super.onChange();
+    textures();
+    if (!this.co) this.co = new Co(this.loop());
+  }
 
   destroy() {
-    for (const w of this.winds) if (w.img) this.pool.put(w.img);
-    this.winds.length = 0;
-    this.pool.destroy();
+    for (const w of this.winds) w.img.destroy();
+    for (const i of this.pool) i.destroy();
+    this.winds = []; this.pool = []; this.co = null;
+    this.bolts.destroy();
   }
-
-  /** слияния, у которых КД начинается после окончания вихря */
-  private get cdAfterEnd(): boolean { return this.hasCombo(39) || this.hasCombo(50); }
 
   update(dt: number) {
-    ensureInkCyclone();
-    this.clock += dt;
-    if (!(this.cdAfterEnd && this.winds.length) && this.readyData(dt)) this.cast();
-    if (!this.winds.length) return;
-    const P = W.player;
-    const grow = 0.5 * this.speedMul; // скорость роста радиуса (доля r0 в секунду); у Пустот ×9
-    const tick = this.tickSec;
+    if (!this.co) this.onChange();
+    this.co!.update(dt);
+    this.bolts.update(dt);
     for (let i = this.winds.length - 1; i >= 0; i--) {
       const w = this.winds[i];
-      if (w.delay > 0) {
-        w.delay -= dt;
-        if (w.delay > 0) continue;
-        w.img = this.pool.get(this.texFor(w.mode), DEPTH.zone, w.mode !== 'void' && w.mode !== 'hole' && w.mode !== 'orbit');
-        if (this.hasProp(462)) w.img.setTint(0xcfe4ff);
+      if (!this.step(w, dt)) {
+        w.img.setVisible(false); this.pool.push(w.img);
+        this.winds[i] = this.winds[this.winds.length - 1]; this.winds.pop();
       }
-      w.t += dt;
-      if (w.t >= w.life) { this.kill(i); continue; }
-      const k = w.t / w.life;
-      switch (w.mode) {
-        case 'seek': { // ползёт к ближайшему врагу
-          const e = w.tgt = keepTarget(w.tgt, w.x, w.y);
-          if (e) this.steer(w, e.x, e.y, 55, dt);
-          w.r = this.hasProp(462) ? w.r0 * (1.3 - 0.8 * k) : w.r0 * Math.min(4, 1 + grow * w.t);
-          if (this.hasProp(462)) this.shoot(w, dt);
-          break;
-        }
-        case 'void': case 'hole':
-          w.vx = w.vy = 0;
-          w.r = w.r0 * Math.min(5, 1 + grow * w.t);
-          break;
-        case 'orbit': // C10: кружит рядом с магом, постепенно сужается
-          w.ang += dt * 2.2;
-          w.x = P.x + Math.cos(w.ang) * 60; w.y = P.y + Math.sin(w.ang) * 60;
-          w.r = w.r0 * (2.4 - 1.4 * k);
-          break;
-        case 'neutron': { // C14: один, быстро расширяется, скорость падает
-          const e = w.tgt = keepTarget(w.tgt, w.x, w.y);
-          if (e) this.steer(w, e.x, e.y, 90 * (1 - k), dt);
-          w.r = w.r0 * (1 + 2.5 * k);
-          break;
-        }
-        case 'typhoon': { // C25: разлетаются, сначала быстро, потом медленно
-          const sp = 30 + 230 * (1 - k) * (1 - k), d = Math.hypot(w.vx, w.vy) || 1;
-          w.vx = (w.vx / d) * sp; w.vy = (w.vy / d) * sp;
-          w.r = w.r0 * Math.min(3, 1 + grow * w.t);
-          break;
-        }
-        case 'super': // C39: закреплён за магом
-          w.x = P.x; w.y = P.y; w.vx = w.vy = 0;
-          w.r = w.r0 * Math.min(2, 1 + grow * w.t * 0.5);
-          break;
+    }
+    this.alive = this.winds.length;
+  }
+
+  // ———— корутины каста ————
+  private *loop(): Generator<number, void, unknown> {
+    yield this.pSpeed;
+    for (;;) {
+      if (this.hasCombo(39) || this.hasCombo(50)) {
+        this.make(this.hasCombo(39) ? 'super' : 'hole', 0);
+        yield 0.1;
+        while (this.alive) yield 0.1;
+        yield this.pSpeed;
+        continue;
       }
-      w.x += w.vx * dt; w.y += w.vy * dt;
-      const img = w.img!;
-      const key = this.frames(w.mode)[(((this.clock * CYC_FPS) | 0) + i) % 3];
-      if (img.texture.key !== key) img.setTexture(key);
-      const a = k < 0.1 ? k / 0.1 : k > 0.85 ? (1 - k) / 0.15 : 1;
-      img.setPosition(w.x, w.y).setScale((w.r * 2) / TEX_D).setAlpha(a * 0.9);
-      img.rotation -= dt * (w.mode === 'void' || w.mode === 'hole' ? 3 : 7);
-      // урон
-      this.cur = w; this.curTick = tick;
-      W.enemies.grid.query(w.x, w.y, w.r * 0.85, this.onHit);
+      if (this.hasCombo(10)) { this.make('orbit', 0); yield this.pSpeed; continue; }
+      if (this.hasProp(463)) {
+        // Play_Void: по одному через 0.35 с, Num штук, затем КД
+        for (let i = 0; i < this.num; i++) {
+          this.make('b', 0);
+          if (i < this.num - 1) yield VOID_DELAY;
+        }
+        yield this.pSpeed;
+        continue;
+      }
+      const P = W.player;
+      const list = W.enemies.list.filter((e) => e.alive)
+        .map((e) => ({ e, d: ((Math.abs(e.x - P.x) + Math.abs(e.y - P.y)) / U) * prio(e.type.uid) }))
+        .sort((a, b) => a.d - b.d);
+      if (!list.length) { yield 0.1; continue; }
+      if (this.hasCombo(25)) {
+        // Повелитель тайфуна: 3 залпа ×Num через 0.25 с, направления AimPlus = i
+        const a0 = Math.atan2(list[0].e.y - P.y, list[0].e.x - P.x);
+        for (let x = 0; x < 3; x++) {
+          for (let i = 0; i < this.num; i++) this.make('typhoon', a0 + (i / this.num) * Math.PI * 2 + rnd(-25, 25) * DEG);
+          if (x < 2) yield 0.25;
+        }
+        yield this.pSpeed + 0.03;
+        continue;
+      }
+      const n = this.hasCombo(14) ? 1 : this.num;
+      for (let i = 0; i < n; i++) {
+        const t = list[i];
+        if (!t || t.d > RANGE) break;
+        const a = Math.atan2(t.e.y - P.y, t.e.x - P.x);
+        this.make(this.hasCombo(14) ? 'neutron' : this.hasProp(462) ? 'c' : 'a', a);
+      }
+      yield this.pSpeed;
     }
   }
 
-  private frames(m: Mode) { return m === 'void' || m === 'hole' || m === 'orbit' ? CYC_TEX_VOID : CYC_TEX; }
-  private texFor(m: Mode) { return this.frames(m)[0]; }
-
-  private cur: Wind | null = null;
-  private curTick = 0.3;
-  private onHit = (e: Enemy) => {
-    const w = this.cur!;
-    if (!w.gate.ok(e.id, this.clock, this.curTick)) return;
-    let d = this.dmg;
-    if (w.mode === 'super') d *= 1 + w.t;                                  // множитель растёт со временем следования
-    if (w.mode === 'hole') d *= 3 * this.count * W.stats.durMul;           // ×3 за вихрь и от темпа длительности
-    if (w.mode === 'hole') W.enemies.stun(e, 0.3);
-    const dx = w.x - e.x, dy = w.y - e.y, dl = Math.hypot(dx, dy) || 1;
-    W.enemies.damage(e, d, (dx / dl) * 8, (dy / dl) * 8, this.def.id);      // слегка затягивает внутрь
-  };
-
-  private steer(w: Wind, tx: number, ty: number, speed: number, dt: number) {
-    const dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy) || 1;
-    const k = Math.min(1, dt * 3);
-    w.vx += ((dx / d) * speed - w.vx) * k;
-    w.vy += ((dy / d) * speed - w.vy) * k;
-  }
-
-  /** 462: заряды из сжимающейся сферы */
-  private shoot(w: Wind, dt: number) {
-    w.shotT -= dt;
-    if (w.shotT > 0) return;
-    w.shotT = 0.3;
-    const a = Math.random() * Math.PI * 2, sp = 200;
-    W.projectiles.fire({
-      src: this.def.id, x: w.x, y: w.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-      dmg: this.dmg * 0.5, r: 4, life: 0.5, tex: 'spark', size: 10, tint: 0xbfe0ff, pierce: 0, knock: 10,
-    });
-  }
-
-  private kill(i: number) {
-    const w = this.winds[i];
-    if (w.img) this.pool.put(w.img);
-    w.img = null;
-    this.winds[i] = this.winds[this.winds.length - 1]; this.winds.pop();
-    this.spare.push(w);
-  }
-
-  private add(mode: Mode, x: number, y: number, vx: number, vy: number, r0: number, life: number, delay = 0, ang = 0) {
-    const w = this.spare.pop() ?? { gate: new HitGate() } as Wind;
-    w.gate.clear();
-    Object.assign(w, { mode, x, y, vx, vy, t: 0, life, delay, r0, r: r0, ang, shotT: 0.15, img: null, tgt: null });
-    if (delay <= 0) {
-      w.delay = 0;
-      w.img = this.pool.get(this.texFor(mode), DEPTH.zone, mode !== 'void' && mode !== 'hole' && mode !== 'orbit').setAlpha(0);
-      if (this.hasProp(462)) w.img.setTint(0xcfe4ff);
+  // ———— создание (TornadoAttack) ————
+  private make(kind: Kind, ang: number) {
+    const P = W.player, S = this.size;
+    let x = P.x, y = P.y, tex = T.a, sc = S * 0.375, coll = 2.5, v = 3.0 * 0.026 / TA, grow = S * 0.375 * 0.0075, expand = 0;
+    let life = this.durSec, fade = 3, fadeA = 0.1875, tint = 0xffffff;
+    switch (kind) {
+      case 'c': tex = T.c; v = 3.0 * 0.022 / TC; grow = 0; break;
+      case 'b': case 'hole':
+        x += rnd(-3.8, 3.8) * U; y += rnd(-5.5, 5.5) * U; tex = T.b; v = 0; grow = 0;
+        if (kind === 'b') { sc = S * 0.25; coll = 3.75; expand = 0.03; fade = 8; fadeA = 0.09375; }
+        else { sc = S * 0.1 + 0.1; coll = 6; expand = 0.055; life += 1.0; tint = 0x8040c0; }
+        break;
+      case 'orbit': tex = T.b; sc = S * 0.25 + 0.15; coll = 2.35; v = 0; grow = 0; tint = 0xff42ff; break;
+      case 'neutron': sc = S * 0.12 + 0.3 + 0.25 * S * (this.num - 1); coll = 5; v = 2.5; grow = 0; tint = 0xffe0a0; break;
+      case 'typhoon': sc = S * 0.1 + 0.35; coll = 3.5; grow = 0.01; tint = 0xd0f0ff; break;
+      case 'super': sc = S * 0.18 + 0.25; coll = 7; v = 0; grow = 0; break;
     }
+    const img = (this.pool.pop() ?? W.scene.add.image(0, 0, tex)).setTexture(tex).setVisible(true)
+      .setDepth(DEPTH.zone).setBlendMode(kind === 'b' || kind === 'hole' ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD)
+      .setTint(tint).setAlpha(0.75).setRotation(ang);
+    const w: Wind = {
+      kind, x, y, h0: ang, h: ang, t: 0, life, fade, fadeA, sc, coll, grow, expand, v,
+      dmg: this.dmg, hitT: 0.3, hitK: 1, acc: 0, n: 0, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
+    };
     this.winds.push(w);
+    this.draw(w, 0.75);
   }
 
-  private cast() {
+  /** кадр объекта; false — уничтожить */
+  private step(w: Wind, dt: number): boolean {
+    w.t += dt;
     const P = W.player;
-    const n = this.count;
-    const r0 = 16 * this.sizeMul;
-    const life = this.durSec;
-
-    if (this.hasCombo(10)) { this.add('orbit', P.x + 60, P.y, 0, 0, r0, life, 0, 0); return; }
-    if (this.hasCombo(14)) { this.add('neutron', P.x, P.y, 0, 0, r0 * (1 + 0.25 * n), life); return; }
-    if (this.hasCombo(39)) { this.add('super', P.x, P.y, 0, 0, r0 * (1 + 0.2 * n), life); return; }
-    if (this.hasCombo(50)) { const p = randomViewPoint(60); this.add('hole', p.x, p.y, 0, 0, r0, life); return; }
-    if (this.hasCombo(25)) {
-      // в четыре стороны, 3 раза подряд
-      for (let b = 0; b < 3; b++) for (let j = 0; j < 4; j++) {
-        const a = (j * Math.PI) / 2 + b * (Math.PI / 4);
-        this.add('typhoon', P.x, P.y, Math.cos(a), Math.sin(a), r0, life, b * 0.35);
+    const tick = w.kind === 'a' || w.kind === 'typhoon' || w.kind === 'neutron' ? TA : TC;
+    while (w.acc + tick <= w.t) {
+      w.acc += tick; w.n++;
+      switch (w.kind) {
+        case 'a': case 'typhoon':
+          // каждые 4 кадра: rotation = TornadoAngle · Random(0.3, 1.2)
+          if (w.n % 4 === 0) w.h = w.h0 * rnd(0.3, 1.2);
+          w.sc += w.kind === 'a' ? w.grow : 0.01;
+          break;
+        case 'c':
+          w.sc *= 0.9933;
+          if (w.n === 21) { this.ballLightning(w); w.n = -6; }
+          break;
+        case 'b': case 'hole':
+          if (w.t >= 0.09) { w.sc += w.expand; w.expand *= 0.998; }
+          break;
+        case 'orbit': {
+          // центр вращается −1.95° за тик 0.03
+          const a = -1.95 * DEG, c = Math.cos(a), s = Math.sin(a);
+          const ox = w.ox * c - w.oy * s; w.oy = w.ox * s + w.oy * c; w.ox = ox;
+          break;
+        }
+        case 'neutron':
+          if (w.n % 7 === 0) w.sc += 0.05625 * this.size;
+          break;
       }
-      return;
+      if (w.v) { w.x += Math.cos(w.h) * w.v * tick * U; w.y += Math.sin(w.h) * w.v * tick * U; }
     }
-    if (this.hasProp(463)) {
-      for (let i = 0; i < n; i++) { const p = randomViewPoint(40); this.add('void', p.x, p.y, 0, 0, r0, life, i * 0.2); }
-      return;
+    if (w.kind === 'super') { w.x = P.x; w.y = P.y; }
+    if (w.kind === 'orbit') { w.x = P.x + w.ox; w.y = P.y + w.oy; }
+    // урон: Tornado_Attack — wait 0.3, далее раз в 0.33 с, каждый враг раз за тик
+    if (w.t >= w.hitT) {
+      w.hitT += 0.33;
+      const h = (w.coll * w.sc / 2) * U;
+      let d = w.dmg;
+      if (w.kind === 'super') { d *= w.hitK; w.hitK += w.t > w.life ? 0.3 : 0.1; }
+      boxDamage(w.x, w.y, w.h, h, h, d, this.def.id, new Set());
+      if (w.kind === 'hole') W.enemies.grid.query(w.x, w.y, h, (e) => { W.enemies.stun(e, 0.33); });
     }
-    // каждый вихрь сразу берёт свою цель — ближайших врагов на экране по очереди (нет врагов — случайная сторона)
-    const ts = W.enemies.nearestN(P.x, P.y, n, aimR());
-    for (let i = 0; i < n; i++) {
-      const e = ts.length ? ts[i % ts.length] : null;
-      const a = e ? Math.atan2(e.y - P.y, e.x - P.x) : Math.random() * Math.PI * 2;
-      this.add('seek', P.x + Math.cos(a) * 12, P.y + Math.sin(a) * 12, Math.cos(a) * 40, Math.sin(a) * 40, r0, life);
-      this.winds[this.winds.length - 1].tgt = e;
+    // жизнь + затухание
+    const over = w.t - w.life;
+    if (over >= w.fade * TC) return false;
+    this.draw(w, over < 0 ? 0.75 : 0.75 - w.fadeA * (Math.floor(over / TC) + 1));
+    return true;
+  }
+
+  private draw(w: Wind, a: number) {
+    const [px, tw] = PXS[w.tex];
+    let k = 1;
+    if (w.kind === 'c') { const f = ((w.n % 28) + 28) % 28; k = f >= 21 || f < 0 ? 1.22 : 1; }
+    // кадры A1..4 по 1 тику — поворот рисунка на 90° на кадр
+    const spin = w.kind === 'a' || w.kind === 'typhoon' || w.kind === 'super' ? (w.n % 4) * Math.PI / 2 : w.t * -3;
+    w.img.setPosition(w.x, w.y).setScale(px * PX * w.sc * k / tw).setRotation(w.h + spin).setAlpha(Math.max(0, a));
+  }
+
+  /** 462 BallLightningAttack: ровно 2 молнии в случайных направлениях, дочерние к сфере, полный урон, пробой 999 */
+  private ballLightning(w: Wind) {
+    for (let j = 0; j < 2; j++) {
+      const a = Math.random() * Math.PI * 2;
+      const L = 2.35 * this.size * w.sc; // ед.
+      this.bolts.fire({
+        x: w.x, y: w.y, ang: a, sp: 0, life: 0.42, tex: T.l,
+        scaleX: (L * 100) / PXS[T.l][1] / 1, scaleY: (L * 100 * 0.12) / 12,
+        hl: (L / 2) * U, hw: (L * 0.06) * U, cx: 0, pierce: 999, dmg: w.dmg, src: this.def.id,
+        tint: 0xcfeaff, data: { off: 0 },
+        step: (b) => {
+          // ElectricD: 10 шагов по 0.042 с, сдвиг +0.2 ед. на шаг; коллайдер ≈0.35 с; следует за сферой
+          b.data.off = Math.min(10, Math.floor(b.t / 0.042)) * 0.2 * U;
+          b.x = w.x + Math.cos(b.ang) * (b.data.off + (L / 2) * U);
+          b.y = w.y + Math.sin(b.ang) * (b.data.off + (L / 2) * U);
+          if (b.t > 0.35) b.hl = 0;
+        },
+        alpha: (b) => 1 - Math.max(0, b.t - 0.3) / 0.12,
+      });
     }
   }
 }

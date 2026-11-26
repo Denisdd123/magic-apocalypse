@@ -3,11 +3,6 @@ import { ENCHANT_MAX } from '../../data/spells_data';
 import { W } from '../World';
 import { Spell, type AttrDef, type SpellDef } from './Spell';
 
-/**
- * Масштаб урона: % ATK оригинала → наш % силы (у нас BASE_ATK = 10).
- * Магическая пуля 500% → 100, как было у Звёздной иглы.
- */
-export const DMG_SCALE = 0.2;
 
 /** Цвета вариантов свойства (в оригинале иконка заклинания в 3 цветах) */
 export const PROP_TINTS = [0xff8a6a, 0x7ab8ff, 0xffd25a];
@@ -57,12 +52,41 @@ export abstract class DataSpell extends Spell {
     return (base + add) * Math.max(0, 1 + pct / 100) * mul;
   }
 
-  /** Урон одного удара (уже в наших единицах, со всеми бонусами) */
+  /** Урон одного удара: % атаки оригинала × Attack (3.0: без DMG_SCALE, MASTER §3) */
   get dmg(): number { return this.dmgOf(this.data.base.dmgPct ?? 100); }
   /** Урон от произвольной базы в % ATK оригинала (для вторичных ударов: взрыв, осколки) */
-  dmgOf(origPct: number): number {
-    return W.stats.spellDamage(this.stat('dmg', origPct) * DMG_SCALE, W.stats.sd(this.def.id) * (this.fusion ? 1 + W.stats.comboDmg : 1));
+  dmgOf(origPct: number, extraUp = 0): number {
+    // оригинал: база × (Σ% урона заклинания + % всей магии + 100)% × clamp((100 − Σснижений)%) × Attack (balance.md §5)
+    let add = 0, up = extraUp, down = 0, mul = 1;
+    for (const m of this.mods()) {
+      if (m.stat !== 'dmg') continue;
+      if (m.op === 'add' || m.op === 'sec') add += m.v;
+      else if (m.op === 'pct') { if (m.v >= 0) up += m.v; else down -= m.v; }
+      else if (m.op === 'mul') mul *= m.v;
+    }
+    const s = W.stats;
+    up += ((s.spellDmg[this.def.id] ?? 0) + s.magicDmg) * 100;
+    const pct = (origPct + add) * Math.max(0, 1 + up / 100) * Math.max(0.01, 1 - down / 100) * mul;
+    return s.spellDamage(pct, this.fusion ? 1 + s.comboDmg : 1, true);
   }
+  /**
+   * КД по формуле оригинала (StartInformation_B): (база + Σсек) × Π(1 + pct/100) × Πmul —
+   * проценты ПЕРЕМНОЖАЮТСЯ (эффекты 158/159: RatioU *= (100 − v)%, RatioD *= (100 + v)%). Без общих сокращений.
+   */
+  cdOrig(base: number): number {
+    let add = 0, mul = 1;
+    for (const m of this.mods()) {
+      if (m.stat !== 'cd') continue;
+      if (m.op === 'add' || m.op === 'sec') add += m.v;
+      else if (m.op === 'pct') mul *= Math.max(0, 1 + m.v / 100);
+      else if (m.op === 'mul') mul *= m.v;
+    }
+    return (base + add) * mul;
+  }
+  /** Общий множитель перезарядки мага (UnitApply_MagicCooltimeRatio) для этого заклинания */
+  get cdGlobal(): number { return W.stats.cdMul * (1 - (W.stats.spellCdr[this.def.id] ?? 0)); }
+  /** Σ процентов стата s (для формул оригинала «(100 + U)%») */
+  pctOf(s: Stat): number { let p = 0; for (const m of this.mods()) if (m.stat === s && m.op === 'pct') p += m.v; return p; }
   get cdSec(): number { return this.stat('cd', this.data.base.cd ?? 1); }
   get count(): number { return Math.max(1, Math.round(this.stat('count', this.data.base.count ?? 1) + W.stats.sc(this.def.id))); }
   /** множитель размера (свой × общий) */

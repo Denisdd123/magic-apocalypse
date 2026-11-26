@@ -1,93 +1,118 @@
 import Phaser from 'phaser';
 import { DEPTH } from '../config';
-import { ENEMY_TYPES, ORIG_UNIT, type Enemy } from './Enemies';
+import { ORIG_UNIT, typeOf, type Enemy } from './Enemies';
 import { W } from './World';
 
 /**
- * Ход зоны, как в оригинале (видео полного забега): зона длится 12 минут,
- * боссы на 3:00 / 6:00 / 9:00 / 12:00 (таймер стоит, пока босс жив),
- * после каждого — обелиск с легендарками (усиление заклинания — редкая карточка в выборе, SpellBook),
- * перед 6:00 и 12:00 — мини-волна мелких и торговец. После 12:00 — зона пройдена.
+ * Эпики, боссы, арена, торговец — 3.0, партия 3 (spawn.md §5, §6; отметки — Waves.EV1).
+ * - Эпики: `Create_UnitEnemyEpic` — 12 точек по кругу R(10, 15), задержки ApplyCreateEpicEnemyDelay = 0 (все сразу),
+ *   пул 15 (создание, пока свободных ≥ 2).
+ * - Боссы: `Create_UnitEnemyBoss(ID, Num)` — Num точек по кругу R(10, 18) (у 44 — 9 / 10), пул 15, свободных ≥ 2.
+ *   Вызывается дважды (Waves), зачистка закрывается на смерти Num-го (`ApplyBossNum`).
+ * - Дроп по UnitID (Play_Unit_Death, и у эпиков, и у боссов): 41 — 6 больших сфер, 42–45 — плод Мирового Древа, 46 — 5 больших.
+ * - Арена (`Play_BossLimitGround_Damage`) ставится только вместе с обелиском (`CreateItem_Character(9|10|11)`, зоны 12–14);
+ *   в зоне 1 по коду её нет. Метод `startArena` оставлен для зон со сменой карты.
  */
-export const ZONE = {
-  bossAt: [180, 360, 540, 720],
-  bossHp: [2600, 7000, 15000, 28000],
-  waveAt: [312, 672],      // мини-волна перед торговцем
-  merchantAt: [325, 685],
-};
+
+const U = ORIG_UNIT;
+const R = (a: number, b: number) => a + Math.random() * (b - a);
+const POOL_EPIC = 15, POOL_BOSS = 15, MERCHANT_TIME = 40;
+
+interface EpicJob { id: number; left: number; wait: number; pos: { x: number; y: number }[] }
 
 export class Zone {
-  /** сколько боссов убито (0..4) — «стадия» зоны */
+  /** сколько боссов убито — для оттенка пола (2.2) */
   stage = 0;
-  boss: Enemy | null = null;
-  private waves = 0;
-  private merchants = 0;
+  private jobs: EpicJob[] = [];
 
   onBossKilled: ((idx: number, x: number, y: number) => void) | null = null;
   onMerchant: (() => void) | null = null;
-  onMerchantGone: (() => void) | null = null;
+  /** ApplyMerchantTime: полоска Obj_MerchantBar (40 с); null — торговец не идёт */
+  private merchantT: number | null = null;
+  get merchantFrac() { return this.merchantT === null ? null : Math.min(1, this.merchantT / MERCHANT_TIME); }
 
-  get bossFight() { return !!this.boss; }
-  /** Арена босса (оригинал ApplyBossGround_*, Play_BossLimitGround_Damage): круг R=√145 ед. вокруг точки мага на старте босса;
-   *  за R маг упирается в край, за √138 ед. — урон 10% макс. HP раз в 0.8 с. */
+  /** Идёт бой с боссами: ApplyBossNum > 0 или босс ещё на поле */
+  get bossFight() { return W.waves.bossNum > 0 || this.count(4) > 0; }
+  /** Таймер стоит во время волны-зачистки (Play_Time остановлен) */
+  get timeFrozen() { return W.waves.timeFrozen; }
+
+  /** Арена босса: ApplyBossGround_X/Y, стена √145, урон за √138 — 10 % макс. HP (или −1 заряд щита) раз в 0.8 с */
   arena: { x: number; y: number; img: Phaser.GameObjects.Image | null } | null = null;
   private arenaHurtT = 0;
+  startArena(x: number, y: number) {
+    this.arena?.img?.destroy();
+    const Rw = Math.sqrt(145) * U;
+    const img = W.scene.add.image(x, y, 'arena_ring').setDepth(DEPTH.ground + 1).setDisplaySize(Rw * 2, Rw * 2);
+    this.arena = { x, y, img };
+  }
+  endArena() { this.arena?.img?.destroy(); this.arena = null; }
   arenaClamp(P: { x: number; y: number }, dt: number) {
     const a = this.arena; if (!a) return;
-    const R = Math.sqrt(145) * ORIG_UNIT, Rd = Math.sqrt(138) * ORIG_UNIT;
+    const Rw = Math.sqrt(145) * U, Rd = Math.sqrt(138) * U;
     const dx = P.x - a.x, dy = P.y - a.y, d = Math.hypot(dx, dy);
-    if (d > R) { P.x = a.x + (dx / d) * R; P.y = a.y + (dy / d) * R; }
+    if (d > Rw) { P.x = a.x + (dx / d) * Rw; P.y = a.y + (dy / d) * Rw; }
     this.arenaHurtT -= dt;
     if (d > Rd && this.arenaHurtT <= 0) { this.arenaHurtT = 0.8; W.player.hurt(W.stats.maxHp * 0.1); }
   }
-  /** Таймер стоит во время боя с боссом */
-  get timeFrozen() { return !!this.boss; }
 
-  update() {
-    const t = W.time;
-    if (!this.boss && this.stage < ZONE.bossAt.length && t >= ZONE.bossAt[this.stage]) this.startBoss();
-    if (this.waves < ZONE.waveAt.length && t >= ZONE.waveAt[this.waves]) { this.waves++; this.miniWave(); }
-    if (this.merchants < ZONE.merchantAt.length && t >= ZONE.merchantAt[this.merchants]) { this.merchants++; this.onMerchant?.(); }
+  /** CreateItem_Character(12): подходить не надо — через 40 с окно открывается само (Play_MerchantTime) */
+  merchant() {
+    W.artifacts.merchantNum++;
+    if (W.artifacts.deck.merchantStock >= 11) this.merchantT = 0;
   }
 
-  private startBoss() {
-    const P = W.player, idx = this.stage;
-    this.onMerchantGone?.();
-    const type = ENEMY_TYPES['boss' + idx] ?? ENEMY_TYPES.boss0;
-    // босс крупный (спрайт ~5 ед. оригинала) — появляется за верхним краем экрана (место — оценка)
-    const b = W.enemies.spawn(type, P.x, P.y - 9.5 * ORIG_UNIT, false, ZONE.bossHp[idx]);
-    if (!b) return;
-    this.boss = b;
-    const R = Math.sqrt(145) * ORIG_UNIT;
-    const img = W.scene.add.image(P.x, P.y, 'arena_ring').setDepth(DEPTH.ground + 1).setDisplaySize(R * 2, R * 2);
-    this.arena = { x: P.x, y: P.y, img };
-    // свиты-кольца в оригинале нет: во время босса просто идёт волна «마인/하울링» обычным спавнером
-    // (Enemies.waveType/waveRate при bossFight — 30 мобов за 0.75 с и т.д.)
+  private count(cat: number) { let n = 0; for (const e of W.enemies.list) if (e.alive && e.cat === cat) n++; return n; }
+
+  /** Create_UnitEnemyEpic: точки считаются при старте корутины */
+  queueEpic(id: number, num: number, firstDelay: number) {
+    const P = W.player, pos: { x: number; y: number }[] = [];
+    for (let k = 0; k < 12; k++) { const a = (k * Math.PI) / 6, r = R(10, 15) * U; pos.push({ x: P.x + Math.cos(a) * r, y: P.y + Math.sin(a) * r }); }
+    this.jobs.push({ id, left: num, wait: firstDelay, pos });
   }
 
-  /** Вызывается из Enemies.kill */
+  /** Create_UnitEnemyBoss: возвращает, сколько создано (ApplyBossNum этого вызова) */
+  spawnBosses(id: number, num: number): number {
+    const P = W.player, t = typeOf(id);
+    const rDef = num < 11 ? 9 : 10, step = (Math.PI * 2) / Math.max(1, num);
+    let made = 0;
+    for (let k = 0; k < num; k++) {
+      if (POOL_BOSS - this.count(4) < 2) break;
+      const r = (id === 44 ? rDef : R(10, 18)) * U;
+      if (W.enemies.spawn(t, P.x + Math.cos(step * k) * r, P.y + Math.sin(step * k) * r, 4)) made++;
+    }
+    return made;
+  }
+
+  update(dt: number) {
+    if (this.merchantT !== null && (this.merchantT += dt) >= MERCHANT_TIME) { this.merchantT = null; this.onMerchant?.(); }
+    for (let i = this.jobs.length - 1; i >= 0; i--) {
+      const j = this.jobs[i];
+      j.wait -= dt;
+      while (j.wait <= 0 && j.left > 0) {
+        if (POOL_EPIC - this.count(3) < 2) { j.left = 0; break; }
+        const p = j.pos[(Math.random() * 12) | 0];
+        W.enemies.spawn(typeOf(j.id), p.x, p.y, 3);
+        j.left--;
+        // ApplyCreateEpicEnemyDelay = 0 (C_Battle_Manager.Start, @line 16114 decomp) — следующий сразу
+      }
+      if (j.left <= 0) this.jobs.splice(i, 1);
+    }
+  }
+
+  /** Смерть эпика или босса (из Enemies.kill) */
   bossDied(e: Enemy) {
-    if (e !== this.boss) return;
-    this.boss = null;
-    this.arena?.img?.destroy(); this.arena = null;
-    const idx = this.stage++;
-    // поле усыпано кристаллами
-    for (let i = 0; i < 36; i++) {
-      const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 230;
-      W.orbs.drop(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, i % 6 ? 'm' : 'l');
-    }
-    W.orbs.drop(e.x + 12, e.y, 'life', 0);
+    const uid = e.type.uid;
+    if (uid === 41 || uid === 46) {
+      // CreateItem_Position(−3, 6 | 5): большие сферы, смещение угол R(0,1)·2π, по x и y × R(0.5, 3) ед.
+      const n = uid === 41 ? 6 : 5;
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        W.orbs.drop(e.x + Math.cos(a) * R(0.5, 3) * U, e.y + Math.sin(a) * R(0.5, 3) * U, 'l');
+      }
+    } else if (uid >= 42 && uid <= 45) W.pickups.tree(e.x, e.y);
+    if (e.cat !== 4) return;
+    W.waves.onBossDeath();
     W.fx.burst(e.x, e.y, 160, 0xff3040, 0.7);
-    this.onBossKilled?.(idx, e.x, e.y);
-  }
-
-  /** «Мини-босс»: толпа мелких мобов сходится к магу со всех сторон */
-  private miniWave() {
-    const P = W.player;
-    const n = 70;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2, d = 240 + Math.random() * 50;
-      W.enemies.spawn(ENEMY_TYPES.small, P.x + Math.cos(a) * d, P.y + Math.sin(a) * d);
-    }
+    this.onBossKilled?.(this.stage++, e.x, e.y);
   }
 }

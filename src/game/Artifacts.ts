@@ -4,24 +4,24 @@ import { areaDamage } from './Projectiles';
 import { W } from './World';
 import type { RuneType } from './Pickups';
 import type { Enemy } from './Enemies';
-import { DEPTH } from '../config';
+import { DEPTH, ORIG_U } from '../config';
 import { ALL_SPELLS } from './spells/registry';
-import { DMG_SCALE } from './spells/DataSpell';
 import { ART_DATA, SYN_DATA, type ArtData, type SynData } from '../data/artifacts_data';
+import { SYNERGY } from '../data/orig/synergies';
+import { ArtifactDeck, MERCHANT_BASE, VISIT_MUL, type ChestType } from './ArtifactDeck';
 
 // Артефакты и синергии оригинала (182 + 63). Числа и тексты — из таблиц (src/data/artifacts_data.ts, генерируется),
 // здесь — толкование ID эффектов и механика. Что требует хука в чужом коде — помечено todo (см. TODO_ART / TODO_SYN).
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'special' | 'legend';
 
-/** weight — шанс выбрать эту редкость в сундуке (внутри редкости все равновероятны, как в оригинале: каждый артефакт по 5 копий).
- *  Настоящие проценты (List_ArtifactDrop) в коде не досчитаны — ОЦЕНКА. price — база цены у торговца (из кода оригинала). */
-export const RARITY: Record<Rarity, { name: string; color: string; weight: number; price: number }> = {
-  common: { name: 'Обычный артефакт', color: '#d9dde6', weight: 34, price: 220 },
-  rare: { name: 'Редкий артефакт', color: '#4aa8ff', weight: 30, price: 260 },
-  epic: { name: 'Героический артефакт', color: '#c06bff', weight: 26, price: 360 },
-  special: { name: 'Особый артефакт', color: '#3ee08f', weight: 10, price: 520 },
-  legend: { name: 'Легендарный артефакт', color: '#ff9a2e', weight: 0, price: 0 }, // только с обелиска после босса
+/** Цвета по редкости (ui.md «Цвета контура и фона»): надпись, контур карточки, фон */
+export const RARITY: Record<Rarity, { name: string; color: string; frame: string; bg: string }> = {
+  common: { name: 'Обычный артефакт', color: '#d8d8d8', frame: '#858585', bg: '#030303' },
+  rare: { name: 'Редкий артефакт', color: '#1ba9e3', frame: '#1a6691', bg: '#010204' },
+  epic: { name: 'Героический артефакт', color: '#cd50ff', frame: '#9130ab', bg: '#040104' },
+  special: { name: 'Особый артефакт', color: '#ff3c64', frame: '#c71a47', bg: '#040102' },
+  legend: { name: 'Легендарный артефакт', color: '#e3851b', frame: '#99591f', bg: '#040301' },
 };
 
 export interface ArtifactDef {
@@ -35,6 +35,8 @@ export interface ArtifactDef {
   /** ключ текстуры/картинки: public/v2/artifacts/<icon>.webp */
   icon: string;
   rarity: Rarity;
+  /** «요구레벨» 1…5 */
+  grade: number;
   text: string[];
   apply?(s: Stats): void;
   /** Периодический эффект: раз в period сек. (сокращается artifactCdr) */
@@ -108,7 +110,9 @@ function applyEff(s: Stats, id: number, v: number) {
     case 23: s.addArmor(v / 100); break;
     case 24: s.regen += v / 10000; break;      // 30 → 0,3%/с
     case 25: s.evasion += v / 100; break;
-    case 26: s.shopDiscount += -v / 100; break;
+    case 26: s.merchantCostRatio += v; break;
+    case 127: s.chestCostRatio += v; break;
+    case 133: s.createDelayRatio += v; break;
     case 30: s.speed += v / 100; break;
     case 36: s.lifeOrbHeal += v / 100; break;
     case 38: s.xpGain += v / 100; break;
@@ -122,7 +126,7 @@ function applyEff(s: Stats, id: number, v: number) {
     case 93: s.highHpBonus += v / 100; break;
     case 110: s.artifactCdr += -v / 100; break;
     case 135: s.runeDur += v / 100; break;
-    case 143: s.eliteHpRed += -v / 100; break;
+    case 143: s.eliteHpRatio *= (100 + v) / 100; break;
     default:
       if (id >= 700 && id <= 724) return; // служебные: 704 предел, 706 перезарядка, 708 % взрыва, 717/724 подписи
       s.artFx[id] = (s.artFx[id] ?? 0) + v;
@@ -133,7 +137,6 @@ function applyEff(s: Stats, id: number, v: number) {
 const TODO_ART: Record<number, string> = {
   57: 'КД вдвое после 5-го применения (хук в Spell.ready)',
   95: 'время быстрее на 24%, золото +24%',
-  96: 'перевыбор артефактов сундука 3 раза (ui/chest; s.artFx[51] = 3)',
   107: 'размер персонажа −25% — уменьшен только хитбокс P.r, картинка прежняя',
   110: 'проход сквозь врагов — в нашей игре враги не толкают мага, эффекта нет',
   117: 'макс. уровень +5 (уровень +5 сделан)',
@@ -155,20 +158,19 @@ const TODO_ART: Record<number, string> = {
   73: 'плод мирового древа — упрощён до 3 сфер жизни',
   83: 'вместо настоящих вихря/метеорита/цунами — взрыв 500% по врагу',
   202: 'выбор заклинания без окна: берётся атакующее с наибольшим уровнем',
-  218: 'количество маны — оценка (300)',
-  222: 'количество маны — оценка (1000)',
   100: 'урон взрыва — оценка (2000% ATK, радиус 160)',
 };
 
 const TODO_SYN: Record<number, string> = {
   5: 'шире аура — радиус 90 → 120 (оценка)', 6: 'пассивки +25% (SpellBook)', 8: 'каждое 5-е применение +50% урона (Spell)',
   20: 'молнии Копья объединяются (сейчас без изменений)', 26: 'размер мага −9% только хитбокс',
-  30: 'предел доп. уровня +10 (SpellBook)', 35: 'товар со скидкой бесплатный (GameScene.rollShop; s.artFx.syn35)',
+  30: 'предел доп. уровня +10 (SpellBook)',
+  // 35 «Брокер»: бесплатны только товары дешевле 84 (таких цен нет) и только со скидкой смены зоны — в зоне 1 не действует
   38: 'урон от стаков Гидры — оценка +1% за стак', 41: 'реген от доп. здоровья — оценка (1%/с × доля доп. HP)',
 };
 
 const GRADE: Rarity[] = ['common', 'common', 'rare', 'epic', 'special', 'legend'];
-const P_RUNES: RuneType[] = ['invuln', 'fury', 'greed', 'timestop', 'cleanse'];
+const P_RUNES: RuneType[] = ['fury', 'invuln', 'greed', 'cleanse'];
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function around(minR: number, maxR: number) {
@@ -176,14 +178,17 @@ function around(minR: number, maxR: number) {
   return { x: P.x + Math.cos(a) * d, y: P.y + Math.sin(a) * d };
 }
 /** урон в % ATK оригинала */
-const origDmg = (pct: number) => W.stats.spellDamage(pct * DMG_SCALE);
+const origDmg = (pct: number) => W.stats.spellDamage(pct);
 
 function learnRandomSpells(n: number) {
   const pool = ALL_SPELLS.filter((d) => !W.book.spells.has(d.id) && !W.book.consumed.has(d.id));
   for (let i = 0; i < n && pool.length; i++) W.book.add(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
 }
-function addLevels(n: number) { W.player.level += n; W.player.pendingLevels += n; }
-function spawnChests(n: number, minR: number, maxR: number) { for (let i = 0; i < n; i++) { const p = around(minR, maxR); W.pickups.chest(p.x, p.y); } }
+/** ApplyLevelUpNum += n: n экранов подряд, уровень растёт при каждом выборе (levelup.md §6a) */
+function addLevels(n: number) { W.player.pendingLevels += n; }
+function spawnChests(n: number, id: 5 | -6 | 7 = 5) { for (let i = 0; i < n; i++) W.pickups.chestAt(id); }
+/** «Монета» 400 × k, «Гоблин» 777 × k, k — по MerchantNum */
+function coins(base: number) { W.mana += Math.round(base * VISIT_MUL[Math.min(W.artifacts.merchantNum, 6)]); }
 
 /** Периодические эффекты (перезарядка — из таблицы, ID 706) */
 const TICK: Record<number, () => void> = {
@@ -218,20 +223,17 @@ const TICK: Record<number, () => void> = {
 
 /** Разовые эффекты при получении */
 const ON_GET: Record<number, () => void> = {
-  66: () => { for (let i = 0; i < 24; i++) { const p = around(40, 170); W.orbs.drop(p.x, p.y, i < 6 ? 'l' : 'm', 1); } }, // Камень мудреца
-  75: () => spawnChests(4, 90, 200),       // Богатство: 3 сундука + 1 сундук с артефактами
-  165: () => spawnChests(2, 350, 700),     // Карта сокровищ
+  66: () => { for (let i = 0; i < 50; i++) { const p = around(2 * ORIG_U, 10 * ORIG_U); W.orbs.drop(p.x, p.y, 'l'); } }, // Камень мудреца: CreateItem_Character(−3, 50)
+  75: () => { spawnChests(3); spawnChests(1, 7); }, // Богатство: 3 сундука + Хранилище реликвий
+  165: () => spawnChests(2, -6),           // Карта сокровищ
   69: () => learnRandomSpells(3),          // Карты таро
   182: () => learnRandomSpells(4),         // Магия ИИ
   117: () => addLevels(5),                 // Хроники Акаши
   217: () => addLevels(3),                 // Сова
-  145: () => {                             // Золотая рулетка
-    const pool = ARTIFACTS.filter((a) => a.rarity === 'legend' && !W.artifacts.has(a.id));
-    if (pool.length) W.artifacts.add(pool[(Math.random() * pool.length) | 0].id);
-  },
+  198: () => { W.artifacts.deck.roulette = true; },   // Золотая рулетка: сразу окно с одним легендарным (GameScene)
   202: () => W.artifacts.pickBond(),       // Связь
-  218: () => { W.mana += 300; },           // Монета (оценка)
-  222: () => { W.mana += 1000; },          // Гоблин (оценка)
+  218: () => coins(400),
+  222: () => coins(777),
 };
 
 /** Особые эффекты синергий (сверх eff из таблицы) */
@@ -242,7 +244,7 @@ const SYN_EXTRA: Record<number, (s: Stats) => void> = {
 
 function makeArt(d: ArtData): ArtifactDef {
   const def: ArtifactDef = {
-    id: d.key, num: d.num, name: d.name, en: d.en, emoji: '', icon: d.icon, rarity: GRADE[d.grade] ?? 'common', text: d.text,
+    id: d.key, num: d.num, name: d.name, en: d.en, emoji: '', icon: d.icon, rarity: GRADE[d.grade] ?? 'common', grade: d.grade, text: d.text,
     apply: (s) => { for (const [e, v] of d.eff) applyEff(s, e, v); },
   };
   const period = d.eff.find((e) => e[0] === 706)?.[1];
@@ -294,6 +296,10 @@ const MASK = 8191;
 
 export class ArtifactSet {
   owned: string[] = [];
+  /** колоды сундуков и торговца этого забега */
+  deck = new ArtifactDeck();
+  /** MerchantNum: сколько раз приходил торговец (растёт на отметке времени) */
+  merchantNum = 0;
   synergies = new Set<string>();
   private timers = new Map<string, number>();
   onSynergy: ((s: SynergyDef) => void) | null = null;
@@ -365,8 +371,9 @@ export class ArtifactSet {
     if (def.num === 194) this.wolfNext = W.kills + 2500;
     if (def.num === 107) P.r *= 0.75;                       // Книга сказок: маг меньше (хитбокс)
     if (def.num === 219) s.artFx.unicorn = 1;               // Единорог: особая пассивка (подключает SpellBook)
-    const hpBefore = s.maxHp;
     def.apply?.(s);
+    const eff = ART_DATA.find((d) => d.num === def.num)!.eff;
+    for (const [e, v] of eff) if (e === 51) this.deck.keys += v; // «Связка ключей»
     if (def.period && def.onTick) this.timers.set(id, def.num === 50 ? 0 : def.period * this.artCdMul());
     // ДНК: каждый полученный обелиск (легендарный артефакт) — +8% приумножения и здоровья, эффективность −15% за раз
     if (def.rarity === 'legend' && this.nums.has(118)) {
@@ -377,8 +384,9 @@ export class ArtifactSet {
     this.refreshFlags();
     def.onGet?.();
     this.recompute();
-    // новые HP сразу добавляются к текущему здоровью; заклинания пересчитывают число снарядов
-    P.heal(Math.max(0, s.maxHp - hpBefore));
+    // лечение при взятии: сумма значений эффекта 20 этого артефакта, % макс. HP; заклинания пересчитывают число снарядов
+    const heal = eff.reduce((t, [e, v]) => t + (e === 20 ? v : 0), 0);
+    if (heal) P.heal(Math.round(heal * s.maxHp * 0.01));
     for (const sp of W.book.spells.values()) sp.onChange();
   }
 
@@ -398,7 +406,7 @@ export class ArtifactSet {
     }
   }
 
-  /** Активирует все собранные синергии (Магнум Опус: каждой синергии нужно на 1 артефакт меньше) */
+  /** Button_Artifact_Select: пересчёт при каждом артефакте; нужно «개수» артефактов набора (Магнум Опус — на 1 меньше) */
   private checkSynergies() {
     let changed = true;
     while (changed) {
@@ -406,9 +414,10 @@ export class ArtifactSet {
       const relax = this.synNums.has(19) ? 1 : 0;
       for (const syn of SYNERGIES) {
         if (this.synergies.has(syn.id)) continue;
+        const row = SYNERGY[syn.num];
         let have = 0;
-        for (const p of syn.parts) if (this.has(p)) have++;
-        if (have === 0 || have < syn.parts.length - relax) continue;
+        for (const n of row.artifacts) if (this.nums.has(n)) have++;
+        if (have < row.count - relax) continue;
         this.synergies.add(syn.id);
         this.synNums.add(syn.num);
         syn.apply(W.stats);
@@ -421,12 +430,11 @@ export class ArtifactSet {
 
   private onSynergyGot(num: number) {
     const s = W.stats;
-    if (num === 23) spawnChests(2, 350, 700);                                     // Охотник за сокровищами
+    if (num === 23) spawnChests(2, -6);                                      // Охотник за сокровищами
     if (num === 26) W.player.r *= 0.91;                                           // Вондерлэнд: маг меньше
     if (num === 31 && this.bondKey) s.addSpellDmg(this.bondKey, 1.2);             // Конфлюкс: Связь ×1,5
     if (num === 33) this.gilNext = W.kills + 2500;                                // Гильгамеш
     if (num === 40) this.potionCd = Math.max(0, this.potionCd - 20);              // Эликсир
-    if (num === 35) s.artFx.syn35 = 1;                                            // Брокер (для торговца)
   }
 
   /** Связь: +240% урона одному атакующему заклинанию (todo: окно выбора; пока — с наибольшим уровнем) */
@@ -443,38 +451,26 @@ export class ArtifactSet {
     W.stats.addSpellDmg(this.bondKey, 2.4 + (this.synNums.has(31) ? 1.2 : 0));
   }
 
-  /** 3 случайных разных артефакта, которых ещё нет: сначала редкость по весу, внутри редкости — равновероятно */
-  roll(n = 3): ArtifactDef[] {
-    const pool = ARTIFACTS.filter((a) => !this.has(a.id) && RARITY[a.rarity].weight > 0);
-    const out: ArtifactDef[] = [];
-    while (out.length < n && pool.length) {
-      // с небольшим шансом подсовываем недостающую часть начатой синергии
-      let pick: ArtifactDef | undefined;
-      if (Math.random() < 0.2) {
-        const want = SYNERGIES.filter((s) => !this.synergies.has(s.id) && s.parts.some((p) => this.has(p)))
-          .flatMap((s) => s.parts).filter((p) => pool.some((a) => a.id === p));
-        if (want.length) pick = pool.find((a) => a.id === want[(Math.random() * want.length) | 0]);
-      }
-      if (!pick) {
-        const avail = (Object.keys(RARITY) as Rarity[]).filter((r) => RARITY[r].weight > 0 && pool.some((a) => a.rarity === r));
-        const total = avail.reduce((t, r) => t + RARITY[r].weight, 0);
-        let x = Math.random() * total;
-        const rar = avail.find((r) => (x -= RARITY[r].weight) <= 0) ?? avail[avail.length - 1];
-        const sub = pool.filter((a) => a.rarity === rar);
-        pick = sub[(Math.random() * sub.length) | 0];
-      }
-      out.push(pick);
-      pool.splice(pool.indexOf(pick), 1);
-    }
-    return out;
+  /** Create_Artifact: артефакты сундука из колоды `List_ArtifactDrop` */
+  openChest(type: ChestType) {
+    const r = this.deck.open(type, (n) => this.nums.has(n), W.player.level);
+    return { ...r, items: r.ids.map((n) => BY_ID.get(KEY_BY_NUM.get(n)!)!) };
   }
 
-  /** n случайных легендарных артефактов (обелиск) */
-  rollLegend(n = 3): ArtifactDef[] {
-    const pool = ARTIFACTS.filter((a) => a.rarity === 'legend' && !this.has(a.id));
-    const out: ArtifactDef[] = [];
-    while (out.length < n && pool.length) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
-    return out;
+  /** Create_Merchant: товары визита с ценами. Скидка 25 % по коду бывает только после смены зоны (зоны 12–14) */
+  merchantGoods() {
+    const mul = VISIT_MUL[Math.min(Math.max(this.merchantNum, 1), 7) - 1];
+    const ratio = Math.max(0, 100 + W.stats.merchantCostRatio) * 0.01;
+    return this.deck.merchantItems((n) => this.nums.has(n), W.player.level).map((n) => {
+      const a = BY_ID.get(KEY_BY_NUM.get(n)!)!;
+      const cost = 98 + Math.floor(Math.random() * 11); // Random(98, 109) %
+      return { a, price: Math.round(cost * MERCHANT_BASE[a.grade] * ratio * 0.01 * mul) };
+    });
+  }
+
+  /** Лимиты CreateItem_Character: легендарных ≥ 15 или артефактов > 119 — сундуков больше нет */
+  chestsAllowed() {
+    return this.owned.length <= 119 && this.owned.filter((id) => BY_ID.get(id)!.grade === 5).length < 15;
   }
 
   private artCdMul() { return Math.max(0.2, 1 - W.stats.artifactCdr); }
@@ -640,7 +636,7 @@ export class ArtifactSet {
     if (this.ffCd > 0) this.ffCd -= dt;
     if (this.potionCd > 0) this.potionCd -= dt;
     if (this.bondPending) this.pickBond();
-    if (this.nums.has(84)) P.gainXp(P.xpNeed * 0.01 * dt);                                        // Эфир: 1% маны в секунду
+    if (this.nums.has(84)) P.manaGain(P.xpNeed * 0.01 * dt);                                        // Эфир: 1% маны в секунду
     if (this.nums.has(160)) { this.schemeT -= dt; if (this.schemeT <= 0) { this.schemeT = 5; this.schemeN = 0; } } // Схема маны
     if (this.aura) this.aura.setPosition(P.x, P.y);
 
@@ -692,7 +688,7 @@ export class ArtifactSet {
           let k = 1;
           if (y.has(26)) k *= 0.91;                                        // Вондерлэнд: враги меньше
           if (n.has(162) && e.elite) k *= 0.85;                             // Игрушечный замок: элитки меньше
-          if (k !== 1) { e.r *= k; e.sc *= k; e.img.setScale(e.sc); }
+          if (k !== 1) { e.r *= k; e.unitSize *= k; e.img.setScale(e.img.scaleX * k); e.fl.setScale(e.img.scaleX); }
           let h = 1;
           if (n.has(88) && e.type.id === 'big') h *= 0.85;                  // Мутировавший ген
           if (n.has(187)) h *= boss ? 0.9 : 1.1;                            // Имп
