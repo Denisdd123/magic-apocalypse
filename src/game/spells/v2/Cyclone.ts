@@ -269,7 +269,8 @@ class Cyclone extends DataSpell {
     if (w.kind === 'super') { w.x = P.x; w.y = P.y; }
     if (w.kind === 'orbit') { w.x = P.x + w.ox; w.y = P.y + w.oy; }
     // урон: Tornado_Attack — wait 0.3, далее раз в 0.33 с, каждый враг раз за тик
-    if (w.t >= w.hitT) {
+    // Tornado_Attack бьёт только пока ApplyTimeON (C_Battle_AllyTornado.c:2526), на угасании коллайдер выключен
+    if (w.t >= w.hitT && w.t <= w.life) {
       w.hitT += 0.33;
       const h = (w.coll * w.sc / 2) * U;
       let d = w.dmg;
