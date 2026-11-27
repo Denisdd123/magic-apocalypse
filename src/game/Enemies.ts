@@ -120,6 +120,8 @@ const KAMI = { ring: 1.81 * 0.75 * U, life: 0.18, tint: 0x8a1a1a };
 const FLASH = { amount: 0.6, t: 0.125, hit: 0xffffff, crit: 0xff0000, freeze: 0x5b86b0 };
 /** Пул элиток (List_BattleUnitEnemySpecial): 80 объектов */
 const POOL_SPECIAL = 80;
+/** проходов решателя столкновений за кадр (PhysX оригинала) */
+const SOLVER_ITERATIONS = 6;
 /** UnitApply_HpMax_Bonus боссов/эпиков по UnitID (Start_Unit, switch по ID @0x1096df4…; 41 — 300000 при AreaChangeNum < 1) */
 const BOSS_HP_BONUS: Record<number, number> = { 41: 3000000, 42: 5000000, 43: 12000000, 44: 3000000, 45: 3000000, 46: 3000000 };
 /** Контур элиток: LineColor красной #f20d1f, UP #8c40f2 */
@@ -425,24 +427,16 @@ export class Enemies {
         e.kx *= 0.86; e.ky *= 0.86;
         if (Math.abs(e.kx) + Math.abs(e.ky) < 2) e.kx = e.ky = 0;
       }
-      // расталкивание (Rigidbody mass 1, drag 1000)
-      const n = this.grid.near(e.x, e.y, e.r, nb, 8);
-      for (let i = 0; i < n; i++) {
-        const o = nb[i];
-        if (o === e) continue;
-        let ox = e.x - o.x, oy = e.y - o.y;
-        let od2 = ox * ox + oy * oy;
-        if (od2 < 0.0001) { ox = Math.cos(e.id); oy = Math.sin(e.id); od2 = 1; }
-        const od = Math.sqrt(od2), over = (e.r + o.r - od) * 0.5;
-        if (over <= 0) continue;
-        const k = over / od, we = o.mass / (e.mass + o.mass), wo = 1 - we;
-        e.x += ox * k * we; e.y += oy * k * we;
-        o.x -= ox * k * wo; o.y -= oy * k * wo;
-      }
+    }
 
+    this.separate();
+
+    for (const e of this.list) {
+      if (!e.alive) continue;
+      const boss = e.cat >= 3;
       // касание мага: OnCollisionStay → Unit_Attack (раз в 0.15 с у каждого моба)
       if (e.atkT > 0) e.atkT -= dt;
-      dx = P.x - e.x; dy = P.y - e.y;
+      const dx = P.x - e.x, dy = P.y - e.y;
       const rr = e.r + bodyR, d2 = dx * dx + dy * dy;
       if (!P.ghost && d2 < rr * rr) {
         const pd = Math.sqrt(d2) || 0.01, over = rr - pd;
@@ -472,6 +466,35 @@ export class Enemies {
         const bx = e.x - BAR.w / 2, by = e.y + BAR.y;
         e.bar.setPosition(bx, by);
         e.barF!.setPosition(bx, by).setDisplaySize(BAR.w * Math.max(0, e.hp / e.maxHp), BAR.h);
+      }
+    }
+  }
+
+  /**
+   * Расталкивание: в оригинале у мобов твёрдые коллайдеры (Rigidbody mass 1, все слои сталкиваются),
+   * PhysX решает пересечения за 6 проходов (DynamicsManager m_DefaultSolverIterations). Один мягкий проход
+   * не удерживает толпу — мобы слипались в один круг.
+   */
+  private separate() {
+    const g = this.grid, nb = this.nb;
+    g.clear();
+    for (const e of this.list) if (e.alive) g.insert(e);
+    for (let it = 0; it < SOLVER_ITERATIONS; it++) {
+      for (const e of this.list) {
+        if (!e.alive) continue;
+        const n = g.near(e.x, e.y, e.r, nb, 16);
+        for (let i = 0; i < n; i++) {
+          const o = nb[i];
+          if (o === e) continue;
+          let ox = e.x - o.x, oy = e.y - o.y;
+          let od2 = ox * ox + oy * oy;
+          if (od2 < 0.0001) { ox = Math.cos(e.id); oy = Math.sin(e.id); od2 = 1; }
+          const od = Math.sqrt(od2), over = e.r + o.r - od;
+          if (over <= 0) continue;
+          const k = over / od, we = o.mass / (e.mass + o.mass), wo = 1 - we;
+          e.x += ox * k * we; e.y += oy * k * we;
+          o.x -= ox * k * wo; o.y -= oy * k * wo;
+        }
       }
     }
   }
