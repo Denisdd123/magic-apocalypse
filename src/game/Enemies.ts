@@ -398,7 +398,8 @@ export class Enemies {
       if (e.cat === 0 ? (adx >= AREA.killX || ady >= AREA.killY) : (adx >= AREA.killFar || ady >= AREA.killFar)) {
         // C_DestroyArea_B (±35 ед.) удаляет всех; эпиков и боссов переносим к магу, чтобы не сломать счёт ApplyBossNum
         if (boss) { const p = this.spawnPoint(); e.x = p.x; e.y = p.y; }
-        else { this.despawn(e); continue; }
+        // элитки проклятой руны (UnitCreateID 3) не удаляются (Unit_Destroy_Simple_All их пропускает) — иначе сундук не выпадет
+        else if (!e.trans) { this.despawn(e); continue; }
         dx = P.x - e.x; dy = P.y - e.y;
       }
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
