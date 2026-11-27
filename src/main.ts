@@ -9,12 +9,13 @@ import { MAX_DPR } from './config';
 const host = document.getElementById('game')!;
 const dpr = () => Math.min(window.devicePixelRatio || 1, MAX_DPR);
 
-// iPhone («на экране Домой»): статус-бар непрозрачный чёрный (index.html), веб-вью начинается под ним и идёт
-// до низа экрана. Высоту берём только у вьюпорта: screen.height больше его и увела бы низ игры за край.
+// iPhone («на экране Домой»): статус-бар прозрачный (black-translucent, index.html), игра идёт под часами.
+// Высоту документа растягивает style.css (@media standalone), здесь отдаём её в CSS как --app-h.
 let appH = 0;
 function fitHost() {
-  const vv = window.visualViewport;
-  const h = Math.round(Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0, vv ? vv.height : 0));
+  // высота = реальная высота #game (в standalone iOS она больше innerHeight на статус-бар)
+  const h = Math.round(host.getBoundingClientRect().height || window.innerHeight || 0);
+  if (window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0);
   if (h > 0 && h !== appH) { appH = h; document.documentElement.style.setProperty('--app-h', h + 'px'); }
 }
 fitHost();
