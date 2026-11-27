@@ -74,9 +74,6 @@ export function clearModals() { root().querySelectorAll('.modal').forEach((m) =>
     const po = new PerformanceObserver((l) => count(l.getEntries()));
     po.observe({ type: 'resource', buffered: true });
     count(performance.getEntriesByType('resource'));
-    // на всякий случай: экран загрузки исчезнет, как только в DOM появится кнопка «Играть»
-    const mo = new MutationObserver(() => { if (document.querySelector('#ui .play')) { hideBoot(); mo.disconnect(); po.disconnect(); } });
-    mo.observe(document.getElementById('ui') ?? document.body, { childList: true, subtree: true });
   } catch { /* старые браузеры — без процентов */ }
 })();
 
@@ -91,20 +88,15 @@ function hideBoot() {
 export function showMenu(onPlay: () => void) {
   clearModals();
   const m = el('div', 'modal mainmenu');
-  const mobs = ['en_hive', 'en_swarm_l', 'en_nemesis', 'en_mine', 'en_scarab'].map((k) => icon(k)).filter(Boolean);
+  // главное меню = Field_MainMenu сцены A_MainMenu оригинала: 3 кадра TitleImgFront (смена ≈ 0.167 с по видео)
   m.innerHTML = `
-    <div class="mm-fog"></div>
-    <div class="mm-mobs">${mobs.map((s, i) => `<img src="${s}" style="--i:${i}">`).join('')}</div>
-    <div class="mm-center">
-      <img class="emblem" src="${icon('mage_idle_0', 0xd9c9a0)}" alt="">
-      <div class="logo">Magic<br>Apocalypse<span class="v2">3.0 β</span><small>Выживи в Разломе</small></div>
-      <button class="play">Играть</button>
-      <div class="hint">Веди пальцем в любом месте экрана, чтобы ходить. Маг атакует сам. Собирай голубые сферы и выбирай заклинания.</div>
-    </div>
-    <div class="ver">версия 3.0 beta</div>`;
+    <div class="mm-bg">${[1, 2, 3].map((i) => `<img src="art/ui/title${i}.webp" alt="">`).join('')}</div>
+    <div class="logo">Magic<br>Apocalypse<span class="v2">3.0 beta</span></div>
+    <button class="play">Играть</button>
+    <div class="hint">Веди пальцем по экрану, чтобы ходить.<br>Маг атакует сам.</div>`;
   m.querySelector('.play')!.addEventListener('click', () => { m.remove(); onPlay(); });
   root().appendChild(m);
-  hideBoot();
+  void Promise.allSettled([...m.querySelectorAll('img')].map((i) => i.decode())).then(hideBoot);
 }
 
 // ---------------- HUD ----------------

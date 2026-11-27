@@ -210,34 +210,22 @@ button:disabled { opacity: 0.38; }
 .adesc .line b { font-weight: normal; color: var(--blue); }
 .learn { margin-top: 18px; font-family: var(--head); font-weight: 500; letter-spacing: 0; font-size: max(18px, calc(var(--u) * 42)); padding: 12px 48px; background: #000; border: none; color: var(--gold2); clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.45); }
 
-/* ---------- Главное меню ---------- */
-.modal.mainmenu { background: radial-gradient(ellipse at 50% 42%, #170a0d 0%, #0a0607 45%, #020202 80%); overflow: hidden; }
-.mm-fog { position: absolute; inset: -20%; pointer-events: none; opacity: 0.4;
-  background: radial-gradient(ellipse at 30% 70%, rgba(120, 20, 34, 0.35), transparent 45%), radial-gradient(ellipse at 75% 30%, rgba(90, 70, 110, 0.22), transparent 45%);
-  animation: fog 14s ease-in-out infinite alternate; }
-@keyframes fog { from { transform: translate(-3%, 1%) scale(1); } to { transform: translate(3%, -2%) scale(1.08); } }
-.mm-mobs { position: absolute; left: 0; right: 0; bottom: calc(var(--safe-bottom) + 2vh); display: flex; justify-content: center; align-items: flex-end; gap: 2vw; pointer-events: none; }
-.mm-mobs img { width: min(19vw, 110px); opacity: 0.8; filter: drop-shadow(0 0 6px rgba(208, 41, 61, 0.5)); animation: breathe 2.6s ease-in-out infinite; animation-delay: calc(var(--i) * -0.5s); }
-.mm-mobs img:nth-child(3) { width: min(26vw, 150px); }
-@keyframes breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.05, 0.95); } }
-.mm-center { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: -10vh; }
-.emblem { width: 92px; height: 92px; margin-bottom: 6px; filter: drop-shadow(0 0 14px rgba(236, 232, 224, 0.2)); }
-.logo {
-  font-family: var(--head); font-weight: 700; font-size: 46px; line-height: 0.98; text-align: center; letter-spacing: 2px; margin-bottom: 6px; position: relative;
-  color: #f3efe7; background: linear-gradient(#ffffff 40%, #9d968b); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.9));
-}
-.logo .v2 {
-  display: inline-block; vertical-align: top; margin: 2px 0 0 8px; padding: 2px 7px; font-size: 16px; letter-spacing: 1px; font-family: var(--head);
-  -webkit-text-fill-color: #fff; color: #fff; background: var(--blood); border: 1px solid var(--crimson); border-radius: 3px;
-}
-.logo small { display: block; font-size: 13px; letter-spacing: 6px; text-transform: uppercase; margin-top: 12px; -webkit-text-fill-color: var(--gold); color: var(--gold); font-family: var(--head); }
-.mainmenu .play {
-  margin-top: 40px; font-family: var(--head); font-weight: 500; font-size: 26px; letter-spacing: 3px; padding: 15px 64px; border: none; color: var(--gold2); text-shadow: 2px 2px 0 #000;
-  background: linear-gradient(#141012, #060405); clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.55), inset 0 0 20px rgba(208, 41, 61, 0.25);
-}
-.mainmenu .hint { margin-top: 20px; font-size: 13px; text-align: center; max-width: 300px; line-height: 1.5; }
-.mainmenu .ver { position: absolute; right: calc(12px + var(--safe-right)); top: calc(var(--safe-top) + 10px); font-size: 11px; color: rgba(236, 228, 214, 0.35); letter-spacing: 1px; }
+/* ---------- Главное меню (A_MainMenu: холст 720x1280, 1 px = --u) ---------- */
+.modal.mainmenu { display: block; padding: 0; background: #000; overflow: hidden; }
+.mm-bg { position: absolute; inset: 0; pointer-events: none; }
+.mm-bg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 75% 50%; }
+.mm-bg img + img { opacity: 0; animation: mm-frame 0.5s steps(1, end) infinite; }
+.mm-bg img:nth-child(2) { animation-name: mm-frame2; }
+@keyframes mm-frame2 { 0% { opacity: 0; } 33.33% { opacity: 1; } 66.66% { opacity: 0; } }
+@keyframes mm-frame { 0% { opacity: 0; } 66.66% { opacity: 1; } }
+/* название своё, место Img_TitleName: (175,490), 232x158 */
+.mainmenu .logo { position: absolute; right: calc(var(--u) * 40 + var(--safe-right)); top: calc(var(--app-h, 100lvh) * 0.118); transform: translateY(-50%); text-align: center; font-family: var(--num); font-size: calc(var(--u) * 64); line-height: 1.1; color: #fff; text-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 #000, 0 0 calc(var(--u) * 8) #000; -webkit-text-stroke: calc(var(--u) * 6) #000; paint-order: stroke fill; }
+.mainmenu .logo .v2 { display: block; font-size: calc(var(--u) * 30); }
+/* Button_ClassIN: (-80,-350) 420x100, текст 60, влево */
+.mainmenu .play { position: absolute; left: calc(var(--u) * 70 + var(--safe-left, 0px)); top: calc(var(--app-h, 100lvh) * 0.773); transform: translateY(-50%); width: calc(var(--u) * 420); height: calc(var(--u) * 100); padding: 0; border: none; background: none; text-align: left; font-family: var(--font); font-weight: 500; font-size: calc(var(--u) * 60); color: #fff; }
+.mainmenu .play:active { opacity: 0.6; }
+/* на месте ряда значков оригинала (y = -500) — подсказка */
+.mainmenu .hint { position: absolute; left: calc(var(--u) * 70); right: calc(var(--u) * 40); top: calc(var(--app-h, 100lvh) * 0.89); transform: translateY(-50%); font-size: max(12px, calc(var(--u) * 24)); line-height: 1.5; color: #8fb9bd; }
 
 /* ---------- Общие панели ---------- */
 .panel { width: 100%; max-width: 420px; background: var(--paper); border: 1px solid var(--edge); border-radius: 4px; padding: 14px; max-height: 60vh; overflow-y: auto; box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8); }
@@ -436,7 +424,6 @@ body.fury #game::after { content: ''; position: absolute; inset: 0; pointer-even
 /* низкие экраны (iPhone SE, альбомная) — плотнее */
 @media (max-height: 640px) {
   .opt img { width: 76px; height: 76px; }
-  .logo { font-size: 38px; } .emblem { width: 70px; height: 70px; }
 }
 
 /* Отзыв пользователя: экран выбора тёмный, рисунки светлые/белые — иконки на карточках одноцветные, без кислотных цветов */
