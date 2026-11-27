@@ -41,7 +41,7 @@ html { height: 100%; }
 /* iPhone «на экране Домой» + black-translucent: iOS даёт вьюпорт короче экрана на высоту статус-бара,
    а fixed-элементы обрезает по нему -> полоса снизу. Растягиваем сам документ на эту величину,
    а #game/#ui/#boot — обычные absolute внутри body (не fixed), чтобы доходили до низа экрана. */
-@media all and (display-mode: standalone) {
+@media all and (display-mode: standalone), all and (display-mode: fullscreen) {
   html, body { height: calc(100% + env(safe-area-inset-top, 0px)); }
   :root { overflow: visible; } /* :root сильнее правила html,body ниже; hidden у корня обрезает по короткому вьюпорту -> чёрная полоса снизу (скрин translucent_v8) */
 }
