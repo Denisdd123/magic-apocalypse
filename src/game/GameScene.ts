@@ -10,6 +10,7 @@ import { Projectiles } from './Projectiles';
 import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
 import { ART } from '../data/art';
+import { ICON_ORIG } from '../data/icons_orig';
 import { BOLT_LOAD } from './spells/v2/Bolt';
 import { MOB_LOAD } from './mobLook';
 import { SPIRIT_LOAD } from './spells/v2/Spirit';
@@ -66,7 +67,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     // новая графика 2.0 (art-raw → public/v2, scripts/import_art.py): до меню — только нужное для боя
-    for (const [k, p] of Object.entries(ART)) if (CRITICAL.test(p)) this.load.image(k, p);
+    for (const [k, p] of Object.entries(ART)) if (CRITICAL.test(p)) this.load.image(k, ICON_ORIG[k] ?? p);
     // огненный шар «гладкий» (выбран Денисом 2026-11-26, docs/STYLE_GUIDE.md): 3 кадра Bullet6
     for (const i of [1, 2, 3]) this.load.image(`fb_ball_${i}`, `vfx/fireball/v3/smooth_0${i}.png`);
     // кадры оригинала, уже гладкие (полный холст Unity): взрыв шара, пуля и взрыв Пандемониума
@@ -109,7 +110,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */
   private loadRest() {
-    for (const [k, p] of Object.entries(ART)) if (!CRITICAL.test(p) && !this.textures.exists(k)) this.load.image(k, p);
+    for (const [k, p] of Object.entries(ART)) if (!CRITICAL.test(p) && !this.textures.exists(k)) this.load.image(k, ICON_ORIG[k] ?? p);
     this.load.start();
   }
 

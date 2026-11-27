@@ -128,19 +128,15 @@ export function showPause(onResume: () => void, onQuit: () => void) {
 // ---------------- Смерть ----------------
 export function showDeath(onRetry: () => void, onMenu: () => void) {
   clearModals();
-  const m = div('modal dead', `
-    <div class="brand">Magic Apocalypse <span>2.0</span></div>
-    <img class="deadmage" src="${icon('mage_idle_0', 0x5a1a22)}" alt="">
-    <h1>Хранитель пал</h1>
-    <div class="sub">Разлом · первая зона</div>
-    <div class="dstats">
-      <div class="ds"><i>⏱</i><b>${fmtTime(W.time)}</b><span>время</span></div>
-      <div class="ds"><i>☠</i><b>${W.kills}</b><span>убито</span></div>
-      <div class="ds"><i class="orbi"></i><b>${Math.floor(W.mana)}</b><span>мана</span></div>
-      <div class="ds"><i>✦</i><b>${W.player.level}</b><span>уровень</span></div>
-    </div>
-    <button class="histopen">История боя</button>
-    <div class="btns"><button class="retry">Ещё раз</button><button class="menu">В меню</button></div>`);
+  const m = div('modal dead dres', `
+    <div class="dcv">
+      <h1 class="dtitle">Эксперимент провален</h1>
+      <i class="dline"></i>
+      <div class="darea">Разлом · первая зона</div>
+      <i class="dico dtime"></i><b class="dnum dtn">${fmtTime(W.time)}</b>
+      <i class="dico dkill"></i><b class="dnum dkn">${W.kills}</b>
+      <div class="dbtns"><button class="retry">Ещё раз</button><button class="histopen">История боя</button><button class="menu">В меню</button></div>
+    </div>`);
   m.querySelector('.histopen')!.addEventListener('click', showHistory);
   m.querySelector('.retry')!.addEventListener('click', () => { clearModals(); onRetry(); });
   m.querySelector('.menu')!.addEventListener('click', () => { clearModals(); onMenu(); });

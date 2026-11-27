@@ -1,7 +1,12 @@
 /* Magic Apocalypse 2.0 — Dark Fantasy: почти чёрные панели с рваным краем, рисунок и текст белые/костяные,
    шрифты 2.2: Alegreya SC (заголовки, таймер, кнопки) + Alegreya Sans (текст), кириллица, Google Fonts OFL.
    --gold/--gold2 исторически так называются, но теперь это «кость» и «белый»; настоящее золото — --amber (очарование). */
+/* шрифты оригинала (Assets/Font): тексты - Noto Sans Display, цифры - Jeju Hallasan (кириллица есть в обоих; Jeju урезан до латиницы/кириллицы/цифр) */
+@font-face { font-family: "Noto Sans Display"; font-weight: 400 500; font-style: normal; font-display: swap; src: url("/fonts/NotoSansDisplay-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Noto Sans Display"; font-weight: 600 800; font-style: normal; font-display: swap; src: url("/fonts/NotoSansDisplay-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Jeju Hallasan"; font-weight: 400 700; font-style: normal; font-display: swap; src: url("/fonts/JejuHallasan.woff2") format("woff2"); }
 :root {
+  --u: calc(min(100vw / 720, var(--app-h, 100lvh) / 1280)); /* 1 px холста оригинала 720x1280 */
   --bg: #070607;
   --ink: #030303;
   --paper: #0b0a0b;
@@ -11,8 +16,9 @@
   --gold: #b9b1a3;
   --gold2: #f3efe7;
   --amber: #d8b46a;
-  --font: "Alegreya Sans", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
-  --head: "Alegreya SC", "Alegreya Sans", Georgia, serif; /* 2.2: зловещий, но читаемый (не пиксель) */
+  --font: "Noto Sans Display", "Alegreya Sans", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  --head: "Noto Sans Display", "Alegreya SC", Georgia, serif;
+  --num: "Jeju Hallasan", "Noto Sans Display", system-ui, sans-serif;
   --shadow-px: 1px 1px 0 #000, -1px 0 0 rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.8);
   --crimson: #d0293d;
   --blood: #7a1020;
@@ -73,13 +79,13 @@ button:disabled { opacity: 0.38; }
 .topline .left, .topline .right { flex: 1; display: flex; align-items: center; min-width: 0; }
 .topline .right { justify-content: flex-end; gap: 10px; }
 .topline .mana {
-  font-size: 16px; font-variant-numeric: tabular-nums; color: var(--mana); display: flex; align-items: center; gap: 7px;
+  font-family: var(--num); font-size: 16px; font-variant-numeric: tabular-nums; color: var(--mana); display: flex; align-items: center; gap: 7px;
   background: rgba(8, 6, 8, 0.62); border: 1px solid rgba(143, 230, 255, 0.22); border-radius: 14px; padding: 3px 11px 3px 9px;
 }
 .topline .mana i, .orbi, .manastat i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #c9f6ff; box-shadow: 0 0 6px 2px #2fc8ff; }
-.topline .timer { font-family: var(--head); font-size: 24px; font-weight: 500; letter-spacing: 2px; color: #f6f3ee; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.topline .timer { font-family: var(--num); font-size: 24px; font-weight: 500; letter-spacing: 2px; color: #f6f3ee; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .topline .timer.red { color: #ff4a4a; text-shadow: 1px 1px 0 #000, 0 0 8px rgba(255, 40, 40, 0.55); }
-.hlvl { font-family: var(--font); font-size: 17px; color: var(--gold2); }
+.hlvl { font-family: var(--num); font-size: 17px; color: var(--gold2); }
 .hlvl small { font-size: 11px; color: var(--gold); margin-right: 3px; letter-spacing: 1px; }
 .pausebtn {
   width: 36px; height: 36px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; gap: 5px;
@@ -120,39 +126,31 @@ button:disabled { opacity: 0.38; }
 .modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 14px; text-align: center; }
 .hint { color: var(--muted); }
 
-/* ---------- Выбор заклинания: на весь экран, как в оригинале ---------- */
-.modal.levelup {
-  background: radial-gradient(ellipse at 50% 35%, rgba(18, 17, 18, 0.97), rgba(3, 3, 4, 0.99) 78%);
-  justify-content: flex-start;
-  padding: calc(var(--safe-top) + 4vh) calc(4vw + var(--safe-right)) calc(var(--safe-bottom) + 3vh) calc(4vw + var(--safe-left));
-}
-.levelup .sub { font-size: 15px; margin: 0 0 4px; color: var(--gold); letter-spacing: 0.5px; }
-.levelup h1 { font-size: 31px; margin: 0 0 3vh; }
-.cards {
-  display: flex; flex-direction: column; gap: 2.2vh; width: 100%; max-width: 560px; flex: 1 1 auto; min-height: 0;
-  overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; padding: 2px 0;
-}
-/* карточка растёт под текст (не обрезается); если все не влезают — список прокручивается */
+/* ---------- Выбор заклинания: Canvas_Ability (ui.md §2), 1 u = 1 px холста 720x1280 ---------- */
+.modal.levelup { display: block; background: rgba(0, 0, 0, 0.608); padding: 0; } /* Img_Background001: чёрный α .608 */
+.levelup .sub, .levelup h1 { position: absolute; left: 0; right: 0; margin: 0; text-align: center; letter-spacing: 0; white-space: nowrap; }
+.levelup .sub { top: calc(50% - var(--u) * 522); height: calc(var(--u) * 100); line-height: calc(var(--u) * 100); font-size: calc(var(--u) * 28); color: #ffd700; } /* (0,472) 500x100, size 28 */
+.levelup h1 { top: calc(50% - var(--u) * 450); height: calc(var(--u) * 120); line-height: calc(var(--u) * 120); font-size: calc(var(--u) * 52); color: #5effe4; text-shadow: none; } /* (0,390) 600x120, size 52 */
+.levelup .cards { position: absolute; inset: 0; display: block; max-width: none; padding: 0; overflow: visible; pointer-events: none; }
+/* карточка 678.25x218.25, центр по --cy (y оригинала вверх); фон Explosion122_12 цвет (.027,.008,.02) = rgb(7,2,5) */
 .card {
-  flex: 1 0 auto; min-height: min(17vh, 124px); display: flex; align-items: center; gap: 15px;
-  padding: 1.8vh 18px 1.8vh 14px; position: relative; cursor: pointer; text-align: left;
-  background: linear-gradient(100deg, #0b0a0b, #040404 60%);
-  box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.12), inset 0 0 34px rgba(0, 0, 0, 0.95);
-  clip-path: var(--torn);
-  animation: rise 0.22s ease-out both;
-  transition: transform 0.08s;
+  position: absolute; left: 50%; margin-left: calc(var(--u) * -339.125); width: calc(var(--u) * 678.25); height: calc(var(--u) * 218.25);
+  top: calc(50% - var(--u) * var(--cy, 0) - var(--u) * 109.125); pointer-events: auto;
+  cursor: pointer; text-align: left; color: #fff; background: rgb(7, 2, 5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  animation: rise 0.22s ease-out both; transition: transform 0.08s;
 }
 .card:active { transform: scale(0.98); }
-.card .ic { width: 76px; height: 76px; flex: none; display: flex; align-items: center; justify-content: center; }
-.card .ic img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.12)); }
-.card .body { flex: 1; min-width: 0; }
-.card .title { font-family: var(--font); font-weight: 500; color: var(--gold2); font-size: 19px; margin: 0 52px 5px 0; line-height: 1.15; }
-.card .line { font-size: 13.5px; color: #a9a299; line-height: 1.35; }
+.card .ic { position: absolute; left: calc(var(--u) * 51.6); top: calc(var(--u) * 40); width: calc(var(--u) * 119); height: calc(var(--u) * 138); display: flex; align-items: center; justify-content: center; } /* (-228,0) x.48 */
+.card .ic img { width: 100%; height: 100%; object-fit: contain; }
+.card .body { position: absolute; inset: 0; }
+.card .title { position: absolute; left: calc(var(--u) * 209.1); top: calc(var(--u) * 35.6); width: calc(var(--u) * 350); height: calc(var(--u) * 55); line-height: calc(var(--u) * 55); margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font); font-weight: 500; color: #fff; font-size: calc(var(--u) * 25); } /* (45,46) 350x55 size 25 */
+.card .eff { position: absolute; left: calc(var(--u) * 212.1); top: calc(var(--u) * 100.9); width: calc(var(--u) * 430); height: calc(var(--u) * 106.5); overflow: hidden; } /* (88,-45) 430x106.5 */
+.card .line { font-size: max(10.5px, calc(var(--u) * 17)); color: #fff; line-height: 1.25; } /* size 17 */
 .card .line b { font-weight: normal; color: var(--blue); }
 .card .line.attr { color: var(--mint); }
-.card .lv { position: absolute; right: 18px; top: 1.8vh; color: var(--gold); font-family: var(--font); font-size: 15px; }
-.card .lv.new { color: var(--gold2); font-family: inherit; font-size: 12px; letter-spacing: 1.5px; padding: 2px 7px; border: 1px solid rgba(240, 236, 228, 0.45); }
-/* пассивки — зелёные цифры (общий стат) */
+.card .lv { position: absolute; right: calc(var(--u) * 49); top: calc(var(--u) * 19); height: calc(var(--u) * 50); line-height: calc(var(--u) * 50); color: #ffd07d; font-family: var(--num); font-size: calc(var(--u) * 24); text-align: right; } /* (175,65) 230x50, (1,.817,.49) */
+.card .lv.new { font-size: calc(var(--u) * 20); letter-spacing: 1.5px; padding: 0 7px; height: auto; line-height: 1.6; margin-top: calc(var(--u) * 12); border: 1px solid rgba(255, 208, 125, 0.55); }
+/* пассивки - зелёные цифры (общий стат) */
 .card.k-passive .line b { color: var(--green); }
 .card.k-heal .title { color: var(--green); }
 /* особая (красная) пассивка */
@@ -161,31 +159,34 @@ button:disabled { opacity: 0.38; }
 .card.k-special .line { color: #d9b0b4; }
 .card.k-special .line b { color: #ff7a8a; }
 .card.k-special .ic img { filter: drop-shadow(0 0 8px rgba(220, 30, 50, 0.55)); }
-.card .lv.star { font-size: 22px; top: 1.2vh; }
+.card .lv.star { font-size: calc(var(--u) * 34); font-family: var(--font); }
 .card.k-special .lv.star { color: #ff2a3a; text-shadow: 0 0 10px rgba(255, 40, 60, 0.7); }
-/* очарование — старое золото */
+/* очарование - старое золото */
 .card.k-enchant { background: linear-gradient(100deg, #171006, #090705 65%); box-shadow: inset 0 0 0 2px #7a5a1c, inset 0 0 30px rgba(0, 0, 0, 0.9); }
 .card.k-enchant .title { color: var(--amber); }
 .card.k-enchant .lv.star { color: var(--amber); text-shadow: 0 0 10px rgba(216, 180, 106, 0.6); }
 .card.k-enchant .ic img { filter: drop-shadow(0 0 8px rgba(216, 180, 106, 0.45)); }
-/* слияние — квадратная цветная иконка в рамке, подпись «A + B» */
+/* слияние - квадратная иконка в рамке; текст идёт столбцом (бейдж, имя, пара, эффект) */
 .card.k-combo { background: linear-gradient(100deg, #110c18, #070609 65%); box-shadow: inset 0 0 0 1px rgba(180, 140, 255, 0.35), inset 0 0 30px rgba(0, 0, 0, 0.9); }
-.card .ic.sq { width: 84px; height: 84px; padding: 3px; background: #000; box-shadow: 0 0 0 2px var(--amber), 0 0 0 4px #000, 0 0 0 5px rgba(180, 140, 255, 0.55), 0 0 18px rgba(180, 140, 255, 0.35); }
+.card .ic.sq { left: calc(var(--u) * 55); top: calc(var(--u) * 53); width: calc(var(--u) * 112); height: calc(var(--u) * 112); padding: 3px; background: #000; box-shadow: 0 0 0 2px var(--amber), 0 0 0 4px #000, 0 0 0 5px rgba(180, 140, 255, 0.55), 0 0 18px rgba(180, 140, 255, 0.35); }
 .card .ic.sq img { filter: none; }
-.card.k-combo .badge { display: inline-block; font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: #c9b0ff; margin-bottom: 2px; }
-.card.k-combo .title { color: #efe4ff; margin-right: 0; }
-.card.k-combo .pair { font-size: 13px; color: var(--amber); margin-bottom: 3px; }
-.card.k-combo .line { font-size: 12.5px; }
-.card.long .line { font-size: 11.5px; line-height: 1.3; }
-.card.long .title { font-size: 17px; }
+.card.k-combo .body { left: calc(var(--u) * 209); right: calc(var(--u) * 20); display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+.card.k-combo .title, .card.k-combo .eff { position: static; width: auto; height: auto; line-height: 1.2; }
+.card.k-combo .badge { display: inline-block; font-size: max(9px, calc(var(--u) * 17)); letter-spacing: 2px; text-transform: uppercase; color: #c9b0ff; }
+.card.k-combo .title { color: #efe4ff; white-space: normal; }
+.card.k-combo .pair { font-size: max(10px, calc(var(--u) * 20)); color: var(--amber); margin: 2px 0; }
+.card.long .line { font-size: max(9.5px, calc(var(--u) * 15)); line-height: 1.2; }
+/* «Вернуть N% маны»: 400x68, Explosion122_12 чёрная, size 24 (.745,.941,1); y - по числу карточек (--ry) */
 .refund {
-  margin-top: 3vh; padding: 13px 34px; font-size: 15px; background: #000; color: var(--text); border: none;
-  clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.3);
+  position: absolute; left: 50%; margin-left: calc(var(--u) * -200); width: calc(var(--u) * 400); height: calc(var(--u) * 68);
+  top: calc(50% - var(--u) * var(--ry, -420) - var(--u) * 34); padding: 0; background: #000; color: #bef0ff; border: none; border-radius: 0;
+  font-size: calc(var(--u) * 24); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* ---------- Выбор свойства: три цвета треугольником ---------- */
-.modal.attrpick { background: radial-gradient(ellipse at 50% 35%, rgba(16, 15, 16, 0.98), rgba(2, 2, 3, 0.995) 75%); }
-.attrpick .sub { color: var(--gold); font-family: var(--font); font-size: 17px; }
+.modal.attrpick { background: #000; } /* Img_Background001 чёрный α 1 */
+.attrpick h1 { font-size: calc(var(--u) * 45); color: #fff096; text-shadow: none; } /* size 45 (1,.941,.588) */
+.attrpick .sub { color: #fac882; font-family: var(--font); font-size: calc(var(--u) * 38); } /* name size 38 (.98,.784,.51) */
 .tri { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 34px; width: min(330px, 88vw); margin: 6px 0 10px; }
 .tri.n3 .o0 { grid-column: 1 / span 2; justify-self: center; }
 .tri.n1 { grid-template-columns: 1fr; }
@@ -203,11 +204,11 @@ button:disabled { opacity: 0.38; }
   width: 100%; max-width: 420px; min-height: 130px; padding: 14px 16px; text-align: center;
   background: rgba(6, 5, 6, 0.9); border-top: 2px solid var(--c, var(--edge)); box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.9);
 }
-.adesc .hint { margin-top: 36px; }
-.adesc .title { font-family: var(--font); font-weight: 500; font-size: 19px; color: var(--c); margin-bottom: 6px; }
-.adesc .line { font-size: 13.5px; color: #cfc9c0; line-height: 1.45; }
+.adesc .hint { margin-top: 36px; font-size: max(12px, calc(var(--u) * 22)); color: #fffeeb; }
+.adesc .title { font-family: var(--font); font-weight: 500; font-size: max(15px, calc(var(--u) * 32)); color: var(--c); margin-bottom: 6px; }
+.adesc .line { font-size: max(11.5px, calc(var(--u) * 18)); color: #fff; line-height: 1.45; }
 .adesc .line b { font-weight: normal; color: var(--blue); }
-.learn { margin-top: 18px; font-family: var(--head); font-weight: 500; letter-spacing: 1px; font-size: 21px; padding: 12px 48px; background: #000; border: none; color: var(--gold2); clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.45); }
+.learn { margin-top: 18px; font-family: var(--head); font-weight: 500; letter-spacing: 0; font-size: max(18px, calc(var(--u) * 42)); padding: 12px 48px; background: #000; border: none; color: var(--gold2); clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.45); }
 
 /* ---------- Главное меню ---------- */
 .modal.mainmenu { background: radial-gradient(ellipse at 50% 42%, #170a0d 0%, #0a0607 45%, #020202 80%); overflow: hidden; }
@@ -257,6 +258,21 @@ button:disabled { opacity: 0.38; }
 .brand span { color: var(--crimson); }
 .deadmage { width: 70px; height: 70px; margin-bottom: 4px; filter: drop-shadow(0 0 14px rgba(208, 41, 61, 0.55)); transform: rotate(-12deg); opacity: 0.9; }
 .dead h1 { color: #ff6b7a; font-size: 32px; }
+/* экран результата (Field_Result оригинала, холст 720x1280, (0,0) - центр, y вверх; координаты в --u) */
+.dres { padding: 0; justify-content: flex-start; }
+.dres .dcv { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 720); height: calc(var(--u) * 1280); transform: translate(-50%, -50%); }
+.dres .dtitle { position: absolute; left: 0; top: calc(var(--u) * 205); width: 100%; height: calc(var(--u) * 150); margin: 0; line-height: calc(var(--u) * 150); font-family: var(--head); font-weight: 500; font-size: calc(var(--u) * 58); letter-spacing: 0; color: rgb(255, 110, 106); text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #000; text-align: center; } /* (0,360) 720x150 size 58 (1,.431,.416) */
+.dres .dline { position: absolute; left: calc(var(--u) * 120); top: calc(var(--u) * 362.5); width: calc(var(--u) * 480); height: calc(var(--u) * 5); background: url("/art/ui/death_line.webp") center / 100% 100% no-repeat; opacity: 0.431; } /* (0,275) 480x5 Ability212Portrait */
+.dres .darea { position: absolute; left: 0; top: calc(var(--u) * 368); width: 100%; height: calc(var(--u) * 80); line-height: calc(var(--u) * 80); text-align: center; font-family: var(--font); font-weight: 500; font-size: calc(var(--u) * 27); color: rgb(220, 220, 220); } /* (0,232) 720x80 size 27 (.863) */
+.dres .dico { position: absolute; background: center / contain no-repeat; }
+.dres .dtime { left: calc(var(--u) * 250); top: calc(var(--u) * 495); width: calc(var(--u) * 50); height: calc(var(--u) * 50); background-image: url("/art/ui/death_time.webp"); } /* (-85,120) 50x50 */
+.dres .dkill { left: calc(var(--u) * 227.5); top: calc(var(--u) * 552.5); width: calc(var(--u) * 95); height: calc(var(--u) * 95); background-image: url("/art/ui/death_kills.webp"); } /* (-85,40) 95x95 */
+.dres .dnum { position: absolute; left: calc(var(--u) * 330); height: calc(var(--u) * 60); line-height: calc(var(--u) * 60); font-family: var(--num); font-weight: 400; font-size: calc(var(--u) * 36); font-variant-numeric: tabular-nums; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #000; white-space: nowrap; } /* size 36; x числа в сцене не найден */
+.dres .dtn { top: calc(var(--u) * 490); color: rgb(165, 255, 60); } /* (.647,1,.235) */
+.dres .dkn { top: calc(var(--u) * 570); color: rgb(255, 120, 30); } /* (1,.471,.118) */
+.dres .dbtns { position: absolute; left: 0; top: calc(var(--u) * 760); width: 100%; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 14); }
+.dres .dbtns button { background: none; border: none; box-shadow: none; clip-path: none; margin: 0; padding: calc(var(--u) * 14) calc(var(--u) * 40); font-family: var(--head); font-weight: 500; letter-spacing: 0; font-size: max(18px, calc(var(--u) * 44)); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #000; }
+.dres .dbtns .histopen { font-size: max(15px, calc(var(--u) * 32)); color: rgba(255, 255, 255, 0.7); }
 .modal.zoneclear h1 { color: var(--gold2); }
 .modal.zoneclear { background: radial-gradient(ellipse at 50% 38%, rgba(34, 30, 24, 0.94), rgba(3, 3, 2, 0.99) 72%); }
 .dstats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; width: min(320px, 88vw); background: var(--edge); border: 1px solid var(--edge); margin: 4px 0 6px; }
@@ -308,24 +324,6 @@ button:disabled { opacity: 0.38; }
 .aic.img img, .aei.img img, .pi.img img, .se.img img, .ci.img img { width: 100%; height: 100%; object-fit: contain; }
 
 /* ---------- Сундук / обелиск ---------- */
-.modal.chest { background: radial-gradient(ellipse at 50% 30%, rgba(26, 22, 18, 0.96), rgba(3, 3, 3, 0.99) 75%); justify-content: center; }
-.modal.chest > * { width: 100%; max-width: 400px; }
-.chestpic { display: flex; justify-content: center; height: 76px; margin-bottom: 2px; }
-.chestpic img { height: 100%; filter: drop-shadow(0 0 14px rgba(255, 240, 220, 0.22)); }
-.ctitle { color: var(--gold2) !important; font-size: 25px !important; }
-.cline { height: 1px; background: linear-gradient(90deg, transparent, #6e675e, transparent); margin: 6px auto 20px; }
-.ccards { display: flex; gap: 12px; justify-content: center; }
-.ccard {
-  width: 100px; min-height: 128px; padding: 10px 6px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer;
-  background: linear-gradient(#0e0c0d, #040304); border: 2px solid var(--rc, #888);
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.9), 0 0 10px color-mix(in srgb, var(--rc, #888) 30%, transparent);
-  transition: transform 0.1s, box-shadow 0.1s;
-}
-.ccard .aic { width: 64px; height: 64px; font-size: 44px; }
-.ccard .cname { font-size: 11.5px; line-height: 1.2; text-align: center; color: #d8d0c4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ccard.sel { transform: translateY(-5px); box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.9), 0 0 18px color-mix(in srgb, var(--rc, #888) 70%, transparent); }
-.cinfo { min-height: 190px; text-align: center; padding: 20px 10px 8px; }
-.cinfo .hint { color: #bdb5a8; margin-top: 30px; }
 .aname { font-family: var(--font); font-weight: 500; color: var(--gold2); font-size: 21px; margin-bottom: 2px; }
 .arar { font-size: 12px; margin-bottom: 10px; letter-spacing: 1px; }
 .atext { font-size: 13.5px; color: #d9d3c8; line-height: 1.55; }
@@ -337,10 +335,36 @@ button:disabled { opacity: 0.38; }
   background: #0c090b; clip-path: var(--torn-btn); box-shadow: inset 0 0 0 1px rgba(236, 232, 224, 0.45);
 }
 .take.reroll { margin-top: 10px; font-size: 16px; color: var(--text); opacity: 0.85; }
-.modal.chest.obelisk { background: radial-gradient(ellipse at 50% 30%, rgba(34, 14, 12, 0.96), rgba(3, 2, 2, 0.99) 78%); }
+.modal.chest { display: block; padding: 0; background: rgba(0, 0, 0, 0.725); } /* Img_Background001: чёрный α .725 */
+/* рамка 002–005 (Explosion54_05 почти прозрачный — линии CSS): 700x1145 и 688.5x1126, серый .353 */
+.modal.chest::before, .modal.chest::after { content: ""; position: absolute; left: 50%; top: 50%; pointer-events: none; box-sizing: border-box; border: max(1px, calc(var(--u) * 2)) solid rgba(90, 90, 90, 0.353); }
+.modal.chest::before { width: calc(var(--u) * 700); height: calc(var(--u) * 1145); margin: calc(var(--u) * -572.5) 0 0 calc(var(--u) * -350); }
+.modal.chest::after { width: calc(var(--u) * 688.5); height: calc(var(--u) * 1126); margin: calc(var(--u) * -563) 0 0 calc(var(--u) * -344.25); }
+.modal.chest .ctitle { position: absolute; left: 0; right: 0; margin: 0; top: calc(50% - var(--u) * 485); height: calc(var(--u) * 120); line-height: calc(var(--u) * 120); font-size: calc(var(--u) * 40) !important; text-align: center; letter-spacing: 0; white-space: nowrap; text-shadow: none; } /* (0,425) 720x120 size 40 */
+.modal.chest .cline { position: absolute; left: 50%; margin: 0 0 0 calc(var(--u) * -225); width: calc(var(--u) * 450); height: calc(var(--u) * 5); top: calc(50% - var(--u) * 352.5); background: rgba(190, 190, 190, 0.235); } /* (0,350) 450x5, α .235 */
+.modal.chest .ccards { position: absolute; inset: 0; display: block; pointer-events: none; }
+/* слот 196x256 x .82 = 160.72x209.92, центр (--cx, y 180); контур 200x260 цветом редкости, фон — цвет редкости */
+.modal.chest .ccard {
+  position: absolute; box-sizing: border-box; padding: 0; gap: 0; min-height: 0; pointer-events: auto; justify-content: center;
+  width: calc(var(--u) * 160.72); height: calc(var(--u) * 209.92);
+  left: calc(50% + var(--u) * var(--cx, 0) - var(--u) * 80.36); top: calc(50% - var(--u) * 180 - var(--u) * 104.96);
+  border: max(1px, calc(var(--u) * 2.5)) solid var(--rc, #888); box-shadow: none; transition: none;
+}
+.modal.chest .ccard.sel { transform: none; box-shadow: none; } /* выбранный: контур (1,1,1), фон .035 — общие правила .ccard.sel */
+.modal.chest .ccard .aic { width: calc(var(--u) * 153.8); height: calc(var(--u) * 178.6); font-size: calc(var(--u) * 80); } /* портрет 248x288 x .62 */
+.modal.chest .cinfo { position: absolute; inset: 0; min-height: 0; padding: 0; pointer-events: none; }
+.modal.chest .cinfo > * { position: absolute; left: 50%; margin: 0; text-align: center; pointer-events: auto; }
+.modal.chest .cinfo .hint { width: calc(var(--u) * 680); margin-left: calc(var(--u) * -340); top: calc(50% + var(--u) * 60); height: calc(var(--u) * 120); line-height: calc(var(--u) * 120); font-size: calc(var(--u) * 23); color: #ffe1b9; } /* (0,-120) 680x120 size 23 (1,.882,.725) */
+.modal.chest .cinfo .aname { width: calc(var(--u) * 600); margin-left: calc(var(--u) * -300); top: calc(50% - var(--u) * 43); height: calc(var(--u) * 120); line-height: calc(var(--u) * 120); font-size: calc(var(--u) * 28); color: #ff9755; } /* (0,-17) 600x120 size 28 */
+.modal.chest .cinfo .arar { width: calc(var(--u) * 600); margin-left: calc(var(--u) * -300); top: calc(50% + var(--u) * 20); height: calc(var(--u) * 80); line-height: calc(var(--u) * 80); font-size: calc(var(--u) * 17); letter-spacing: 0; } /* (0,-60) 600x80 size 17 */
+.modal.chest .cinfo .atext { width: calc(var(--u) * 670); margin-left: calc(var(--u) * -335); top: calc(50% + var(--u) * 108); height: calc(var(--u) * 250); display: flex; flex-direction: column; justify-content: center; font-size: calc(var(--u) * 18); line-height: 1.3; color: #64ff55; } /* (0,-233) 670x250 size 18 */
+.modal.chest .cinfo .synchips { width: calc(var(--u) * 600); margin-left: calc(var(--u) * -300); top: calc(50% + var(--u) * 246); margin-top: 0; gap: calc(var(--u) * 12); align-items: center; } /* (0,-275) .85 */
+.modal.chest .chip { width: calc(var(--u) * 58); height: calc(var(--u) * 58); padding: calc(var(--u) * 6); }
+.modal.chest > .take { position: absolute; left: 50%; margin: 0 0 0 calc(var(--u) * -150); width: calc(var(--u) * 300); height: calc(var(--u) * 80); padding: 0; font-size: calc(var(--u) * 32); top: calc(50% + var(--u) * 400); }
+.modal.chest > .take.reroll { width: calc(var(--u) * 400); margin-left: calc(var(--u) * -200); height: calc(var(--u) * 68); font-size: calc(var(--u) * 26); top: calc(50% + var(--u) * 500); }
+.modal.chest.obelisk { background: rgba(0, 0, 0, 0.725); }
 .modal.chest.obelisk .ctitle { color: #f0e6d6 !important; }
-.modal.chest.obelisk .chestpic img { filter: drop-shadow(0 0 16px rgba(255, 60, 40, 0.45)); }
-.modal.chest.obelisk .ccard.sel { border-color: #fff; }
+.modal.chest > .close { position: absolute; left: calc(50% + var(--u) * 252.5); top: calc(50% - var(--u) * 388.5); right: auto; width: calc(var(--u) * 65); height: calc(var(--u) * 65); padding: 0; background: none; border: none; font-size: calc(var(--u) * 45); color: var(--muted); } /* (285,356) 65x65 */
 
 /* синергии */
 .modal.synpop { background: rgba(4, 3, 4, 0.9); }
@@ -411,20 +435,23 @@ body.fury #game::after { content: ''; position: absolute; inset: 0; pointer-even
 
 /* низкие экраны (iPhone SE, альбомная) — плотнее */
 @media (max-height: 640px) {
-  .card .ic { width: 58px; height: 58px; } .card .ic.sq { width: 64px; height: 64px; }
-  .card .title { font-size: 17px; } .card .line { font-size: 12.5px; }
-  .levelup h1 { font-size: 26px; margin-bottom: 2vh; }
   .opt img { width: 76px; height: 76px; }
   .logo { font-size: 38px; } .emblem { width: 70px; height: 70px; }
 }
 
 /* Отзыв пользователя: экран выбора тёмный, рисунки светлые/белые — иконки на карточках одноцветные, без кислотных цветов */
-.modal .ic img { filter: grayscale(1) brightness(1.45) contrast(1.05) drop-shadow(0 0 2px rgba(0,0,0,.9)); }
+.modal .ic img { filter: drop-shadow(0 0 2px rgba(0,0,0,.9)); } /* портреты оригинала: цвет и белые «кисти» как есть (раньше grayscale для наших webp) */
 
 /* 3.0 партия 2: кнопка «Слияние» (Button_MagicCom_IN, мигает) и экран выбора слияния */
-.mergebtn { position: absolute; right: calc(4vw + var(--safe-right)); top: calc(var(--safe-top) + 3vh); padding: 9px 14px; font-size: 14px; color: #efe4ff; background: #120c1a; border: 1px solid rgba(180, 140, 255, 0.6); animation: mblink 0.9s ease-in-out infinite alternate; }
-@keyframes mblink { from { box-shadow: 0 0 4px rgba(180, 140, 255, 0.3); } to { box-shadow: 0 0 16px rgba(180, 140, 255, 0.9); } }
-.mclose { position: absolute; right: calc(14px + var(--safe-right)); top: calc(var(--safe-top) + 14px); background: none; border: none; font-size: 24px; color: var(--muted); }
+/* Button_MagicCom_IN (280,400) 140x140 (при 4 карточках y 500); в ui.md §2 мигание не описано - статичная */
+.mergebtn { position: absolute; left: calc(50% + var(--u) * 210); top: calc(50% - var(--u) * var(--my, 400) - var(--u) * 70); width: calc(var(--u) * 140); height: calc(var(--u) * 140); padding: 0; font-size: calc(var(--u) * 24); color: #efe4ff; background: #120c1a; border: 1px solid rgba(180, 140, 255, 0.6); border-radius: 0; }
+/* Canvas_MagicCom (ui.md §4): фон чёрный α1, заголовок (0,510) size 45 (1,.333,.529), крестик (300,575) 65x65 */
+.modal.levelup.combos { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; }
+.combos h1 { top: calc(50% - var(--u) * 560); height: calc(var(--u) * 100); line-height: calc(var(--u) * 100); font-size: calc(var(--u) * 45); color: #ff5587; }
+.combos .cards { position: relative; inset: auto; display: flex; justify-content: center; width: 100%; height: calc(var(--u) * 218.25); }
+.combos .card { position: relative; left: auto; top: auto; margin: 0; max-width: 100%; }
+.combos .learn { width: calc(var(--u) * 300); height: calc(var(--u) * 80); font-size: calc(var(--u) * 38); padding: 0; }
+.mclose { position: absolute; left: calc(50% + var(--u) * 267.5); top: calc(50% - var(--u) * 607.5); width: calc(var(--u) * 65); height: calc(var(--u) * 65); padding: 0; background: none; border: none; font-size: calc(var(--u) * 45); color: var(--muted); }
 .mnav { display: flex; align-items: center; gap: 18px; margin-top: 2vh; color: var(--gold); }
 .mnav button { padding: 8px 16px; }
 .refund:disabled { opacity: 0.5; }
@@ -434,7 +461,6 @@ body.fury #game::after { content: ''; position: absolute; inset: 0; pointer-even
 .scard.sel, .ccard.sel { border-color: #fff; background: #090909; }
 .scard.sold { visibility: hidden; }
 .scard .price { color: #00e1ff; }
-.modal.chest > .close { position: absolute; right: calc(14px + var(--safe-right)); top: calc(var(--safe-top) + 14px); width: auto; background: none; border: none; font-size: 26px; color: var(--muted); }
 .take.reroll span { color: #ff8732; }
 .merchbar { position: absolute; right: calc(10px + var(--safe-right)); top: calc(var(--safe-top) + 66px); width: 86px; text-align: right; font-size: 11px; color: #d9cfc6; pointer-events: none; }
 .merchbar div { height: 5px; margin-top: 3px; background: rgba(0, 0, 0, 0.7); border: 1px solid #5a3036; }

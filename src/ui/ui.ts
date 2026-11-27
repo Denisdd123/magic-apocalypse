@@ -275,7 +275,7 @@ function cardHtml(c: Choice) {
         <div class="badge">Слияние</div>
         <div class="title">${esc(c.title)}</div>
         ${pair ? `<div class="pair">${esc(pair)}</div>` : ''}
-        ${rest.map((l) => `<div class="line">${numHl(l)}</div>`).join('')}
+        <div class="eff">${rest.map((l) => `<div class="line">${numHl(l)}</div>`).join('')}</div>
       </div>`;
   }
   let corner = '';
@@ -288,7 +288,7 @@ function cardHtml(c: Choice) {
     <div class="ic">${pic}</div>
     <div class="body">
       <div class="title">${esc(c.title)}</div>
-      ${c.lines.map((l) => `<div class="line ${lineCls}">${numHl(l)}</div>`).join('')}
+      <div class="eff">${c.lines.map((l) => `<div class="line ${lineCls}">${numHl(l)}</div>`).join('')}</div>
     </div>
     ${corner}`;
 }
@@ -296,6 +296,11 @@ function cardHtml(c: Choice) {
 export function showLevelUp(level: number, scr: LevelScreen, onPick: (c: Choice) => void, onRefund: () => void, onMerge: (c: ComboData) => void) {
   clearModals();
   const m = el('div', 'modal levelup');
+  // ui.md §2: y центров карточек и y кнопки «Вернуть N% маны» по числу карточек (шаг 222.5)
+  const LAYOUT: Record<number, [number[], number]> = {
+    1: [[50], -117.5], 2: [[61.25, -161.25], -328.75], 3: [[182.5, -40, -262.5], -430], 4: [[182.5, -40, -262.5, -485], -642],
+  };
+  const [ys, refundY] = LAYOUT[Math.min(4, Math.max(1, scr.choices.length))] ?? LAYOUT[3];
   m.appendChild(el('div', 'sub', 'Текущий уровень : ' + level));
   m.appendChild(el('h1', '', 'Выбор заклинания'));
   let locked = true;
@@ -303,6 +308,7 @@ export function showLevelUp(level: number, scr: LevelScreen, onPick: (c: Choice)
   // Button_MagicCom_IN (280, 400): мигает, когда есть слияние (List_ApplyMagicComPossible)
   if (scr.merges.length) {
     const mb = el('button', 'mergebtn', 'Слияние');
+    if (scr.choices.length >= 4) mb.style.setProperty('--my', '500'); // 4 карточки: кнопка в (280,500)
     mb.addEventListener('click', () => { if (locked) return; showMerge(scr.merges, (c) => { m.remove(); onMerge(c); }, () => root().appendChild(m)); m.remove(); });
     m.appendChild(mb);
   }
@@ -311,6 +317,7 @@ export function showLevelUp(level: number, scr: LevelScreen, onPick: (c: Choice)
     const long = c.lines.join(' ').length > 150;
     const card = el('div', `card k-${c.kind}${long ? ' long' : ''}`);
     card.style.animationDelay = (i * 0.05).toFixed(2) + 's';
+    card.style.setProperty('--cy', String(ys[i] ?? ys[ys.length - 1] - 222.5 * (i - ys.length + 1)));
     card.innerHTML = cardHtml(c);
     card.addEventListener('click', () => { if (locked) return; m.remove(); onPick(c); });
     cards.appendChild(card);
@@ -318,6 +325,7 @@ export function showLevelUp(level: number, scr: LevelScreen, onPick: (c: Choice)
   m.appendChild(cards);
   const rb = el('button', 'refund', scr.refundOn ? `Вернуть ${scr.refundPct}% маны` : '<span style="color:#C84B1E">Больше нельзя вернуть ману</span>') as HTMLButtonElement;
   rb.disabled = !scr.refundOn;
+  rb.style.setProperty('--ry', String(refundY));
   rb.addEventListener('click', () => { if (locked || !scr.refundOn) return; m.remove(); onRefund(); });
   m.appendChild(rb);
   root().appendChild(m);
@@ -370,7 +378,7 @@ export function showAttrPick(sp: Spell, options: AttrDef[], onPick: (a: AttrDef)
   m.appendChild(el('h1', '', 'Выбор свойства'));
   m.appendChild(el('div', 'sub', esc(sp.def.name)));
   const tri = el('div', 'tri n' + options.length);
-  const desc = el('div', 'adesc', '<div class="hint">Выберите одно из свойств</div>');
+  const desc = el('div', 'adesc', '<div class="hint">При помощи свойств можно повышать силу заклинаний.<br>Выберите свойство.</div>');
   let sel: AttrDef | null = null;
   const learn = el('button', 'learn', 'Изучить') as HTMLButtonElement;
   learn.disabled = true;

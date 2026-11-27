@@ -8,37 +8,47 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Magic Apocalypse" />
   <meta name="theme-color" content="#050405" />
-  <!-- шрифты 2.2: Alegreya SC + Alegreya Sans (Google Fonts, OFL; кириллица) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="icon" type="image/png" href="icon-192.png" />
   <title>Magic Apocalypse 2.2</title>
   <style>
-    /* экран загрузки: виден, пока грузятся картинки 2.0; убирает ui.ts, когда появляется меню */
-    #boot { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-      background: radial-gradient(ellipse at 50% 42%, #170a0d 0%, #0a0607 45%, #020202 80%); color: #f3efe7;
-      font-family: "Alegreya SC", Georgia, system-ui, sans-serif; transition: opacity 0.4s; }
+    /* шрифты оригинала (те же файлы, что в style.css) */
+    @font-face { font-family: "Noto Sans Display"; font-weight: 400 500; font-style: normal; font-display: swap; src: url("/fonts/NotoSansDisplay-Medium.woff2") format("woff2"); }
+    @font-face { font-family: "Noto Sans Display"; font-weight: 600 800; font-style: normal; font-display: swap; src: url("/fonts/NotoSansDisplay-Bold.woff2") format("woff2"); }
+    /* экран загрузки = сцена A_Loading оригинала (холст 720x1280, 1 px = --bu); убирает ui.ts, когда появляется меню */
+    #boot { --bu: calc(min(100vw / 720, var(--app-h, 100lvh) / 1280)); position: fixed; inset: 0; z-index: 50; overflow: hidden; color: #f3efe7;
+      background: linear-gradient(#36d8ff 0 60%, #000 60%); font-family: "Noto Sans Display", system-ui, sans-serif; transition: opacity 0.4s; }
     #boot.out { opacity: 0; pointer-events: none; }
-    #boot .boot-logo { font-size: min(34px, 7.2vw); max-width: 92vw; font-weight: 700; line-height: 1; text-align: center; color: #f3efe7; letter-spacing: 2px; text-shadow: 2px 2px 0 #000; }
-    #boot .boot-logo b { display: inline-block; margin-left: 6px; padding: 1px 6px; font-size: 14px; font-weight: 400; color: #fff; background: #7a1020; border: 1px solid #d0293d; border-radius: 3px; vertical-align: top; }
-    #boot .boot-rune { width: 46px; height: 46px; border: 2px solid rgba(236,232,224,0.18); border-top-color: #f3efe7; border-radius: 50%; animation: bootspin 1s linear infinite; }
-    #boot .boot-bar { width: min(220px, 60vw); height: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
-    #boot .boot-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7a1020, #f3efe7); transition: width 0.2s; }
-    #boot .boot-txt { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #9a8f84; }
-    @keyframes bootspin { to { transform: rotate(360deg); } }
+    #boot .bcv { position: absolute; left: 50%; top: 50%; width: calc(var(--bu) * 720); height: calc(var(--bu) * 1280); transform: translate(-50%, -50%); }
+    #boot .bl { position: absolute; left: 50%; top: 50%; display: block; transform: translate(-50%, -50%); user-select: none; pointer-events: none; }
+    /* слои сзади вперёд: фон (.212,.847,1), LoadingImg5 (α .78), 4, 3, 2, 1; позиция (x,y вверх от центра), размер как в A_Loading */
+    #boot .bl5 { left: calc(50% + var(--bu) * 90); top: calc(50% - var(--bu) * 415); width: calc(var(--bu) * 900); height: calc(var(--bu) * 450); opacity: 0.784; }
+    #boot .bl4 { top: calc(50% + var(--bu) * 210); width: calc(var(--bu) * 720); height: calc(var(--bu) * 860); }
+    #boot .bl3 { top: calc(50% + var(--bu) * 30); width: calc(var(--bu) * 720); height: calc(var(--bu) * 1220); }
+    #boot .bl2 { top: calc(50% + var(--bu) * 100); width: calc(var(--bu) * 720); height: calc(var(--bu) * 1080); }
+    #boot .bl1 { top: calc(50% + var(--bu) * 384); width: calc(var(--bu) * 720); height: calc(var(--bu) * 512); }
+    #boot .boot-logo { position: absolute; left: calc(var(--bu) * 36); top: calc(var(--bu) * 64); transform: translateY(-50%); white-space: nowrap; font-weight: 700; font-size: calc(var(--bu) * 32); color: #000; letter-spacing: 1px; }
+    /* полоса загрузки: (0,-430) 350x12, фон (.373), заливка (1,.882,.588) */
+    #boot .boot-bar { position: absolute; left: calc(var(--bu) * 185); top: calc(var(--bu) * 1064); width: calc(var(--bu) * 350); height: calc(var(--bu) * 12); background: #5f5f5f; overflow: hidden; }
+    #boot .boot-bar i { display: block; height: 100%; width: 0; background: #ffe196; transition: width 0.2s; }
+    #boot .boot-txt { position: absolute; left: 0; top: calc(var(--bu) * 1090); width: 100%; text-align: center; font-size: max(11px, calc(var(--bu) * 22)); letter-spacing: 2px; text-transform: uppercase; color: #cfe9ee; }
   </style>
 </head>
 <body>
   <div id="game"></div>
   <div id="ui"></div>
   <div id="boot">
-    <div class="boot-logo">Magic Apocalypse<b>2.2</b></div>
-    <div class="boot-rune"></div>
-    <div class="boot-bar"><i></i></div>
-    <div class="boot-txt">Загрузка <span class="boot-pct"></span></div>
+    <div class="bcv">
+      <img class="bl bl5" src="art/ui/loading5.webp" alt="" />
+      <div class="bl bl4" style="background:#1c7286;-webkit-mask:url(art/ui/loading4.webp) center/100% 100% no-repeat;mask:url(art/ui/loading4.webp) center/100% 100% no-repeat"></div>
+      <div class="bl bl3" style="background:#134f5d;-webkit-mask:url(art/ui/loading3.webp) center/100% 100% no-repeat;mask:url(art/ui/loading3.webp) center/100% 100% no-repeat"></div>
+      <div class="bl bl2" style="background:#0c3039;-webkit-mask:url(art/ui/loading2.webp) center/100% 100% no-repeat;mask:url(art/ui/loading2.webp) center/100% 100% no-repeat"></div>
+      <div class="bl bl1" style="background:#000000;-webkit-mask:url(art/ui/loading1.webp) center/100% 100% no-repeat;mask:url(art/ui/loading1.webp) center/100% 100% no-repeat"></div>
+      <div class="boot-logo">Magic Apocalypse</div>
+      <div class="boot-bar"><i></i></div>
+      <div class="boot-txt">Загрузка <span class="boot-pct"></span></div>
+    </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

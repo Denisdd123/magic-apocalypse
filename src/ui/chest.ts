@@ -47,12 +47,6 @@ export function artifactText(a: ArtifactDef) {
 }
 
 // ---------------- Сундук ----------------
-/** Картинка над заголовком */
-function chestPic() {
-  const src = icon('chest_wood');
-  return src ? `<img src="${src}" alt="">` : '';
-}
-
 /** Названия и цвета заголовка по типу сундука (ui.md §5) */
 const CHEST: Record<number, [string, string]> = {
   5: ['Сундук с сокровищами', '#fff096'], 6: ['Чёрный ящик', '#ffe7cb'], 7: ['Хранилище реликвий', '#fff0f4'],
@@ -65,7 +59,6 @@ export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => vo
   const [title, color] = CHEST[opts.type];
   const m = div('modal chest', `
     <button class="close" aria-label="Оставить">✕</button>
-    <div class="chestpic">${chestPic()}</div>
     <h1 class="ctitle" style="color:${color}">${opts.title ?? title}</h1>
     <div class="cline"></div>
     <div class="ccards"></div>
@@ -79,8 +72,12 @@ export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => vo
   setTimeout(() => (locked = false), 300);
   const ids = choices.map((c) => c.id);
 
-  choices.forEach((a) => {
-    const c = div('ccard r-' + a.rarity, `${artIcon(a)}<div class="cname">${esc(a.name)}</div>`);
+  /** x слотов по числу (ui.md §5, таблица 0x654009), y = 180 */
+  const XS: number[][] = [[], [0], [-90, 90], [-180, 0, 180], [-234, -78, 78, 234]];
+  const xs = XS[Math.min(choices.length, 4)];
+  choices.forEach((a, i) => {
+    const c = div('ccard r-' + a.rarity, artIcon(a));
+    c.style.setProperty('--cx', String(xs[i] ?? 0));
     c.style.setProperty('--rc', RARITY[a.rarity].frame);
     c.style.setProperty('--rbg', RARITY[a.rarity].bg);
     c.addEventListener('click', () => {
