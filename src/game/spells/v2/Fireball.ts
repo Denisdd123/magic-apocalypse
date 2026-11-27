@@ -229,7 +229,8 @@ class Fireball extends DataSpell {
   /**
    * Пандемониум (ID 27, C_Battle_AllyBullet.c:19446): курс на цель, каждый тик pos += right·Speed·0.022 и
    * rotation.z += RotationRan (Random.Range(3, 8) — целое, один раз на шар); Apply_ExplosionID = 0 — при касании
-   * не взрывается, прямой урон = Attack·FireballDirectDamageRatio (только арт. 138), пробой всех; коллайдер 1.35×1.05.
+   * не взрывается, а бьёт обычным уроном Attack (OnCollisionEnter, ветка без взрыва; ApplyDirectAttack/арт. 138 там
+   * не читается), каждого врага раз, пробой 999; коллайдер 1.35×1.05; localScale (0.2·S + 0.1, 0.18·S + 0.09).
    * Жизнь = ConstellationTime·0.025 + 0.005, ConstellationTime = round(100·(100 + FireballTimeRatio + MTimeU)%).
    * В конце — ExplosionAttack 27, урон FirstAttack·3. FireballDamage ветки = (Pierce·3 + 4)·урон (StartInformation_B
    * @0x11da604) — ×4 уже пришло модом слияния (881), поэтому ×(3P + 4)/4.
@@ -240,13 +241,12 @@ class Fireball extends DataSpell {
     const ct = Math.round(100 + this.pctOf('duration') + W.stats.duration * 100);
     const life = ct * 0.025 + 0.005;
     const rot = (3 + Math.floor(Math.random() * 5)) * Math.PI / 180;
-    const sy = S * 0.18 + 0.09;   // localScale.y (x — S·k + 0.1, k не прочитан: HOLES)
+    const sx = S * 0.2 + 0.1, sy = S * 0.18 + 0.09;   // k = 0.2 (константа @0x636248)
     this.bullets.fire({
       x: P.x, y: P.y, ang, sp: 0, life,
-      // кадры Bullet27_01..03 по 0.06 с (счётчик кадров шагает раз в 2 тика); scale.x не прочитан (HOLES) — берём scale.y
-      tex: B27[0], frames: B27, frameDt: 0.06, scaleX: sy, scaleY: sy, normal: true, src: this.def.id,
-      hl: 0.675 * sy * U, hw: 0.525 * sy * U, pierce: 999, dmg: 0,
-      onHit: (_b, e) => { this.directHit(e, dmg); return true; },
+      // кадры Bullet27_01..03 по 0.06 с (счётчик кадров шагает раз в 2 тика)
+      tex: B27[0], frames: B27, frameDt: 0.06, scaleX: sx, scaleY: sy, normal: true, src: this.def.id,
+      hl: 0.675 * sx * U, hw: 0.525 * sy * U, pierce: 999, dmg,
       data: { acc: 0 },
       step: (b) => {
         while (b.data.acc + TICK <= b.t) {
