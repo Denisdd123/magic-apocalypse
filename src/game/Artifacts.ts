@@ -1,3 +1,4 @@
+import { boxDamage } from './spells/v2/_orig';
 import type Phaser from 'phaser';
 import type { Stats } from './Stats';
 import { areaDamage } from './Projectiles';
@@ -150,7 +151,6 @@ const TODO_ART: Record<number, string> = {
   73: 'плод мирового древа — упрощён до 3 сфер жизни',
   83: 'вместо настоящих вихря/метеорита/цунами — взрыв 500% по врагу',
   202: 'выбор заклинания без окна: берётся атакующее с наибольшим уровнем',
-  100: 'урон взрыва — оценка (2000% ATK, радиус 160)',
 };
 
 const TODO_SYN: Record<number, string> = {
@@ -570,9 +570,11 @@ export class ArtifactSet {
   onLifeOrb(v: number) {
     const P = W.player, s = W.stats;
     if (this.nums.has(106)) { const over = P.hp + v - s.maxHp; if (over > 0) this.extraHp = Math.min(s.maxHp, this.extraHp + over); } // Жизненный щит
-    if (this.nums.has(100)) {                                                                      // Глаз смотрящего (оценка 2000%)
-      areaDamage(P.x, P.y, 160, origDmg(2000), 200, 'Глаз смотрящего');
-      W.fx.burst(P.x, P.y, 160, 0xff4a6a, 0.5);
+    if (this.nums.has(100)) {                                                                      // Глаз смотрящего
+      // Obtain_Item → Bullet_Create(ID 70): урон 10000 (не от атаки), квадрат 4.5 × 1.9 ед.
+      const half = (4.5 * 1.9 / 2) * ORIG_U;
+      boxDamage(P.x, P.y, 0, half, half, 10000, 'Глаз смотрящего');
+      W.fx.burst(P.x, P.y, half, 0xff4a6a, 0.5);
     }
   }
 

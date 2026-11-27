@@ -51,7 +51,7 @@ export class Waves {
   enemyId = 1;
   waveId = 1;
   createNum = 2;
-  /** EnemyCreateDelay; до первой волны 0.75 с — замер с живой игры (source_findings.md «Спавн — ЗАМЕР», 0:25) */
+  /** EnemyCreateDelay; до первой волны 0.75 с — C_Battle_Manager.Start (0x3f400000), совпадает с замером */
   createDelay = 0.75;
   /** ApplyEnemyCreateDelay = clamp(EnemyCreateDelay × (X + 100)%, 0.03, 10) */
   applyCreateDelay = 0.75;
