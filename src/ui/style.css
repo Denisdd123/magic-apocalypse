@@ -38,18 +38,16 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { height: 100%; height: -webkit-fill-available; }
-/* iOS standalone + black-translucent: вьюпорт короче экрана на высоту статус-бара -> полоса снизу. Растягиваем корень на эту величину */
-@media all and (display-mode: standalone) { html { min-height: calc(100% + env(safe-area-inset-top)); } }
 html, body {
   margin: 0; padding: 0; width: 100%; height: 100%;
   color: var(--text); overflow: hidden;
   overscroll-behavior: none; touch-action: none;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   font-family: var(--font); font-weight: 400; letter-spacing: 0.2px;
-  /* фон страницы = средний цвет тёмной земли: под панелями Safari и в «подбородке» не будет полос */
-  background: #24261c;
+  /* чёрный = цвет статус-бара iPhone: если где-то останется край, он не виден полосой */
+  background: #000;
 }
-/* на весь экран, включая зону home-indicator: --app-h ставит main.ts (в standalone = высота экрана) */
+/* на весь вьюпорт (до низа экрана): --app-h ставит main.ts */
 #game { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; height: var(--app-h, 100lvh); }
 /* лёгкая виньетка поверх карты: статичный слой CSS, GPU почти не нагружает */
 #game::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;

@@ -5,28 +5,16 @@ import { MAX_DPR } from './config';
 
 // Холст рисуется в реальном разрешении экрана (с учётом плотности пикселей),
 // а CSS-размер равен размеру контейнера — так картинка чёткая на iPhone.
-// Размер берём у самого контейнера #game (он растянут на весь экран через CSS),
-// а не у window.innerHeight: в режиме «на экране Домой» iOS отдаёт его неточно.
+// Размер берём у самого контейнера #game (он растянут на весь вьюпорт через CSS).
 const host = document.getElementById('game')!;
 const dpr = () => Math.min(window.devicePixelRatio || 1, MAX_DPR);
 
-// Фидбек 2.1 (T7.2): в режиме «на экране Домой» iOS иногда даёт 100vh/100lvh короче экрана —
-// снизу (зона home-indicator) оставалась полоса без игры. В standalone веб-вью занимает весь экран,
-// поэтому высоту берём у screen (с учётом ориентации) и отдаём в CSS через --app-h (#game и #ui).
-const standalone = () =>
-  (navigator as unknown as { standalone?: boolean }).standalone === true ||
-  window.matchMedia?.('(display-mode: standalone)').matches === true ||
-  window.matchMedia?.('(display-mode: fullscreen)').matches === true;
+// iPhone («на экране Домой»): статус-бар непрозрачный чёрный (index.html), веб-вью начинается под ним и идёт
+// до низа экрана. Высоту берём только у вьюпорта: screen.height больше его и увела бы низ игры за край.
 let appH = 0;
 function fitHost() {
   const vv = window.visualViewport;
-  let h = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0, vv ? vv.height : 0);
-  if (standalone() && window.screen) {
-    const land = window.innerWidth > window.innerHeight;
-    const sw = window.screen.width, sh = window.screen.height;
-    h = Math.max(h, land ? Math.min(sw, sh) : Math.max(sw, sh));
-  }
-  h = Math.round(h);
+  const h = Math.round(Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0, vv ? vv.height : 0));
   if (h > 0 && h !== appH) { appH = h; document.documentElement.style.setProperty('--app-h', h + 'px'); }
 }
 fitHost();
