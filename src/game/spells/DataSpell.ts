@@ -35,6 +35,8 @@ export abstract class DataSpell extends Spell {
   mods(): Mod[] {
     if (this.modCache) return this.modCache;
     const out: Mod[] = [];
+    // Дух (3) и Спутник (4): колонки уровней применяются уже при изучении (AbilityStatApply, нет проверки «первое изучение») — урон +20 %
+    if (this.data.id === 3 || this.data.id === 4) out.push({ stat: 'dmg', op: 'pct', v: 20, text: '' });
     for (const l of this.data.levels) if (l.level <= this.level) out.push(...l.mods);
     for (const lvl of this.data.propLevels) for (const p of this.data.props[lvl] ?? []) if (this.hasProp(p.id)) out.push(...p.mods);
     if (this.data.enchant) for (let i = 0; i < this.enchants; i++) out.push(...this.data.enchant.mods);
