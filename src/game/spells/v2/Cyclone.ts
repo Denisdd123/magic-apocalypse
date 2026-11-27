@@ -141,7 +141,7 @@ class Cyclone extends DataSpell {
   // ———— корутины каста ————
   private *loop(): Generator<number, void, unknown> {
     if (this.hasCombo(50)) { yield* this.blackHole(); return; }
-    yield this.pSpeed;
+    if (!this.once) yield this.pSpeed;
     for (;;) {
       if (this.hasCombo(50)) { yield* this.blackHole(); return; }
       if (this.hasCombo(39)) {
@@ -183,6 +183,7 @@ class Cyclone extends DataSpell {
         const a = Math.atan2(t.e.y - P.y, t.e.x - P.x);
         this.make(this.hasCombo(14) ? 'neutron' : this.hasProp(462) ? 'c' : 'a', a);
       }
+      if (this.once) return;
       yield this.pSpeed;
     }
   }

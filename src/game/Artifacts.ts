@@ -9,6 +9,10 @@ import { DEPTH, ORIG_U } from '../config';
 import { ALL_SPELLS } from './spells/registry';
 import { ART_DATA, SYN_DATA, type ArtData, type SynData } from '../data/artifacts_data';
 import { SYNERGY } from '../data/orig/synergies';
+import type { DataSpell } from './spells/DataSpell';
+import { CYCLONE } from './spells/v2/Cyclone';
+import { METEOR } from './spells/v2/Meteor';
+import { TSUNAMI } from './spells/v2/Tsunami';
 import { ArtifactDeck, MERCHANT_BASE, VISIT_MUL, type ChestType } from './ArtifactDeck';
 
 // Артефакты и синергии оригинала (182 + 63). Числа и тексты — из таблиц (src/data/artifacts_data.ts, генерируется),
@@ -149,8 +153,7 @@ const TODO_ART: Record<number, string> = {
   179: 'эффект очарования ×2 (SpellBook.enchant; s.artFx[729] = 2)',
   219: 'особая пассивка в выборе — выставлен флаг s.artFx.unicorn, подключить buildSpecialChoices',
   73: 'плод мирового древа — упрощён до 3 сфер жизни',
-  83: 'вместо настоящих вихря/метеорита/цунами — взрыв 500% по врагу',
-  202: 'выбор заклинания без окна: берётся атакующее с наибольшим уровнем',
+  83: 'настоящий каст вихря/метеора/цунами ур. 1; свои узоры Play_Pandora не перенесены',
 };
 
 const TODO_SYN: Record<number, string> = {
@@ -192,13 +195,7 @@ const TICK: Record<number, () => void> = {
     W.fx.burst(P.x, P.y, R, 0x9b7bff, 0.5, 'ring');
   },
   73: () => { for (let i = 0; i < 3; i++) { const p = around(20, 50); W.orbs.drop(p.x, p.y, 'life', 0); } }, // Лист мирового древа
-  83: () => {                                                                               // Ящик Пандоры
-    const e = W.enemies.randomVisible(); if (!e) return;
-    const k = (Math.random() * 3) | 0, mul = W.artifacts.synNum(44) ? 2 : 1;
-    const r = k === 0 ? 55 : k === 1 ? 60 : 80, tint = k === 0 ? 0xcfe8ff : k === 1 ? 0xff7a2e : 0x4aa8ff;
-    areaDamage(e.x, e.y, r, origDmg(500 * mul), 120, 'Ящик Пандоры');
-    W.fx.burst(e.x, e.y, r, tint, 0.45);
-  },
+  83: () => W.artifacts.pandora(),                                                          // Ящик Пандоры
   85: () => {                                                                               // Часовой механизм
     const P = W.player;
     W.enemies.grid.query(P.x, P.y, 150, (e) => W.enemies.stun(e, 2));
@@ -322,6 +319,18 @@ export class ArtifactSet {
   private dnaN = 0; private dnaAmp = 0; private dnaHp = 0;
   private bondKey: string | null = null;
   private bondPending = false;
+  /** окно «Связь» (показывает GameScene) */
+  onBond: (() => void) | null = null;
+  /** разовые касты Ящика Пандоры (живут 8 с, чтобы снаряды долетели) */
+  private ghosts: { sp: DataSpell; t: number }[] = [];
+
+  /** Play_Pandora: Random(1, 4) — вихрь / метеор / цунами с обычным уроном (эффект 69 = перезарядка) */
+  pandora() {
+    const def = [CYCLONE, METEOR, TSUNAMI][(Math.random() * 3) | 0];
+    const sp = def.create() as DataSpell;
+    sp.once = true; sp.onChange();
+    this.ghosts.push({ sp, t: 8 });
+  }
   private dynT = 0;
   private scanT = 0;
   private dyn: Record<DynKey, number> = Object.fromEntries(DYN_KEYS.map((k) => [k, 0])) as Record<DynKey, number>;
@@ -430,17 +439,15 @@ export class ArtifactSet {
   }
 
   /** Связь: +240% урона одному атакующему заклинанию (todo: окно выбора; пока — с наибольшим уровнем) */
+  /** Button_Artifact_Select(202) → MagicUpgradeEffect_Start(2): игрок сам выбирает заклинание */
   pickBond() {
-    let best: CountedSpell | null = null;
-    for (const sp of W.book.spells.values()) {
-      const c = sp as unknown as CountedSpell;
-      if (c.def.kind !== 'attack') continue;
-      if (!best || c.level > best.level) best = c;
-    }
-    if (!best) { this.bondPending = true; return; }
-    this.bondPending = false;
-    this.bondKey = best.def.id;
-    W.stats.addSpellDmg(this.bondKey, 2.4 + (this.synNums.has(31) ? 1.2 : 0));
+    this.bondPending = !this.bondChoices().length;
+    if (!this.bondPending) this.onBond?.();
+  }
+  bondChoices() { return [...W.book.spells.values()].filter((sp) => (sp as unknown as CountedSpell).def.kind === 'attack'); }
+  applyBond(key: string) {
+    this.bondKey = key;
+    W.stats.addSpellDmg(key, 2.4 + (this.synNums.has(31) ? 1.2 : 0));
   }
 
   /** Create_Artifact: артефакты сундука из колоды `List_ArtifactDrop` */
@@ -617,6 +624,11 @@ export class ArtifactSet {
 
   update(dt: number) {
     const P = W.player, s = W.stats;
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      const g = this.ghosts[i];
+      g.sp.update(dt);
+      if ((g.t -= dt) <= 0) { g.sp.destroy(); this.ghosts.splice(i, 1); }
+    }
     // периодические артефакты
     for (const [id, t] of this.timers) {
       const nt = t - dt;

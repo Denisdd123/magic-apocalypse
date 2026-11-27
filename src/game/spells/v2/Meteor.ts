@@ -118,7 +118,7 @@ class Meteor extends DataSpell {
 
   // ———— Play_Meteor ————
   private *loop(): Generator<number, void, unknown> {
-    yield this.pSpeed;
+    if (!this.once) yield this.pSpeed;
     if (this.hasCombo(5)) { yield* this.warClimate(); return; }
     for (;;) {
       if (this.hasCombo(41)) yield* this.flameStorm();
@@ -149,6 +149,7 @@ class Meteor extends DataSpell {
         }
         this.extraCast = false;
       }
+      if (this.once) return;
       yield this.pSpeed;
     }
   }

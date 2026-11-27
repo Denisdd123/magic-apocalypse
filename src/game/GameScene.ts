@@ -38,7 +38,7 @@ const CRITICAL = /^v2\/(spell_fx|world|spell_icons|passives)\//;
 import { W } from './World';
 import { Hud, Joystick, clearModals, initUi, showAttrPick, showLevelUp, showMenu } from '../ui/ui';
 import { showDeath, showPause } from '../ui/screens';
-import { showChest, toast } from '../ui/chest';
+import { showBond, showChest, toast } from '../ui/chest';
 import { showEnhance, showShop, showZoneClear, type ShopItem } from '../ui/zone';
 import { Zone } from './Zone';
 import { ArtifactSet } from './Artifacts';
@@ -58,7 +58,7 @@ export class GameScene extends Phaser.Scene {
   /** подобранные сундуки, ждущие окна */
   private chestQ: ChestType[] = [];
   /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
-  private zoneQ: ('shop' | 'clear')[] = [];
+  private zoneQ: ('shop' | 'clear' | 'bond')[] = [];
   // пол по оригиналу не перекрашивается в зоне 1 (stageTint убран: красный пол — только зона 2)
   /** зум камеры без зачистки (fitCamera) */
   private baseZoom = 1;
@@ -160,6 +160,7 @@ export class GameScene extends Phaser.Scene {
       if (s <= 1.8) W.fx.burst(W.player.x, W.player.y, Math.min(6.4 * s, 9) * ORIG_U, 0xffffff, 0.25, 'ring');
     };
     this.zoneQ = []; this.land.newRun();
+    W.artifacts.onBond = () => { this.zoneQ.push('bond'); };
     W.waves.onClearEnd = () => W.pickups.obelisk();
     // победа (Game_ClearON на 12:00) → окно → бесконечный режим (Game_BattleLoopON); обелиск ставит onClearEnd
     W.waves.onVictory = () => { this.zoneQ.push('clear'); };
@@ -219,7 +220,10 @@ export class GameScene extends Phaser.Scene {
   private openZone() {
     const k = this.zoneQ.shift()!;
     const close = () => { this.inModal = false; this.paused = false; };
-    if (k === 'shop') {
+    if (k === 'bond') {
+      this.inModal = true; this.paused = true; this.joy?.release();
+      showBond(W.artifacts.bondChoices().map((sp) => ({ id: sp.def.id, name: sp.def.name, icon: sp.def.icon })), (id) => { W.artifacts.applyBond(id); close(); });
+    } else if (k === 'shop') {
       const items: ShopItem[] = W.artifacts.merchantGoods().map((g) => ({ ...g, sold: false }));
       if (!items.length) return;
       this.inModal = true; this.paused = true; this.joy?.release();

@@ -109,3 +109,24 @@ export function toast(html: string, ms = 2600) {
   setTimeout(() => t.classList.add('out'), ms - 400);
   setTimeout(() => t.remove(), ms);
 }
+
+// ---------------- Связь (артефакт 202) ----------------
+/** Выбор изученного атакующего заклинания; закрыть без выбора нельзя */
+export function showBond(list: { id: string; name: string; icon: string }[], onPick: (id: string) => void) {
+  clearModals();
+  const m = div('modal chest', `
+    <h1 class="ctitle" style="color:#fff096">Связь</h1>
+    <div class="cline"></div>
+    <div class="bondhint">Выберите заклинание: его урон +240%</div>
+    <div class="bondlist"></div>`);
+  let locked = true;
+  setTimeout(() => (locked = false), 300);
+  for (const sp of list) {
+    const b = document.createElement('button');
+    b.className = 'bonditem';
+    b.innerHTML = `<img src="${icon(sp.icon)}" alt=""><span>${esc(sp.name)}</span>`;
+    b.addEventListener('click', () => { if (locked) return; clearModals(); onPick(sp.id); });
+    m.querySelector('.bondlist')!.appendChild(b);
+  }
+  root().appendChild(m);
+}

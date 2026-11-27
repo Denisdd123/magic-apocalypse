@@ -16,6 +16,8 @@ export const PROP_TINTS = [0xff8a6a, 0x7ab8ff, 0xffd25a];
 export abstract class DataSpell extends Spell {
   /** сколько раз зачаровано (0..3) */
   enchants = 0;
+  /** разовый каст без перезарядки (Ящик Пандоры): метеор / вихрь / цунами */
+  once = false;
   /** слияние, основой которого стало это заклинание */
   fusion: ComboData | null = null;
   private modCache: Mod[] | null = null;

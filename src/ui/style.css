@@ -460,3 +460,10 @@ body.fury #game::after { content: ''; position: absolute; inset: 0; pointer-even
 .merchbar div { height: 5px; margin-top: 3px; background: rgba(0, 0, 0, 0.7); border: 1px solid #5a3036; }
 .merchbar i { display: block; height: 100%; background: #c71a47; }
 .modal.shop > .close { width: auto; max-width: none; }
+
+/* Связь: список заклинаний (по центру окна) */
+.bondhint { position: relative; margin: 240px auto 0; text-align: center; color: #f0e6d6; }
+.bondlist { position: relative; display: flex; flex-direction: column; gap: 8px; width: min(86%, 340px); max-height: 55%; overflow-y: auto; margin: 14px auto 0; }
+.bonditem { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #040301; border: 1px solid #99591f; color: #f0e6d6; font: inherit; text-align: left; pointer-events: auto; }
+.bonditem img { width: 40px; height: 40px; object-fit: contain; }
+

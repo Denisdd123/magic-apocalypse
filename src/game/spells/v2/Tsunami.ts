@@ -116,7 +116,7 @@ class Tsunami extends DataSpell {
 
   // ———— Play_Tsunami ————
   private *loop(): Generator<number, void, unknown> {
-    yield this.pSpeed;
+    if (!this.once) yield this.pSpeed;
     for (;;) {
       const P = W.player, bx = P.x, by = P.y;
       yield 0.5;
@@ -159,6 +159,7 @@ class Tsunami extends DataSpell {
           yield lava ? 0.095 + rnd(-0.03, 0.03) : 0.123 + rnd(-0.03, 0.06);
         }
       }
+      if (this.once) return;
       yield this.pSpeed * this.sumCool + 0.5;
     }
   }
