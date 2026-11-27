@@ -245,7 +245,8 @@ class Spirit extends DataSpell {
         this.novaRay(o.x, o.y, (-rot * Math.PI) / 180); // Unity: угол против часовой, экран y вниз
       }
       yield 0.15;
-      yield Math.max(0.05, this.rhythm[1]);
+      // SpiritPSpeed ветки 53 = 2·PSpeed + 0.2 (StartInformation_B @0x11ded80, слагаемое = константа @0x636248)
+      yield Math.max(0.05, this.rhythm[1] + 0.2);
     }
   }
 
