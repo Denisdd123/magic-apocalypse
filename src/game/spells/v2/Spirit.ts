@@ -56,6 +56,8 @@ const SHOT = 'sp_inc5', SHOT_FAM = 'sp_inc10';
 const BLADE = seq('sp_inc18', 8);
 /** кадры копья Incinerate20_01..10 — те же файлы, что у луча Бластера */
 const SPEAR = seq('sp_inc20', 10);
+/** Сверхновая 53: SpriteList_Explosion01…09[107] = Explosion107_01..09 (512 px, PPU 100) */
+const NOVA = seq('sp_nova', 9);
 const SM19 = seq('sp_smoke19', 4), SM31 = seq('sp_smoke31', 4), SM43 = seq('sp_smoke43', 4);
 /** Мечи 22: 5 шагов взмаха → кадры клинка 1, 2, 3, 4 и 8 (коллайдер шагов 1–4 совпадает с кадрами 1–4 клинка, шаг 5 — OFF = кадр 8) */
 const SWORD_FR = [0, 1, 2, 3, 7];
@@ -67,6 +69,7 @@ export const SPIRIT_LOAD: [string, string][] = [
   ...([1, 2, 3, 8] as const).flatMap((n) => ['A', 'B', 'C', 'D'].map((l): [string, string] => [`sp_u${n}${l}`, `${D}UnitSpirit${n}Motion${l}_s.png`])),
   ['sp_inc5', `${D}Incinerate5_00.png`],
   ['sp_inc10', `${D}Incinerate10_00.png`],
+  ...NOVA.map((k, i): [string, string] => [k, `${D}Explosion107_0${i + 1}.png`]),
   ...seq('Incinerate18', 8).map((k, i): [string, string] => [BLADE[i], `${D}${k}.png`]),
   ...seq('Incinerate20', 10).map((k, i): [string, string] => [SPEAR[i], `vfx/bolt/orig/${k}.png`]),
   ...([19, 31, 43] as const).flatMap((n) => seq(`BulletSmoke${n}`, 4).map((k, i): [string, string] => [`sp_smoke${n}_0${i + 1}`, `${D}${k}.png`])),
@@ -232,8 +235,9 @@ class Spirit extends DataSpell {
       const step = 360 / n;
       this.units[0].shotT = 0;
       const o0 = this.pos(0);
-      // кольцо старта Сверхновой: кадры эффекта в библии не разобраны (вопрос в отчёте) — пока старая заглушка
-      W.fx.burst(o0.x, o0.y, 1.85 * 64 * PX, 0xffe2a8, this.pSpeed <= 0.65 ? 0.33 : 0.63, 'ring');
+      // Play_SuperNova_Effect: дух ×(1.85, 1.75) со спрайтом Explosion107; 21 шаг по 0.03 с (_Fast — 11); 9 кадров растянуты на всё время (раскладка шаг→кадр — оценка, HOLES)
+      const dur = (this.pSpeed <= 0.65 ? 11 : 21) * 0.03, fdt = dur / NOVA.length;
+      W.fx.anim(o0.x, o0.y, NOVA, fdt, fdt, PX * 0.95 * 1.85, PX * 0.95 * 1.75);
       yield 0.06;
       const o = this.pos(0);
       for (let k = 0; k < n; k++) {

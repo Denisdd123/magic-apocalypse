@@ -237,6 +237,7 @@ function build() {
   imgTile(g, [`${so}Incinerate10_00.png`], 'Фамильяр / Сверхновая: снаряд', 114, 60);
   imgTile(g, Array.from({ length: 8 }, (_, i) => `${so}Incinerate18_0${i + 1}.png`), 'Клинок, 8 кадров ≈0.03 с', 281, 35, 300);
   imgTile(g, Array.from({ length: 10 }, (_, i) => `vfx/bolt/orig/Incinerate20_${String(i + 1).padStart(2, '0')}.png`), 'Магическое копьё (сл. 43), 10 × 0.042 с', 300, 42, 400);
+  imgTile(g, Array.from({ length: 9 }, (_, i) => `${so}Explosion107_0${i + 1}.png`), 'Сверхновая (сл. 53): вспышка старта, 9 кадров за 0.63 с', 300, 70, 300);
 
   g = section('mcircle-game', 'Магический круг — сейчас в игре',
     'Кольца оригинала (холст 520 px): A и B меняют кадр каждые 0.08 с и вращаются в разные стороны; цвет свойства задаётся кодом.');
