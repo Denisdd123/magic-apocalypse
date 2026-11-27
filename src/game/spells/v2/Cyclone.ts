@@ -235,9 +235,12 @@ class Cyclone extends DataSpell {
     const img = (this.pool.pop() ?? W.scene.add.image(0, 0, tex)).setTexture(tex).setVisible(true)
       .setDepth(DEPTH.zone).setBlendMode(kind === 'b' || kind === 'hole' ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD)
       .setTint(tint).setAlpha(0.75).setRotation(ang);
+    // слияние 10 (Bullet_Create case 0x4c): угол случайный, радиус по X и по Y отдельно Random(0.95, 4.65) ед.
+    const oa = Math.random() * Math.PI * 2, orad = () => (0.95 + Math.random() * 3.7) * U;
+    const orbit = kind === 'orbit';
     const w: Wind = {
       kind, x, y, h0: ang, h: ang, t: 0, life, fade, fadeA, sc, coll, grow, expand, v,
-      dmg: this.dmg * pd, hitT: 0.3, hitK: 1, acc: 0, n: 0, cul: kind === 'hole' ? 1.1 : 0.75, stun: 0.35, ox: kind === 'orbit' ? 60 : x - P.x, oy: y - P.y, img, tex,
+      dmg: this.dmg * pd, hitT: 0.3, hitK: 1, acc: 0, n: 0, cul: kind === 'hole' ? 1.1 : 0.75, stun: 0.35, ox: orbit ? Math.cos(oa) * orad() : x - P.x, oy: orbit ? Math.sin(oa) * orad() : y - P.y, img, tex,
     };
     this.winds.push(w);
     this.draw(w, 0.75);
