@@ -65,8 +65,8 @@ button:disabled { opacity: 0.38; }
 
 /* ---------- HUD ---------- */
 .hud { position: absolute; inset: 0; }
-.hudshade { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--safe-top) + 62px); background: linear-gradient(rgba(3, 3, 4, 0.7), rgba(3, 3, 4, 0)); pointer-events: none; }
-.xpbar { position: absolute; left: 0; right: 0; top: var(--safe-top); height: 6px; background: rgba(6, 5, 6, 0.8); border-bottom: 1px solid rgba(236, 232, 224, 0.28); }
+.hudshade { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--safe-top) + 110px); background: linear-gradient(#000 0, rgba(0, 0, 0, 0.86) 12%, rgba(0, 0, 0, 0.55) 36%, rgba(0, 0, 0, 0.22) 68%, transparent); pointer-events: none; } /* верх игры плавно уходит в чёрный статус-бар iPhone */
+.xpbar { position: absolute; left: 0; right: 0; top: var(--safe-top); height: 6px; background: rgba(236, 232, 224, 0.07); }
 .xpbar > div { height: 100%; width: 0; background: linear-gradient(90deg, #1f4f8f, #4f9ee8 70%, #b8e6ff); box-shadow: 0 0 5px rgba(95, 178, 255, 0.45); transition: width 0.15s; }
 .topline {
   position: absolute; left: 0; right: 0; top: calc(var(--safe-top) + 11px); height: 34px;
