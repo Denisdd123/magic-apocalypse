@@ -70,6 +70,8 @@ export class Enemy {
   stunT = 0; flashT = 0;
   flashCrit = false;
   freezeT = 0; slowT = 0; slowK = 0;
+  /** радиус расталкивания */
+  sr = 0;
   frame = 0; frames = 3;
   /** масштаб юнита UnitApply_UnitSize */
   unitSize = 1;
@@ -227,6 +229,8 @@ export class Enemies {
     // хитбокс: BoxCollider 0.44×0.55 ед. (элитки 1.66, боссы/эпики 41–46 — 3×3) на объекте с масштабом S
     e.r = (bossId ? 1.5 : elite ? 0.83 : 0.25) * S * U;
     e.mass = boss ? 50 : elite ? 4 : 1;
+    // расталкивание по видимому телу (решение Дениса 2026-11-27: картинки не налезают; коллайдер оригинала меньше)
+    e.sr = Math.max(e.r, mobVisible(type.uid) * (ORIG_U / 100) * S * 0.44);
     e.xp = st.mana;
     e.kx = e.ky = 0; e.flashT = 0; e.freezeT = 0; e.slowT = 0; e.slowK = 0; e.atkT = 0;
     e.stunT = 0;
@@ -482,14 +486,14 @@ export class Enemies {
     for (let it = 0; it < SOLVER_ITERATIONS; it++) {
       for (const e of this.list) {
         if (!e.alive) continue;
-        const n = g.near(e.x, e.y, e.r, nb, 16);
+        const n = g.near(e.x, e.y, e.sr * 2, nb, 32);
         for (let i = 0; i < n; i++) {
           const o = nb[i];
           if (o === e) continue;
           let ox = e.x - o.x, oy = e.y - o.y;
           let od2 = ox * ox + oy * oy;
           if (od2 < 0.0001) { ox = Math.cos(e.id); oy = Math.sin(e.id); od2 = 1; }
-          const od = Math.sqrt(od2), over = e.r + o.r - od;
+          const od = Math.sqrt(od2), over = e.sr + o.sr - od;
           if (over <= 0) continue;
           const k = over / od, we = o.mass / (e.mass + o.mass), wo = 1 - we;
           e.x += ox * k * we; e.y += oy * k * we;
