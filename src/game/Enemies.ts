@@ -520,8 +520,8 @@ export class Enemies {
       return;
     }
     // сфера маны за каждые N убийств: BaseManaBallDropKillCondition 12 → 20/22/24/26/28 по EnemyLevelNum (spawn.md §2)
-    // «Завод маны» (эффект 142 −20) — как в 2.2: делитель (1 + orbRate), формула оригинала не снята
-    if (++this.orbKills >= orbKillsNeed() / (1 + W.stats.orbRate)) {
+    // «Завод маны» (эффект 142 −20): порог = round(база × (100 − 20) × 0.01) (StartInformation_B @0x11c68d8)
+    if (++this.orbKills >= Math.round(orbKillsNeed() * Math.max(0, 1 - W.stats.orbRate))) {
       this.orbKills = 0;
       W.orbs.drop(e.x, e.y, Math.random() < LOOT.smallOrbChance ? 's' : 'm');
     }
