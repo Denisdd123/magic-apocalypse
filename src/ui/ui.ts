@@ -97,11 +97,11 @@ export function showMenu(onPlay: () => void) {
     <div class="mm-mobs">${mobs.map((s, i) => `<img src="${s}" style="--i:${i}">`).join('')}</div>
     <div class="mm-center">
       <img class="emblem" src="${icon('mage_idle_0', 0xd9c9a0)}" alt="">
-      <div class="logo">Magic<br>Apocalypse<span class="v2">2.2</span><small>Выживи в Разломе</small></div>
+      <div class="logo">Magic<br>Apocalypse<span class="v2">3.0 β</span><small>Выживи в Разломе</small></div>
       <button class="play">Играть</button>
       <div class="hint">Веди пальцем в любом месте экрана, чтобы ходить. Маг атакует сам. Собирай голубые сферы и выбирай заклинания.</div>
     </div>
-    <div class="ver">версия 2.2 · Dark Fantasy</div>`;
+    <div class="ver">версия 3.0 beta</div>`;
   m.querySelector('.play')!.addEventListener('click', () => { m.remove(); onPlay(); });
   root().appendChild(m);
   hideBoot();
