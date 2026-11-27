@@ -12,7 +12,18 @@ const dpr = () => Math.min(window.devicePixelRatio || 1, MAX_DPR);
 // iPhone («на экране Домой»): статус-бар прозрачный (black-translucent, index.html), игра идёт под часами.
 // Высоту документа растягивает style.css (@media standalone), здесь отдаём её в CSS как --app-h.
 let appH = 0;
+// запасной путь для iOS 26: если корень всё равно короче экрана — растягиваем его до screen.height (только iPhone «на экране Домой»)
+const iosHome = (navigator as unknown as { standalone?: boolean }).standalone === true;
+function stretchRoot() {
+  if (!iosHome || !window.screen) return;
+  const land = window.innerWidth > window.innerHeight;
+  const full = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+  const root = document.documentElement;
+  if (root.getBoundingClientRect().height + 1 < full) root.style.height = full + 'px';
+  else if (root.style.height && root.getBoundingClientRect().height > full + 1) root.style.height = '';
+}
 function fitHost() {
+  stretchRoot();
   // высота = реальная высота #game (в standalone iOS она больше innerHeight на статус-бар)
   const h = Math.round(host.getBoundingClientRect().height || window.innerHeight || 0);
   if (window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0);

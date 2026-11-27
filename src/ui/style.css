@@ -38,13 +38,6 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { height: 100%; }
-/* iPhone «на экране Домой» + black-translucent: iOS даёт вьюпорт короче экрана на высоту статус-бара,
-   а fixed-элементы обрезает по нему -> полоса снизу. Растягиваем сам документ на эту величину,
-   а #game/#ui/#boot — обычные absolute внутри body (не fixed), чтобы доходили до низа экрана. */
-@media all and (display-mode: standalone), all and (display-mode: fullscreen) {
-  html, body { height: calc(100% + env(safe-area-inset-top, 0px)); }
-  :root { overflow: visible; } /* :root сильнее правила html,body ниже; hidden у корня обрезает по короткому вьюпорту -> чёрная полоса снизу (скрин translucent_v8) */
-}
 html, body {
   margin: 0; padding: 0; width: 100%; height: 100%;
   color: var(--text); overflow: hidden;
@@ -55,6 +48,14 @@ html, body {
   background: #000;
 }
 body { position: relative; }
+/* iPhone «на экране Домой» + black-translucent (ошибка iOS 26, WebKit 301108): вьюпорт короче экрана на высоту
+   статус-бара, а env(safe-area-inset-top) там бывает 0 -> полоса снизу. Корень = 100lvh (единственная единица с полной
+   высотой, по отчётам), без обрезки overflow; #game/#ui/#boot — absolute внутри body. main.ts дотягивает до screen.height.
+   Стоит ПОСЛЕ общего html,body — иначе height: 100% его перебивает (так было в dfd6876–6fd5635). */
+@media all and (display-mode: standalone), all and (display-mode: fullscreen) {
+  html { height: 100lvh; overflow: visible; }
+  body { height: 100%; }
+}
 /* на весь экран (до низа): --app-h = высота #game, ставит main.ts */
 #game { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 /* лёгкая виньетка поверх карты: статичный слой CSS, GPU почти не нагружает */
