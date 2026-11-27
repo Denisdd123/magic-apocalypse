@@ -37,15 +37,28 @@ export class Zone {
   get timeFrozen() { return W.waves.timeFrozen; }
 
   /** Арена босса: ApplyBossGround_X/Y, стена √145, урон за √138 — 10 % макс. HP (или −1 заряд щита) раз в 0.8 с */
-  arena: { x: number; y: number; img: Phaser.GameObjects.Image | null } | null = null;
+  arena: { x: number; y: number; objs: Phaser.GameObjects.GameObject[]; haze: Phaser.GameObjects.Rectangle } | null = null;
   private arenaHurtT = 0;
+  /**
+   * Вид (Play_BossWaveEffect_Start, visual.md §6.3): Vision01 ×5 с центром на маге, альфа 0.85, + 4 чёрных прямоугольника
+   * (0,0,0,0.851) снаружи (внутренние края на ±5.12×5 ед. от центра); багровая дымка (0.5,0.1,0) альфа 0→0.1 за 1.05 с
+   * (21 шаг по 0.005 каждые 0.05 с). Покраска пола зоны 2 (×#ff665c) здесь не делается — зона 2 не в 3.0.
+   */
   startArena(x: number, y: number) {
-    this.arena?.img?.destroy();
-    const Rw = Math.sqrt(145) * U;
-    const img = W.scene.add.image(x, y, 'arena_ring').setDepth(DEPTH.ground + 1).setDisplaySize(Rw * 2, Rw * 2);
-    this.arena = { x, y, img };
+    this.endArena();
+    const sc = W.scene, hs = 5.12 * 5 * U, big = 400 * U, D = DEPTH.ground + 1;
+    const img = sc.add.image(x, y, 'vision01').setDepth(D).setScale(5 * U / 100).setAlpha(0.85);
+    const objs: Phaser.GameObjects.GameObject[] = [img];
+    const rect = (cx: number, cy: number, w: number, h: number) =>
+      objs.push(sc.add.rectangle(cx, cy, w, h, 0x000000, 0.851).setDepth(D));
+    rect(x - hs - big / 2, y, big, big * 2 + hs * 2); rect(x + hs + big / 2, y, big, big * 2 + hs * 2);
+    rect(x, y - hs - big / 2, hs * 2, big); rect(x, y + hs + big / 2, hs * 2, big);
+    const haze = sc.add.rectangle(x, y, 10, 10, 0x7f1900, 0).setDepth(D);
+    objs.push(haze);
+    this.arena = { x, y, objs, haze }; this.hazeT = 0;
   }
-  endArena() { this.arena?.img?.destroy(); this.arena = null; }
+  private hazeT = 0;
+  endArena() { this.arena?.objs.forEach((o) => o.destroy()); this.arena = null; }
   arenaClamp(P: { x: number; y: number }, dt: number) {
     const a = this.arena; if (!a) return;
     const Rw = Math.sqrt(145) * U, Rd = Math.sqrt(138) * U;
@@ -84,6 +97,12 @@ export class Zone {
   }
 
   update(dt: number) {
+    const ar = this.arena;
+    if (ar) { // дымка: шаг 0.005 каждые 0.05 с до 0.1; покрывает кадр камеры
+      this.hazeT += dt;
+      const v = W.scene.cameras.main.worldView;
+      ar.haze.setPosition(v.centerX, v.centerY).setSize(v.width + 4, v.height + 4).setFillStyle(0x7f1900, Math.min(20, Math.floor(this.hazeT / 0.05)) * 0.005);
+    }
     if (this.merchantT !== null && (this.merchantT += dt) >= MERCHANT_TIME) { this.merchantT = null; this.onMerchant?.(); }
     for (let i = this.jobs.length - 1; i >= 0; i--) {
       const j = this.jobs[i];

@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { DEPTH, MAX_ORBS, VIEW_W } from '../config';
+import { DEPTH, MAX_ORBS, VIEW_W, ORIG_U } from '../config';
+
+/** Кадры оригинала sprite_ui/Item1/2/3/15 (тип предмета = номер спрайта) */
+export const ORBS_LOAD: [string, string][] = [
+  ['orbItem1', 'art/orbs/Item1.png'], ['orbItem2', 'art/orbs/Item2.png'],
+  ['orbItem3', 'art/orbs/Item3.png'], ['orbItem15', 'art/orbs/Item15.png'],
+];
 
 /** Опыт со сферы, как в оригинале: от «стоимости» текущего уровня, с уровнем чуть падает */
 export function orbXp(kind: OrbKind): number {
@@ -21,7 +27,10 @@ export interface Orb {
   img: Phaser.GameObjects.Image;
 }
 
-const TEX: Record<OrbKind, string> = { s: 'orb_s', m: 'orb_m', l: 'orb_l', life: 'orb_life' };
+const TEX: Record<OrbKind, string> = { s: 'orbItem1', m: 'orbItem2', l: 'orbItem3', life: 'orbItem15' };
+/** Obj_Item localScale 0.8 (C_BattleField.unity), PPU 100: полный холст спрайта × 0.8 × ORIG_U/100 */
+const PXO = ORIG_U / 100 * 0.8;
+const CANVAS: Record<OrbKind, number> = { s: 48, m: 48, l: 128, life: 80 };
 /** 1 ед. мира оригинала в наших единицах (камера оригинала — 6.69 ед. по ширине) */
 const U = VIEW_W / 6.69;
 /**
@@ -39,12 +48,8 @@ const FIELD = { tile: 20 * U, slots: 17, chance: 86 / 195, slots3: 3, chance3: 2
  * x = cos a · U(2.8, 11) ед., y = sin a · U(2.8, 11) ед. от мага; 80% малые, 20% средние.
  */
 const START = { num: 50, rMin: 2.8 * U, rMax: 11 * U, smallPct: 80 };
-/**
- * Половина размера на экране. Оригинал: объект Obj_Item масштаб 0.8, спрайты 100 px/ед. —
- * малая Item1 34 px → 0.27 ед., средняя Item2 48 px → 0.38 ед., большая Item3 99 px → 0.79 ед. (со свечением);
- * коллайдер предмета BoxCollider 0.25 × 0.8 = 0.2 ед.
- */
-const SIZE: Record<OrbKind, number> = { s: 0.272 * U / 2, m: 0.384 * U / 2, l: 0.792 * U / 2, life: 14 };
+/** Половина размера на экране: полный холст × 0.8 × PX (коллайдер предмета BoxCollider 0.25 × 0.8 = 0.2 ед.) */
+const SIZE: Record<OrbKind, number> = { s: CANVAS.s * PXO / 2, m: CANVAS.m * PXO / 2, l: CANVAS.l * PXO / 2, life: CANVAS.life * PXO / 2 };
 
 /** Сферы эссенции (опыт) и сферы жизни */
 export class Orbs {

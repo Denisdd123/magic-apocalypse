@@ -3,7 +3,7 @@ import { DEPTH, LOOT, MAX_ENEMIES, ORIG_U } from '../config';
 import { MANA_BALL_KILLS, UNIT_STAT, type UnitStat } from '../data/orig';
 import { Grid } from './Grid';
 import { RUNE_BY_ID } from './Pickups';
-import { ensureMobTextures, mobFrames, mobTex, mobTexScale, ucolor } from './mobLook';
+import { ensureMobTextures, mobDeath, mobFrames, mobTex, mobTexScale, mobVisible, ucolor } from './mobLook';
 import { W } from './World';
 
 /**
@@ -237,7 +237,7 @@ export class Enemies {
     e.fl.setTexture(mobTex(type.uid, e.frame)).setScale(sc).setVisible(false);
     if (elite) {
       if (!e.ring) e.ring = this.scene.add.image(0, 0, 'elite_ring').setDepth(DEPTH.enemy);
-      const d = e.img.displayWidth * 1.15;
+      const d = mobVisible(type.uid) * (ORIG_U / 100) * S * 1.15;   // по видимому телу: холст оригинала шире
       e.ring.setVisible(true).setDisplaySize(d, d).setTint(ELITE_LINE[cat]);
       // идёт событие проклятой руны — любая созданная элитка помечается и исчезнет через 180 с (Play_Time_TransitionUnit)
       if (W.pickups && W.pickups.transMax >= 1) { e.trans = true; e.transT = 180; }
@@ -509,6 +509,8 @@ export class Enemies {
     W.player.killMana(e.xp);
     if (W.artifacts.killFx) W.artifacts.onKill(e);
     if (e.cat >= 3) { W.zone.bossDied(e); return; }
+    // DUnit-анимация смерти (Unit_DeathMotion), цвет DeathColor
+    mobDeath(W.fx, e.type.uid, e.x, e.y, e.unitSize, e.type.stat.size, W.waves.zone);
     if (e.elite) {
       // Play_Unit_Death, tag "99": счёт проклятой руны, затем Random(1, 400): ≤270 средняя, ≤395 большая, 396–399 руны 31–34
       W.pickups.eliteKilled(e.x, e.y);

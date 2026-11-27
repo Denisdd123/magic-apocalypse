@@ -5,7 +5,7 @@ import { SPELLS, PASSIVES } from './game/SpellBook';
 import { ARTIFACTS, SYNERGIES, RARITY, artifactById } from './game/Artifacts';
 import { RUNES } from './game/Pickups';
 import { ENEMY_TYPES } from './game/Enemies';
-import { ensureMobTextures, mobFrames, mobTex } from './game/mobLook';
+import { ensureMobTextures, mobFrames, mobTex, MOB_LOAD } from './game/mobLook';
 import { ART } from './data/art';
 import { textures as fireballTextures } from './game/spells/v2/Fireball';
 
@@ -171,6 +171,10 @@ function build() {
   [0, 1, 2, 3].forEach((f) => tile(g, ['player_' + f], 'кадр ' + (f + 1), 1));
   tile(g, [0, 1, 2, 3].map((f) => 'player_' + f), 'в игре (размер)', 0.33, { fps: 3 });
   tile(g, [0, 1, 2, 3].map((f) => 'mirage_' + f), 'двойник (Шквал/Двойники)', 1, { fps: 3, tint: 0xc49bff, dark: true });
+  g = section('mage-game', 'Маг — сейчас в игре', 'Кадры оригинала AUnit1Motion1..21 (128 px), 3 кадра по 0.1 с; влево — зеркально. Тень UnitAllyShadow01.');
+  for (const [b, n] of [[1, 'стоит вниз'], [4, 'стоит вверх'], [7, 'вниз'], [10, 'вверх'], [13, 'диагональ вверх'], [16, 'диагональ вниз'], [19, 'вбок']] as const)
+    imgTile(g, [0, 1, 2].map((i) => `art/mage/AUnit1Motion${b + i}.png`), 'маг: ' + n, 128, 100);
+  imgTile(g, ['art/mage/UnitAllyShadow01.png'], 'тень', 60, 100);
   // маг в игре 2.0: 4 позы (вверх-вниз / диагональ / вбок — влево зеркально), 3 кадра подола
   for (const [p, n] of [['idle', 'стоит'], ['vert', 'вверх/вниз'], ['diag', 'диагональ'], ['side', 'вбок']] as const) {
     tile(g, [0, 1, 2].map((f) => `mage_${p}_${f}`), 'поза: ' + n, 1, { fps: 9 });
@@ -183,6 +187,25 @@ function build() {
     tile(g, keys, `${k} · ${t.uid} (HP ${t.hp})`, t.id === 'boss' ? 0.5 : 1, { fps: 12 });
   }
   tile(g, ['elite_ring'], 'кольцо элитки', 0.6);
+
+  g = section('mobs-game', 'Мобы — сейчас в игре', 'Кадры оригинала EUnit (мобы, боссы 41–46) и DUnit (смерти). Мелкие (EUnit1, DUnit1) сглажены ×4.');
+  {
+    const grp = new Map<string, string[]>();
+    for (const [k, p] of MOB_LOAD) { const n = k.replace(/_\d+$/, ''); grp.set(n, [...(grp.get(n) ?? []), p]); }
+    for (const [n, ps] of grp) imgTile(g, ps, n.startsWith('du_') ? `смерть ${n.slice(3)}` : `моб ${n.slice(3)}`, n.startsWith('eu_4') && +n.slice(3) >= 41 ? 220 : 120, n.startsWith('du_') ? 50 : 80);
+  }
+
+  g = section('orbs-game', 'Опыт — сейчас в игре', 'Item1/2/3 — сферы маны, Item15 — сердце; холст × 0.8 (Obj_Item) × 0.568.');
+  for (const [n, name] of [[1, 'мана малая'], [2, 'мана средняя'], [3, 'мана большая'], [15, 'сердце']] as const) imgTile(g, [`art/orbs/Item${n}.png`], name, 100, 100);
+
+  g = section('pickups-game', 'Сундуки и руны — сейчас в игре', 'Item5/6/7 сундуки (появление — белый силуэт ItemEffect, 21 шаг по 0.035 с), руны Item31–34, проклятая Item18, Древо Item17, указатель ItemArrow + портрет ItemPos.');
+  for (const [f, name, sz] of [['Item5', 'сундук: дерево', 100], ['Item6', 'сундук: камень', 100], ['Item7', 'сундук: светлый', 100], ['ItemEffect5', 'силуэт появления', 100],
+    ['Item31', 'руна 31', 120], ['Item32', 'руна 32', 120], ['Item33', 'руна 33', 120], ['Item34', 'руна 34', 120], ['Item18', 'проклятая руна', 200], ['Item17', 'Мировое Древо', 200],
+    ['ItemArrow', 'указатель', 80], ['ItemPos5', 'портрет сундука', 80]] as const) imgTile(g, [`art/pickups/${f}.png`], name, sz, 100);
+
+  g = section('location-game', 'Локация — сейчас в игре', 'Земля зоны 1: Land1 / Land31 / Land32 (один тип на забег), виды A–D по клеткам, тайл 512 px = 291 px, шаг 284 px. Vision01 — виньетка (×6) и арена босса (×5).');
+  for (const t of [1, 31, 32]) for (const v of 'ABCD') imgTile(g, [`art/location/Land${t}Deco${v}.png`], `Land${t} ${v}`, 140, 100);
+  imgTile(g, ['art/location/Vision01.png'], 'Vision01', 200, 100);
 
   g = section('items', 'Предметы на земле');
   tile(g, ['orb_s'], 'мана малая', 2); tile(g, ['orb_m'], 'мана средняя', 2); tile(g, ['orb_l'], 'мана большая', 2); tile(g, ['orb_life'], 'сфера жизни', 2);

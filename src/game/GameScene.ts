@@ -1,15 +1,17 @@
 import Phaser from 'phaser';
 import { DEPTH, VIEW_H, VIEW_W } from '../config';
-import { makeTextures, GROUND_TILE_SCALE } from '../textures';
+import { makeTextures } from '../textures';
+import { Ground, LOCATION_LOAD } from './Ground';
 import { Stats } from './Stats';
-import { Player } from './Player';
+import { Player, MAGE_LOAD } from './Player';
 import { Enemies } from './Enemies';
-import { Orbs } from './Orbs';
+import { Orbs, ORBS_LOAD } from './Orbs';
 import { Projectiles } from './Projectiles';
 import { Effects } from './Effects';
 import { SpellBook, SPELLS } from './SpellBook';
 import { ART } from '../data/art';
 import { BOLT_LOAD } from './spells/v2/Bolt';
+import { MOB_LOAD } from './mobLook';
 import { SPIRIT_LOAD } from './spells/v2/Spirit';
 import { MCIRCLE_LOAD } from './spells/v2/Mcircle';
 import { SHIELD_LOAD } from './spells/v2/Shield';
@@ -39,13 +41,13 @@ import { showChest, toast } from '../ui/chest';
 import { showEnhance, showShop, showZoneClear, type ShopItem } from '../ui/zone';
 import { Zone } from './Zone';
 import { ArtifactSet } from './Artifacts';
-import { Pickups, RUNES } from './Pickups';
+import { Pickups, RUNES, PICKUPS_LOAD } from './Pickups';
 import { Waves } from './Waves';
 import type { ChestType } from './ArtifactDeck';
 import { ORIG_U } from '../config';
 
 export class GameScene extends Phaser.Scene {
-  private ground!: Phaser.GameObjects.TileSprite;
+  private land!: Ground;
   private hud: Hud | null = null;
   private joy: Joystick | null = null;
   private paused = true;
@@ -56,7 +58,7 @@ export class GameScene extends Phaser.Scene {
   private chestQ: ChestType[] = [];
   /** Окна хода зоны, ждущие своей очереди (после выбора уровня/сундука) */
   private zoneQ: ('shop' | 'clear')[] = [];
-  private stageTint = -1;
+  // пол по оригиналу не перекрашивается в зоне 1 (stageTint убран: красный пол — только зона 2)
   /** зум камеры без зачистки (fitCamera) */
   private baseZoom = 1;
 
@@ -79,6 +81,10 @@ export class GameScene extends Phaser.Scene {
       'BulletSmoke75_01', 'BulletSmoke75_02', 'BulletSmoke75_03']) this.load.image(k + '_s', `${o}${k}_s.png`);
     // Магическая пуля: кадры оригинала (vfx/bolt/orig, мелкие сглажены ×4 — _s)
     for (const [k, p] of BOLT_LOAD) this.load.image(k, `vfx/bolt/orig/${p.split('/').pop()}`);
+    for (const [k, p] of MAGE_LOAD) this.load.image(k, p);    // Маг AUnit1 + тень (art/mage)
+    for (const [k, p] of ORBS_LOAD) this.load.image(k, p);    // Сферы маны и сердце (art/orbs)
+    for (const [k, p] of PICKUPS_LOAD) this.load.image(k, p); // Сундуки, руны, Древо, указатели (art/pickups)
+    for (const [k, p] of MOB_LOAD) this.load.image(k, p);     // Мобы, боссы, смерти (art/mobs)
     for (const [k, p] of SPIRIT_LOAD) this.load.image(k, p);   // Дух (vfx/spirit/orig)
     for (const [k, p] of MCIRCLE_LOAD) this.load.image(k, p);  // Магический круг (vfx/mcircle/orig)
     for (const [k, p] of SHIELD_LOAD) this.load.image(k, p);   // Щит (vfx/shield/orig)
@@ -98,6 +104,7 @@ export class GameScene extends Phaser.Scene {
     for (const [k, p] of CYCLONE_LOAD) this.load.image(k, p);   // Вихрь (vfx/cyclone/orig)
     for (const [k, p] of TSUNAMI_LOAD) this.load.image(k, p);   // Цунами (vfx/tsunami/orig)
     for (const [k, p] of ARMAGEDDON_LOAD) this.load.image(k, p); // Армагеддон (vfx/armageddon/orig)
+    for (const [k, p] of LOCATION_LOAD) this.load.image(k, p);
   }
 
   /** Остальное (артефакты, синергии, слияния, классы…) — фоном, пока игрок в меню/в бою */
@@ -109,7 +116,7 @@ export class GameScene extends Phaser.Scene {
   create() {
     makeTextures(this);
     initUi(this.textures);
-    this.ground = this.add.tileSprite(0, 0, 10, 10, 'ground').setOrigin(0, 0).setDepth(DEPTH.ground).setTileScale(GROUND_TILE_SCALE);
+    this.land = new Ground(this);
     this.scale.on('resize', this.fitCamera, this);
     this.fitCamera();
     showMenu(() => this.startRun());
@@ -151,7 +158,7 @@ export class GameScene extends Phaser.Scene {
       W.enemies.clearCircle(3.6 * s * ORIG_U, 6.4 * s * ORIG_U);
       if (s <= 1.8) W.fx.burst(W.player.x, W.player.y, Math.min(6.4 * s, 9) * ORIG_U, 0xffffff, 0.25, 'ring');
     };
-    this.zoneQ = []; this.stageTint = -1;
+    this.zoneQ = []; this.land.newRun();
     // победа (Game_ClearON на 12:00) → окно → бесконечный режим (Game_BattleLoopON); обелиска после босса в зоне 1 нет
     W.waves.onVictory = () => { this.zoneQ.push('clear'); };
     W.pickups.onCurse = (n, up) => toast(`<b style="color:#b8343f">Проклятая руна</b><br>Элитных врагов: ${n}${up ? ` (из них ${up} гигантов)` : ''}<br>Убейте всех за 3 мин — последний оставит сундук`, 2600);
@@ -178,7 +185,7 @@ export class GameScene extends Phaser.Scene {
     this.joy?.destroy(); this.joy = null;
     clearModals();
     this.cameras.main.stopFollow();
-    this.children.list.slice().forEach((o) => { if (o !== this.ground) o.destroy(); });
+    this.children.list.slice().forEach((o) => { if (!this.land.owns(o)) o.destroy(); });
   }
 
   private openPause() {
@@ -259,11 +266,10 @@ export class GameScene extends Phaser.Scene {
   update(_t: number, deltaMs: number) {
     const cam = this.cameras.main;
     const v = cam.worldView;
-    // земля всегда под камерой
-    this.ground.setPosition(v.x - 2, v.y - 2).setSize(v.width + 4, v.height + 4);
-    // tilePosition — в пикселях текстуры (она в 2× плотнее мира), поэтому делим на масштаб плитки
-    this.ground.tilePositionX = v.x / GROUND_TILE_SCALE; this.ground.tilePositionY = v.y / GROUND_TILE_SCALE;
+    // земля: клетки в кадре камеры (Ground.ts)
+    this.land.update(v);
 
+    if (!this.running) this.land.vignette(null);
     if (!this.running || this.paused) return;
     const dt = Math.min(deltaMs / 1000, 1 / 20);
     if (!W.zone.timeFrozen) W.time += dt;
@@ -283,9 +289,7 @@ export class GameScene extends Phaser.Scene {
     W.artifacts.update(dt);
     W.fx.update(dt);
     document.body.classList.toggle('fury', W.pickups.active.has('fury') || W.zone.bossFight);
-    // пол меняет цвет по ходу зоны: тёмный мох → запёкшаяся кровь → холодный пепел (земля уже тёмная, тинт лишь сдвигает оттенок)
-    const st = Math.min(W.zone.stage, 2);
-    if (st !== this.stageTint) { this.stageTint = st; if (st === 0) this.ground.clearTint(); else this.ground.setTint(st === 1 ? 0xff9282 : 0xa4adc6); }
+    this.land.vignette(W.player.x, W.player.y); // Vision01 ×6 на маге
 
     this.hudT -= dt;
     if (this.hudT <= 0) {

@@ -2,16 +2,20 @@ import Phaser from 'phaser';
 import { DEPTH, LEVEL_MAX, ORIG_U, PLAYER } from '../config';
 import { MANA_COST } from '../data/orig';
 import { W } from './World';
-import type { Pose } from '../textures';
 
-/**
- * Высота фигуры мага — как в оригинале: спрайт AUnit1Motion (100 px/ед., объект мага масштаб 1)
- * видимая фигура 23×59 px → 0.59 ед. → ≈33.5 наших.
- */
-const MAGE_H = 0.59 * ORIG_U;
-const MAGE_K = MAGE_H / 88; // холст позы 96px, фигура 88px
-/** смещения тени/полоски здоровья были подобраны под фигуру 31 ед. — масштабируем вместе с ней */
-const OFF = MAGE_H / 31;
+/** 1 px спрайта (PPU 100) в наших px: 1 ед. оригинала = ORIG_U */
+const PX = ORIG_U / 100;
+/** Класс мага (Z.0x930): выбора класса в игре пока нет — AUnit1 */
+const MAGE_CLASS = 1;
+const MAGE_DIR = 'art/mage/';
+/** AUnit<класс>Motion1..21 (sprite_unit, холст 128 px) + тень UnitAllyShadow01 */
+export const MAGE_LOAD: [string, string][] = [
+  ...Array.from({ length: 21 }, (_, i): [string, string] => [`mage_u${MAGE_CLASS}_${i + 1}`, `${MAGE_DIR}AUnit${MAGE_CLASS}Motion${i + 1}.png`]),
+  ['mage_shadow', `${MAGE_DIR}UnitAllyShadow01.png`],
+];
+/** Sprite_UnitAlly: локальный y +0.1 ед. (сцена C_BattleField); тень: y −0.27, масштаб 0.65, цвет (0,0,0,0.196) */
+const SPRITE_DY = 0.1 * ORIG_U;
+const SHADOW_DY = 0.27 * ORIG_U;
 /** 1 px опорного Canvas 720×1280 в наших px (камера 14.5 ед. по высоте) */
 const UIPX = (14.5 * ORIG_U) / 1280;
 /** Obj_HpBar: pos (0, −38.2), 30×5 (ui.md §1); Back (.078,.078,.157); Front = (1 − f, f, 0) */
@@ -36,7 +40,8 @@ export class Player {
   faceX = 0; faceY = -1;  // направление последнего движения
   /** Точка, за которой следит камера (без покачивания — иначе мир «дёргается») */
   follow = { x: 0, y: 0 };
-  private pose: Pose = 'idle';
+  /** V_JoyStickController: MotionDelayNum, UnitMotionNumA (prev = поле 0x64), UnitMotionUpDown, UnitMotionProgress */
+  private motDelay = 0; private motPrev = 0; private motUpDown = 1; private motProgress = 0;
   moving = false;
   dead = false;
   /** Фаза может перехватить удар: вернуть true, если урон отменён */
@@ -47,15 +52,12 @@ export class Player {
   img: Phaser.GameObjects.Image;
   private hpBg: Phaser.GameObjects.Rectangle;
   private shadow: Phaser.GameObjects.Image;
-  private aura: Phaser.GameObjects.Image;
   private animT = 0;
-  private frame = 0;
   private hpBar: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene) {
-    this.aura = scene.add.image(0, 0, 'aura').setDepth(DEPTH.orb).setDisplaySize(34, 34).setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
-    this.shadow = scene.add.image(0, 0, 'shadow').setDepth(DEPTH.orb).setDisplaySize(20, 6.5);
-    this.img = scene.add.image(0, 0, 'mage_idle_0').setDepth(DEPTH.player).setScale(MAGE_K);
+    this.shadow = scene.add.image(0, 0, 'mage_shadow').setDepth(DEPTH.orb).setScale(0.65 * PX).setTint(0x000000).setAlpha(0.196);
+    this.img = scene.add.image(0, 0, `mage_u${MAGE_CLASS}_1`).setDepth(DEPTH.player).setScale(PX);
     this.hpBg = scene.add.rectangle(0, 0, HPBAR.w, HPBAR.h, HPBAR.back).setDepth(DEPTH.player);
     this.hpBar = scene.add.rectangle(0, 0, HPBAR.w, HPBAR.h, 0x00ff00).setDepth(DEPTH.player).setOrigin(0, 0.5);
   }
@@ -89,22 +91,28 @@ export class Player {
     if (this.invulnT > 0) this.invulnT -= dt;
     const s = W.stats;
     if (s.regen > 0) this.heal(s.maxHp * s.regen * dt);
-    // 8 направлений: вверх/вниз — узкая поза, диагонали — наклон ~22°, вбок — ~39° (влево = зеркало вправо),
-    // в каждой позе 3 кадра дрожания подола (textures.ts → witchPose: шляпа, мантия, посох)
-    let pose: Pose = 'idle';
-    if (this.moving) {
-      const ax = Math.abs(this.faceX), ay = Math.abs(this.faceY);
-      pose = ay > 0.92 ? 'vert' : ax > 0.92 ? 'side' : 'diag';
-      if (ax > 0.38) this.img.setFlipX(this.faceX < 0);
+    // V_JoyStickController.FixedUpdate: направление по MoveVector (y вверх, наш y вниз) -> UnitMotionNumA
+    const mx = this.moving ? this.faceX : 0, my = this.moving ? -this.faceY : 0;
+    let numA: number, flip = false;
+    if (my > 0.95) { numA = 10; this.motUpDown = 4; }
+    else if (my > 0.25) { numA = 13; this.motUpDown = 4; flip = mx <= 0; }
+    else if (my < -0.95) { numA = 7; this.motUpDown = 1; }
+    else if (my < -0.25) { numA = 16; this.motUpDown = 1; flip = mx <= 0; }
+    else if (mx > 0) { numA = 19; this.motUpDown = 1; }
+    else if (mx < 0) { numA = 19; this.motUpDown = 1; flip = true; }
+    else numA = this.motUpDown; // стоит: 1 (лицом вниз) или 4 (вверх)
+    this.motDelay += dt;
+    if (this.motDelay >= 0.1 || this.motPrev !== numA) {
+      this.motDelay = 0;
+      if (this.motPrev === numA && this.motProgress < 2) this.motProgress++;
+      else { this.motPrev = numA; this.motProgress = 0; }
+      this.img.setTexture(`mage_u${MAGE_CLASS}_${numA + this.motProgress}`);
     }
-    // кадры мага — таймер 0.1 с (V_JoyStickController.FixedUpdate), цикл из 3 кадров и стоя, и на ходу
+    this.img.setFlipX(flip);
     this.animT += dt * 10;
-    const fr = Math.floor(this.animT) % 3;
-    if (fr !== this.frame || pose !== this.pose) { this.frame = fr; this.pose = pose; this.img.setTexture(`mage_${pose}_${fr}`); }
-    this.img.setPosition(this.x, this.y - 5.4 * OFF);
-    this.shadow.setPosition(this.x, this.y + 8.5 * OFF);
+    this.img.setPosition(this.x, this.y - SPRITE_DY);
+    this.shadow.setPosition(this.x, this.y + SHADOW_DY);
     this.follow.x = this.x; this.follow.y = this.y;
-    this.aura.setPosition(this.x, this.y - 3).setAlpha(0.55 + 0.15 * Math.sin(this.animT * 0.6));
     // руна неуязвимости: маг становится белым (как в оригинале); иначе мигание при неуязвимости
     const white = W.pickups?.active.has('invuln');
     this.img.setAlpha(this.ghost ? 0.3 : this.invulnT > 0 && !white ? 0.45 + 0.25 * Math.sin(this.animT * 8) : 1);

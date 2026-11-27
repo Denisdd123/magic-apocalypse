@@ -13,6 +13,20 @@ import type { ChestType } from './ArtifactDeck';
  */
 
 const U = ORIG_U;
+/** Obj_Item / Transform_ObjItem localScale 0.8 (C_BattleField.unity, TreasureBox.Play_CreateItem_EffectA), PPU 100: полный холст × 0.8 × ORIG_U/100 */
+const PXI = ORIG_U / 100 * 0.8;
+
+/** Кадры оригинала sprite_ui: Item5/6/7 (сундуки) + ItemEffect5/6/7 (белый силуэт), Item17/18/31–34, ItemArrow, ItemPos5/6/7/18 */
+export const PICKUPS_LOAD: [string, string][] = [
+  ...[5, 6, 7].flatMap((n): [string, string][] => [['pkChest' + n, `art/pickups/Item${n}.png`], ['pkFx' + n, `art/pickups/ItemEffect${n}.png`], ['pkPos' + n, `art/pickups/ItemPos${n}.png`]]),
+  ...[31, 32, 33, 34].map((n): [string, string] => ['pkRune' + n, `art/pickups/Item${n}.png`]),
+  ['pkTree', 'art/pickups/Item17.png'], ['pkCurse', 'art/pickups/Item18.png'], ['pkPos18', 'art/pickups/ItemPos18.png'],
+  ['pkArrow', 'art/pickups/ItemArrow.png'],
+];
+/** Цвет стрелки-указателя: предмет / сундук (Obj_ItemPos) */
+const ARROW_ITEM = 0xfffae1;
+/** Play_CreateItem_EffectA сундука: белый силуэт, альфа 1 − 0.05·i, шаг 0.035 с, 21 шаг */
+const FX_STEP = 0.035, FX_N = 21;
 const R = (a: number, b: number) => a + Math.random() * (b - a);
 
 /** 31 атака, 32 неуязвимость, 33 притяжение, 34 очищение */
@@ -36,6 +50,10 @@ interface Item {
   tile?: { x: number; y: number };
   img: Phaser.GameObjects.Image;
   arrow?: Phaser.GameObjects.Image;
+  /** портрет в круге указателя (ItemPos<N>) */
+  port?: Phaser.GameObjects.Image;
+  /** белый силуэт сундука (ItemEffect) — вспышка при появлении */
+  fx?: Phaser.GameObjects.Image;
 }
 
 /** Проклятая руна: (EnemyLevelNum ≥, всего, из них UP) — пары 0x636558 … 0x636fc0 */
@@ -68,15 +86,21 @@ export class Pickups {
     return { x: W.player.x + Math.cos(a) * d, y: W.player.y + Math.sin(a) * d };
   }
 
-  private arrow(tint: number) {
-    return this.scene.add.image(0, 0, 'arrow').setDepth(DEPTH.top).setDisplaySize(12, 12).setTint(tint).setVisible(false);
+  /** Obj_ItemPos: масштаб 1.25, круг со стрелкой ItemArrow ×1.5, портрет ×0.78 */
+  private arrow(tint: number, portrait?: string): Pick<Item, 'arrow' | 'port'> {
+    const k = ORIG_U / 100 * 1.25;
+    const arrow = this.scene.add.image(0, 0, 'pkArrow').setDepth(DEPTH.top).setScale(k * 1.5).setTint(tint).setVisible(false);
+    const port = portrait ? this.scene.add.image(0, 0, portrait).setDepth(DEPTH.top).setScale(k * 0.78).setVisible(false) : undefined;
+    return { arrow, port };
   }
 
+  private kill(it: Item) { it.img.destroy(); it.arrow?.destroy(); it.port?.destroy(); it.fx?.destroy(); }
+
   chest(x: number, y: number, type: ChestType = 5) {
-    const img = this.scene.add.image(x, y, 'chest').setDepth(DEPTH.orb).setDisplaySize(26, 23);
-    // вид сундуков 6 / 7 (белый / каменный) — партия 7, пока оттенок
-    if (type === 7) img.setTint(0xb9b4c8);
-    this.items.push({ kind: 'chest', chest: type, x, y, t: 0, img, arrow: this.arrow(0xfffae1) });
+    const img = this.scene.add.image(x, y, 'pkChest' + type).setDepth(DEPTH.orb).setScale(PXI);
+    const fx = this.scene.add.image(x, y, 'pkFx' + type).setDepth(DEPTH.orb + 0.1).setScale(PXI);
+    // тени у сундуков 5/6/7 нет: TreasureBox.Play_CreateItem_EffectA гасит Obj_ItemShadow, включает только у 9–11
+    this.items.push({ kind: 'chest', chest: type, x, y, t: 0, img, fx, ...this.arrow(ARROW_ITEM, 'pkPos' + type) });
   }
 
   /** CreateItem_Character(5 | −5 | −6 | 7): сундук у мага R(2.5, 3.5) / дальний R(35, 45) / R(45, 55) ед. */
@@ -88,29 +112,29 @@ export class Pickups {
   }
 
   rune(type: RuneType, x: number, y: number, tile?: { x: number; y: number }) {
-    const img = this.scene.add.image(x, y, 'rune').setDepth(DEPTH.orb).setDisplaySize(18, 18).setTint(RUNES[type].tint).setBlendMode(Phaser.BlendModes.ADD);
-    // стрелка — только у предметов пула ItemSpecial (не у слотов поля)
-    this.items.push({ kind: 'rune', rune: type, x, y, t: 0, img, tile, arrow: tile ? undefined : this.arrow(RUNES[type].tint) });
+    const img = this.scene.add.image(x, y, 'pkRune' + RUNES[type].id).setDepth(DEPTH.orb).setScale(PXI);
+    // стрелка — только у предметов пула ItemSpecial (не у слотов поля); портрета ItemPos для рун в выгрузке нет
+    this.items.push({ kind: 'rune', rune: type, x, y, t: 0, img, tile, ...(tile ? {} : this.arrow(ARROW_ITEM)) });
   }
 
   /** CreateItem_Character(18, 1): проклятая руна в R(3.25, 3.5) ед. от мага */
   curse() {
     const p = this.around(3.25 * U, 3.5 * U);
-    const img = this.scene.add.image(p.x, p.y, 'rune').setDepth(DEPTH.orb).setDisplaySize(20, 20).setTint(0xb8343f);
-    this.items.push({ kind: 'curse', x: p.x, y: p.y, t: 0, img, arrow: this.arrow(0xb8343f) });
+    const img = this.scene.add.image(p.x, p.y, 'pkCurse').setDepth(DEPTH.orb).setScale(PXI);
+    this.items.push({ kind: 'curse', x: p.x, y: p.y, t: 0, img, ...this.arrow(ARROW_ITEM, 'pkPos18') });
   }
 
   /** Плод Мирового Древа (тип 17) — дроп боссов 42–45 */
   tree(x: number, y: number) {
-    const img = this.scene.add.image(x, y, 'orb_l').setDepth(DEPTH.orb).setDisplaySize(22, 22).setTint(0x6dff8a);
-    this.items.push({ kind: 'tree', x, y, t: 0, img, arrow: this.arrow(0x6dff8a) });
+    const img = this.scene.add.image(x, y, 'pkTree').setDepth(DEPTH.orb).setScale(PXI);
+    this.items.push({ kind: 'tree', x, y, t: 0, img, ...this.arrow(ARROW_ITEM) });
   }
 
   /** Убрать руны слотов поля, чья плитка ушла из окна 3×3 (C_LandChange) */
   dropTiles(tx: number, ty: number) {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
-      if (it.tile && (Math.abs(it.tile.x - tx) > 1 || Math.abs(it.tile.y - ty) > 1)) { it.img.destroy(); it.arrow?.destroy(); this.items.splice(i, 1); }
+      if (it.tile && (Math.abs(it.tile.x - tx) > 1 || Math.abs(it.tile.y - ty) > 1)) { this.kill(it); this.items.splice(i, 1); }
     }
   }
 
@@ -139,21 +163,26 @@ export class Pickups {
       const it = this.items[i];
       it.t += dt;
       it.img.setPosition(it.x, it.y + Math.sin(it.t * 3) * 2);
-      if (it.kind === 'rune' || it.kind === 'curse') it.img.setAlpha(0.75 + 0.25 * Math.sin(it.t * 5));
+      if (it.fx) {
+        // вспышка силуэта при появлении сундука (альфа 1 − 0.05·i, i по 0.035 с)
+        const i = Math.floor(it.t / FX_STEP);
+        if (i >= FX_N) { it.fx.destroy(); it.fx = undefined; } else it.fx.setPosition(it.x, it.y + Math.sin(it.t * 3) * 2).setAlpha(1 - 0.05 * i);
+      }
       if (it.arrow) {
         // C_Battle_ItemPosCamera: стрелка у края (вьюпорт 0.1…0.9), если предмет не виден
         const inView = view.contains(it.x, it.y);
-        it.arrow.setVisible(!inView);
+        it.arrow.setVisible(!inView); it.port?.setVisible(!inView);
         if (!inView) {
           const ax = Phaser.Math.Clamp(it.x, view.x + view.width * 0.1, view.right - view.width * 0.1);
           const ay = Phaser.Math.Clamp(it.y, view.y + view.height * 0.1, view.bottom - view.height * 0.1);
           it.arrow.setPosition(ax, ay).setRotation(Math.atan2(it.y - P.y, it.x - P.x));
+          it.port?.setPosition(ax, ay);
         }
       }
       const pr = it.kind === 'chest' ? 16 : 14;
       const touch = Math.hypot(P.x - it.x, P.y - it.y) < pr + P.r;
       if (touch) {
-        it.img.destroy(); it.arrow?.destroy();
+        this.kill(it);
         this.items.splice(i, 1);
         if (it.kind === 'chest') { W.artifacts.onChestPick(it.x, it.y); this.onChest?.(it.chest!); } // Мимик
         else if (it.kind === 'curse') this.transition();

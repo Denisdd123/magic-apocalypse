@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { ORIG_U } from '../config';
+import type { Effects } from './Effects';
 
 /**
  * Вид мобов 3.0 — рисуем сами по меркам оригинала (MASTER §8 «Графика»).
@@ -67,10 +69,70 @@ const UCOLOR_ZONE: Readonly<Record<number, Readonly<Record<number, number>>>> = 
 };
 export function ucolor(id: number, zone: number): number { return UCOLOR[UCOLOR_ZONE[id]?.[zone] ?? 0]; }
 
-/** Канвас-текстура рисуется в k раз плотнее исходника (мелкие мобы — ×2, чтобы на телефоне не мылились) */
-export function mobTexScale(id: number) { const m = MOB_METRIC[MOB_SPRITE[id] ?? id]; return m && Math.max(m[0], m[1]) < 160 ? 2 : 1; }
+/** Кадры оригинала: sprite_unit/EUnit<N>Motion1..K (полный холст, PPU 100). EUnit1 (холст 64 px) — сглажен ×4 (`_s`, в игре масштаб /4) */
+const SMOOTH: Readonly<Record<number, number>> = { 1: 4 };
+const mobFile = (sid: number, f: number) => `art/mobs/EUnit${sid}Motion${f + 1}${SMOOTH[sid] ? '_s' : ''}.png`;
+/** Смерть: DUnit<ID>DeathMotion1..K — число кадров по выгрузке (у DUnit1 холст 64 px — тоже `_s` ×4) */
+const DEATH_FRAMES: Readonly<Record<number, number>> = { 1: 3, 6: 3, 7: 5, 11: 3, 16: 3, 21: 4, 27: 5 };
+const deathFile = (id: number, f: number) => `art/mobs/DUnit${id}DeathMotion${f + 1}${SMOOTH[id] ? '_s' : ''}.png`;
+export const deathTex = (id: number, f: number) => `du_${id}_${f}`;
+
+/** Список загрузки: [ключ текстуры, путь от public] — все EUnit (мобы зоны 1 + боссы 41–46) и все DUnit */
+export const MOB_LOAD: [string, string][] = [
+  ...Object.keys(MOB_METRIC).flatMap((k) => Array.from({ length: MOB_METRIC[+k][2] }, (_, f): [string, string] => [`eu_${k}_${f}`, mobFile(+k, f)])),
+  ...Object.entries(DEATH_FRAMES).flatMap(([id, n]) => Array.from({ length: n }, (_, f): [string, string] => [deathTex(+id, f), deathFile(+id, f)])),
+];
+
+/** Во сколько раз текстура моба крупнее исходника (сглаженные `_s` — ×4; запасные канвас-кадры — ×2 у мелких) */
+const texK = new Map<number, number>();
+export function mobTexScale(id: number) {
+  const sid = MOB_SPRITE[id] ?? id;
+  const k = texK.get(sid);
+  if (k !== undefined) return k;
+  const m = MOB_METRIC[sid];
+  return SMOOTH[sid] ?? (m && Math.max(m[0], m[1]) < 160 ? 2 : 1);
+}
+/** Видимый размер моба (px спрайта, по большей стороне) — для кольца элитки: холст оригинала шире тела */
+export function mobVisible(id: number) { const m = MOB_METRIC[MOB_SPRITE[id] ?? id]; return m ? Math.max(m[0], m[1]) : 100; }
 export function mobFrames(id: number) { return MOB_METRIC[MOB_SPRITE[id] ?? id]?.[2] ?? 3; }
 export const mobTex = (id: number, f: number) => `eu_${MOB_SPRITE[id] ?? id}_${f}`;
+
+/**
+ * Смерть (C_Battle_EnemyUnit.Unit_DeathMotion @0x11c4xxx): на Motion_Unit по очереди кадры List_ApplyUnitMotionDeath
+ * (DUnit<UnitDeathID>), паузы после кадров 0.05 / 0.06 / 0.05 / 0.04 / 0.03 с, затем Sprite_Trans (пусто).
+ * UnitDeathID и «제거 모션 크기» (%) — колонки Dictionary_UnitStat; масштаб = % × 0.01 × те же множители, что у размера моба.
+ */
+const DEATH: Readonly<Record<number, readonly [id: number, pct: number]>> = {
+  1: [1, 180], 6: [6, 185], 7: [7, 125], 8: [21, 70], 11: [11, 160], 12: [21, 70], 13: [21, 70], 14: [21, 70], 16: [16, 70], 17: [16, 80],
+  18: [11, 170], 19: [21, 110], 21: [21, 75], 22: [21, 85], 23: [21, 85], 24: [11, 185], 26: [16, 90], 27: [27, 105], 28: [27, 105],
+  29: [21, 200], 31: [21, 60], 32: [7, 155], 33: [16, 185], 34: [21, 115], 35: [21, 90], 36: [21, 90], 37: [21, 90], 38: [21, 90],
+  39: [21, 110], 40: [21, 110],
+};
+/** DeathColorID, заданный в Start_Unit (нет записи = −1: цвет смерти = UColor моба) */
+const DEATH_COLOR_ID: Readonly<Record<number, number>> = { 8: 1, 11: 0, 13: 4, 14: 5, 19: 1, 26: 0, 29: 11, 34: 1, 35: 1, 36: 1, 37: 1, 38: 1, 39: 1 };
+/** DeathColorID → цвет (switch @0x1198228; ID 19 в зоне 8 и 34 в зоне 12 — особые: 7 / 0) */
+const DEATH_RGB: Readonly<Record<number, number>> = { 0: 0xffffff, 1: 0xff0000, 4: 0xff00c7, 5: 0xa10033, 7: 0x3300a6, 11: 0xff009c };
+const DEATH_ZONE: Readonly<Record<number, Readonly<Record<number, number>>>> = { 19: { 8: 7 }, 34: { 12: 0 } };
+export function deathColor(uid: number, zone: number): number {
+  const id = DEATH_ZONE[uid]?.[zone] ?? DEATH_COLOR_ID[uid];
+  return id === undefined ? ucolor(uid, zone) : DEATH_RGB[id] ?? ucolor(uid, zone);
+}
+const DEATH_DELAY = [0.05, 0.06, 0.05, 0.04, 0.03];
+/** Анимация смерти моба (кроме боссов 41–46: у них «제거 모션ID» = 0, как в оригинале — своей анимации нет). Вернёт false, если анимации нет */
+export function mobDeath(fx: Effects, uid: number, x: number, y: number, unitSize: number, baseSizePct: number, zone: number): boolean {
+  const d = DEATH[uid];
+  if (!d || !baseSizePct) return false;
+  const n = DEATH_FRAMES[d[0]];
+  const keys = Array.from({ length: n }, (_, f) => deathTex(d[0], f));
+  // UnitDeathMotionSize = «제거 모션 크기» × 0.01 × (множители размера: элитка, UVar) — берём отношение размера моба к базовому
+  const sz = d[1] * 0.01 * (unitSize / (baseSizePct * 0.01));
+  const sc = (ORIG_U / 100) * sz / (SMOOTH[d[0]] ?? 1);
+  const tint = deathColor(uid, zone);
+  const mid = DEATH_DELAY.slice(1, n - 1);
+  fx.anim(x, y, keys, DEATH_DELAY[0], mid.length ? mid.reduce((a, b) => a + b, 0) / mid.length : DEATH_DELAY[1], sc, sc,
+    { last: DEATH_DELAY[n - 1], hook: (img) => { img.setTint(tint); } });
+  return true;
+}
 
 /** детерминированный ГПСЧ */
 function rng(seed: number) {
@@ -83,9 +145,14 @@ const css = (c: number, a = 1) => `rgba(${(c >> 16) & 255},${(c >> 8) & 255},${c
 export function ensureMobTextures(scene: Phaser.Scene, id: number) {
   const sid = MOB_SPRITE[id] ?? id;
   const m = MOB_METRIC[sid];
-  if (!m || scene.textures.exists(`eu_${sid}_0`)) return;
+  if (texK.has(sid)) return;
+  // кадры оригинала загружены в preload (MOB_LOAD) — рисовать нечего
+  if (scene.textures.exists(`eu_${sid}_0`)) { texK.set(sid, SMOOTH[sid] ?? 1); return; }
+  if (!m) return;
+  // запасной путь (MOB_LOAD не подключён): канвас-кадры по мерке
+  texK.set(sid, m && Math.max(m[0], m[1]) < 160 ? 2 : 1);
   const [w0, h0, frames, out, inn, core, coreCol, glow, glowCol] = m;
-  const k = mobTexScale(id), w = w0 * k, h = h0 * k;
+  const k = texK.get(sid) ?? 1, w = w0 * k, h = h0 * k;
   const R = Math.max(w, h) / 2, cx = w / 2, cy = h / 2;
   const star = STAR[sid] ?? 0;
   const r0 = rng(sid * 7919);
