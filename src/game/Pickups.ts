@@ -27,6 +27,8 @@ export const PICKUPS_LOAD: [string, string][] = [
 const ARROW_ITEM = 0xfffae1;
 /** Play_CreateItem_EffectA сундука: белый силуэт, альфа 1 − 0.05·i, шаг 0.035 с, 21 шаг */
 const FX_STEP = 0.035, FX_N = 21;
+/** Play_ItemDuration: время жизни рун и плода Древа (Type_ObjItem 2/3 → ItemDuration 90 с, Start_ItemType) */
+const ITEM_LIFE = 90;
 const R = (a: number, b: number) => a + Math.random() * (b - a);
 
 /** 31 атака, 32 неуязвимость, 33 притяжение, 34 очищение */
@@ -54,6 +56,8 @@ interface Item {
   port?: Phaser.GameObjects.Image;
   /** белый силуэт сундука (ItemEffect) — вспышка при появлении */
   fx?: Phaser.GameObjects.Image;
+  /** Play_ItemDuration: белый силуэт (ItemFlash, FlashColor = белый) поверх предмета; next — следующая проверка / конец паузы */
+  dur?: { fl: Phaser.GameObjects.Image; next: number; d: number; t0: number };
 }
 
 /** Проклятая руна: (EnemyLevelNum ≥, всего, из них UP) — пары 0x636558 … 0x636fc0 */
@@ -94,7 +98,7 @@ export class Pickups {
     return { arrow, port };
   }
 
-  private kill(it: Item) { it.img.destroy(); it.arrow?.destroy(); it.port?.destroy(); it.fx?.destroy(); }
+  private kill(it: Item) { it.dur?.fl.destroy(); it.img.destroy(); it.arrow?.destroy(); it.port?.destroy(); it.fx?.destroy(); }
 
   chest(x: number, y: number, type: ChestType = 5) {
     const img = this.scene.add.image(x, y, 'pkChest' + type).setDepth(DEPTH.orb).setScale(PXI);
@@ -114,7 +118,7 @@ export class Pickups {
   rune(type: RuneType, x: number, y: number, tile?: { x: number; y: number }) {
     const img = this.scene.add.image(x, y, 'pkRune' + RUNES[type].id).setDepth(DEPTH.orb).setScale(PXI);
     // стрелка — только у предметов пула ItemSpecial (не у слотов поля); портрета ItemPos для рун в выгрузке нет
-    this.items.push({ kind: 'rune', rune: type, x, y, t: 0, img, tile, ...(tile ? {} : this.arrow(ARROW_ITEM)) });
+    this.items.push({ kind: 'rune', rune: type, x, y, t: 0, img, tile, dur: this.dur(img), ...(tile ? {} : this.arrow(ARROW_ITEM)) });
   }
 
   /** CreateItem_Character(18, 1): проклятая руна в R(3.25, 3.5) ед. от мага */
@@ -127,7 +131,34 @@ export class Pickups {
   /** Плод Мирового Древа (тип 17) — дроп боссов 42–45 */
   tree(x: number, y: number) {
     const img = this.scene.add.image(x, y, 'pkTree').setDepth(DEPTH.orb).setScale(PXI);
-    this.items.push({ kind: 'tree', x, y, t: 0, img, ...this.arrow(ARROW_ITEM) });
+    this.items.push({ kind: 'tree', x, y, t: 0, img, dur: this.dur(img), ...this.arrow(ARROW_ITEM) });
+  }
+
+  private dur(img: Phaser.GameObjects.Image) {
+    const fl = this.scene.add.image(img.x, img.y, img.texture.key).setDepth(DEPTH.orb + 0.1).setScale(img.scaleX).setTintFill(0xffffff).setVisible(false);
+    return { fl, next: 1, d: 0, t0: -1 };
+  }
+
+  /** Play_ItemDuration (C_Battle_Item @0x11cdb50). L = 90, fade = 1, flashStart = 0.75·L.
+   *  До flashStart — проверка раз в 1 с. Дальше импульсы: p = ((t − flashStart)/(L − fade − flashStart))², d = 0.35 − 0.2·p;
+   *  вспышка 2d (FlashAmount = 0.7·(1 − |τ/d − 1|)), затем пауза d. Последняя секунда: FlashAmount 1, альфа = остаток/fade.
+   *  Вспышка = lerp(цвет, белый, w) — у нас белый силуэт поверх с альфой w. Возвращает true, когда время вышло. */
+  private tickDur(it: Item): boolean {
+    const D = it.dur!, t = it.t, L = ITEM_LIFE, fade = 1, fs = L * 0.75;
+    const rem = L - t;
+    if (rem <= 0) return true;
+    if (rem <= fade) { it.img.setVisible(false); D.fl.setVisible(true).setAlpha(rem / fade); return false; }
+    if (D.t0 < 0) {                       // ждём импульса
+      if (t < D.next) return false;
+      if (t < fs) { D.next = t + 1; return false; }
+      const p = Math.min(1, Math.max(0, (t - fs) / (L - fade - fs)) ** 2);
+      D.d = 0.35 - 0.2 * p; D.t0 = t;
+    }
+    const tau = t - D.t0;
+    if (tau < 2 * D.d) { D.fl.setVisible(true).setAlpha(Math.max(0, 1 - Math.abs(tau / D.d - 1)) * 0.7); return false; }
+    D.fl.setVisible(false);
+    if (tau >= 3 * D.d) { D.t0 = -1; D.next = t; }   // пауза interval = d
+    return false;
   }
 
   /** Убрать руны слотов поля, чья плитка ушла из окна 3×3 (C_LandChange) */
@@ -163,6 +194,10 @@ export class Pickups {
       const it = this.items[i];
       it.t += dt;
       it.img.setPosition(it.x, it.y + Math.sin(it.t * 3) * 2);
+      if (it.dur) {
+        if (this.tickDur(it)) { this.kill(it); this.items.splice(i, 1); continue; }
+        it.dur.fl.setPosition(it.img.x, it.img.y);
+      }
       if (it.fx) {
         // вспышка силуэта при появлении сундука (альфа 1 − 0.05·i, i по 0.035 с)
         const i = Math.floor(it.t / FX_STEP);
