@@ -50,6 +50,7 @@ export function artifactText(a: ArtifactDef) {
 /** Названия и цвета заголовка по типу сундука (ui.md §5) */
 const CHEST: Record<number, [string, string]> = {
   5: ['Сундук с сокровищами', '#fff096'], 6: ['Чёрный ящик', '#ffe7cb'], 7: ['Хранилище реликвий', '#fff0f4'],
+  10: ['Обелиск', '#f0e6d6'], 11: ['Сломанный обелиск', '#a0a0a0'],
 };
 
 export interface ChestOpts { type: number; title?: string; keys: number; onReroll?: () => void; onDiscard: () => void }
@@ -57,7 +58,7 @@ export interface ChestOpts { type: number; title?: string; keys: number; onRerol
 export function showChest(choices: ArtifactDef[], onPick: (a: ArtifactDef) => void, opts: ChestOpts) {
   clearModals();
   const [title, color] = CHEST[opts.type];
-  const m = div('modal chest', `
+  const m = div(opts.type >= 10 ? 'modal chest obelisk' : 'modal chest', `
     <button class="close" aria-label="Оставить">✕</button>
     <h1 class="ctitle" style="color:${color}">${opts.title ?? title}</h1>
     <div class="cline"></div>

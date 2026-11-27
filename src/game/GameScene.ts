@@ -160,7 +160,8 @@ export class GameScene extends Phaser.Scene {
       if (s <= 1.8) W.fx.burst(W.player.x, W.player.y, Math.min(6.4 * s, 9) * ORIG_U, 0xffffff, 0.25, 'ring');
     };
     this.zoneQ = []; this.land.newRun();
-    // победа (Game_ClearON на 12:00) → окно → бесконечный режим (Game_BattleLoopON); обелиска после босса в зоне 1 нет
+    W.waves.onClearEnd = () => W.pickups.obelisk();
+    // победа (Game_ClearON на 12:00) → окно → бесконечный режим (Game_BattleLoopON); обелиск ставит onClearEnd
     W.waves.onVictory = () => { this.zoneQ.push('clear'); };
     W.pickups.onCurse = (n, up) => toast(`<b style="color:#b8343f">Проклятая руна</b><br>Элитных врагов: ${n}${up ? ` (из них ${up} гигантов)` : ''}<br>Убейте всех за 3 мин — последний оставит сундук`, 2600);
     W.zone.onMerchant = () => { if (!this.zoneQ.includes('shop')) this.zoneQ.push('shop'); };
@@ -239,9 +240,12 @@ export class GameScene extends Phaser.Scene {
       if (!r.items.length) { close(); return; }
       const keys = W.artifacts.deck.keys;
       this.inModal = true; this.paused = true; this.joy?.release();
-      showChest(r.items, (a) => { close(); W.artifacts.add(a.id); }, {
+      showChest(r.items, (a) => {
+        close(); W.artifacts.add(a.id);
+        if (type >= 10) W.pickups.activate('greed'); // Button_Artifact_Select: обелиск → Start_Rune_Obtain (притянуть весь опыт)
+      }, {
         type, title: r.roulette ? 'Золотая рулетка' : undefined, onDiscard: close, keys,
-        onReroll: keys >= 1 && !changed && !r.legend && type !== 7 ? () => { W.artifacts.deck.keys--; open(true); } : undefined,
+        onReroll: keys >= 1 && !changed && !r.legend && type !== 7 && type !== 11 ? () => { W.artifacts.deck.keys--; open(true); } : undefined,
       });
     };
     open(false);

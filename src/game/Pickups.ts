@@ -22,6 +22,8 @@ export const PICKUPS_LOAD: [string, string][] = [
   ...[31, 32, 33, 34].map((n): [string, string] => ['pkRune' + n, `art/pickups/Item${n}.png`]),
   ['pkTree', 'art/pickups/Item17.png'], ['pkCurse', 'art/pickups/Item18.png'], ['pkPos18', 'art/pickups/ItemPos18.png'],
   ['pkArrow', 'art/pickups/ItemArrow.png'],
+  // обелиски 10 / 11 (после волны-зачистки)
+  ...[10, 11].flatMap((n): [string, string][] => [['pkChest' + n, `art/pickups/Item${n}.png`], ['pkFx' + n, `art/pickups/ItemEffect${n}.png`]]),
 ];
 /** Цвет стрелки-указателя: предмет / сундук (Obj_ItemPos) */
 const ARROW_ITEM = 0xfffae1;
@@ -104,7 +106,14 @@ export class Pickups {
     const img = this.scene.add.image(x, y, 'pkChest' + type).setDepth(DEPTH.orb).setScale(PXI);
     const fx = this.scene.add.image(x, y, 'pkFx' + type).setDepth(DEPTH.orb + 0.1).setScale(PXI);
     // тени у сундуков 5/6/7 нет: TreasureBox.Play_CreateItem_EffectA гасит Obj_ItemShadow, включает только у 9–11
-    this.items.push({ kind: 'chest', chest: type, x, y, t: 0, img, fx, ...this.arrow(ARROW_ITEM, 'pkPos' + type) });
+    this.items.push({ kind: 'chest', chest: type, x, y, t: 0, img, fx, ...this.arrow(ARROW_ITEM, type < 9 ? 'pkPos' + type : undefined) });
+  }
+
+  /** Play_BossWaveEffect_End → CreateItem_Character(10; с 30:05 — 11 «Сломанный»): обелиск в 2.5 ед. над магом и арена вокруг него */
+  obelisk() {
+    const P = W.player, x = P.x, y = P.y - 2.5 * U;
+    this.chest(x, y, W.time >= 1805 ? 11 : 10);
+    W.zone.startArena(x, y);
   }
 
   /** CreateItem_Character(5 | −5 | −6 | 7): сундук у мага R(2.5, 3.5) / дальний R(35, 45) / R(45, 55) ед. */
@@ -214,12 +223,13 @@ export class Pickups {
           it.port?.setPosition(ax, ay);
         }
       }
-      const pr = it.kind === 'chest' ? 16 : 14;
+      const obelisk = it.kind === 'chest' && it.chest! >= 10;
+      const pr = obelisk ? 30 : it.kind === 'chest' ? 16 : 14;
       const touch = Math.hypot(P.x - it.x, P.y - it.y) < pr + P.r;
       if (touch) {
         this.kill(it);
         this.items.splice(i, 1);
-        if (it.kind === 'chest') { W.artifacts.onChestPick(it.x, it.y); this.onChest?.(it.chest!); } // Мимик
+        if (it.kind === 'chest') { if (obelisk) W.zone.endArena(); W.artifacts.onChestPick(it.x, it.y); this.onChest?.(it.chest!); } // Мимик
         else if (it.kind === 'curse') this.transition();
         else if (it.kind === 'tree') this.obtainTree();
         else this.activate(it.rune!);

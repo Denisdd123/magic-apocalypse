@@ -10,8 +10,8 @@ import { W } from './World';
  * - Боссы: `Create_UnitEnemyBoss(ID, Num)` — Num точек по кругу R(10, 18) (у 44 — 9 / 10), пул 15, свободных ≥ 2.
  *   Вызывается дважды (Waves), зачистка закрывается на смерти Num-го (`ApplyBossNum`).
  * - Дроп по UnitID (Play_Unit_Death, и у эпиков, и у боссов): 41 — 6 больших сфер, 42–45 — плод Мирового Древа, 46 — 5 больших.
- * - Арена (`Play_BossLimitGround_Damage`) ставится только вместе с обелиском (`CreateItem_Character(9|10|11)`, зоны 12–14);
- *   в зоне 1 по коду её нет. Метод `startArena` оставлен для зон со сменой карты.
+ * - Арена (`Play_BossLimitGround_Damage`) ставится вместе с обелиском (`CreateItem_Character(9|10|11)`) и снимается,
+ *   когда обелиск подобран (Pickups.obelisk).
  */
 
 const U = ORIG_UNIT;

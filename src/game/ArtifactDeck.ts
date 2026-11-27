@@ -3,7 +3,8 @@
 import { ART_DATA } from '../data/artifacts_data';
 
 /** тип сундука: 5 — Сундук с сокровищами, 6 — Чёрный ящик, 7 — Хранилище реликвий */
-export type ChestType = 5 | 6 | 7;
+/** 5–7 сундуки, 10 обелиск, 11 «Сломанный обелиск» */
+export type ChestType = 5 | 6 | 7 | 10 | 11;
 
 const COPIES = 5;
 /** Random.Range(a, b) целых: b не входит */
@@ -123,7 +124,7 @@ export class ArtifactDeck {
     remove(b, 168);
     if (level >= 100) remove(a, 168); // Global_LevelMax
     const roulette = this.roulette;
-    if (type === 6 || roulette) {
+    if (type === 6 || type === 10 || roulette) {
       this.roulette = false;
       const ids = (roulette ? [b[3] ?? b[0]] : b.slice(0, 3)).filter((x) => x !== undefined);
       for (const id of ids) { const k = this.drop.lastIndexOf(id); if (k >= 0) this.drop.splice(k, 1); }
@@ -135,7 +136,7 @@ export class ArtifactDeck {
       const got = res.filter(free);
       if (got.length) list = got;
     }
-    const ids = list.slice(0, 3);
+    const ids = list.slice(0, type === 11 ? 4 : 3);
     for (const id of ids) remove(this.drop, id);
     return { ids, legend: false, roulette: false };
   }

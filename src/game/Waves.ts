@@ -83,6 +83,8 @@ export class Waves {
   private victory = false;
   /** Game_ClearON на 12:00 (зоны 1–2) — окно победы после круга */
   onVictory: (() => void) | null = null;
+  /** конец волны-зачистки (Create_UnitEnemy_StartLoop → Play_BossWaveEffect_End) — появляется обелиск */
+  onClearEnd: (() => void) | null = null;
   // поля отметки (сбрасываются каждый тик)
   private epicSet: [number, number, number] | null = null;
   private bossSet: [number, number] | null = null;
@@ -304,6 +306,7 @@ export class Waves {
       this.running = true; this.tickT = 0;
       W.time += 1;
       this.waveSerial++;
+      this.onClearEnd?.();
       if (this.victory) { this.victory = false; this.onVictory?.(); }
     }
   }
