@@ -18,7 +18,9 @@
     @font-face { font-family: "Noto Sans Display"; font-weight: 600 800; font-style: normal; font-display: swap; src: url("/fonts/NotoSansDisplay-Bold.woff2") format("woff2"); }
     /* экран загрузки = сцена A_Loading оригинала (холст 720x1280, 1 px = --bu); убирает ui.ts, когда появляется меню */
     #boot { --bu: calc(min(100vw / 720, var(--app-h, 100lvh) / 1280)); position: fixed; inset: 0; z-index: 50; overflow: hidden; color: #f3efe7;
-      background: linear-gradient(#36d8ff 0 60%, #000 60%); font-family: "Noto Sans Display", system-ui, sans-serif; transition: opacity 0.4s; }
+      background: #000 linear-gradient(#000 0, #000 3%, #36d8ff 16% 60%, #000 60%); font-family: "Noto Sans Display", system-ui, sans-serif; transition: opacity 0.4s; }
+    /* iOS 26 красит статус-бар цветом фиксированного элемента у верхнего края — держим там чёрную кромку */
+    #topcap { position: fixed; left: 0; right: 0; top: 0; height: 5px; background: #000; z-index: 100; pointer-events: none; }
     #boot.out { opacity: 0; pointer-events: none; }
     #boot .bcv { position: absolute; left: 50%; top: 50%; width: calc(var(--bu) * 720); height: calc(var(--bu) * 1280); transform: translate(-50%, -50%); }
     #boot .bl { position: absolute; left: 50%; top: 50%; display: block; transform: translate(-50%, -50%); user-select: none; pointer-events: none; }
@@ -36,6 +38,7 @@
   </style>
 </head>
 <body>
+  <div id="topcap"></div>
   <div id="game"></div>
   <div id="ui"></div>
   <div id="boot">

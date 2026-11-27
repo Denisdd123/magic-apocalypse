@@ -27,7 +27,7 @@
   --green: #9fe08a;
   --mana: #8fe6ff;
   --serif: var(--font); /* старое имя: все заголовки теперь тем же пиксельным шрифтом */
-  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-top: max(env(safe-area-inset-top, 0px), 5px); /* не меньше чёрной кромки #topcap */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
